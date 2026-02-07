@@ -3,10 +3,9 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient } from './anthropic-client';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+const anthropic = createAnthropicClient();
 
 export interface SceneDescription {
   frameIndex: number;

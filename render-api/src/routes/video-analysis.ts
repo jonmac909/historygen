@@ -15,6 +15,7 @@
 import { Router, Request, Response } from 'express';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient } from '../lib/anthropic-client';
 import {
   preprocessVideo,
   cleanupTempFiles,
@@ -547,9 +548,7 @@ router.post('/query', async (req: Request, res: Response) => {
     });
 
     // Query Claude
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const anthropic = createAnthropicClient();
 
     const systemPrompt = `You are a video production analysis assistant helping recreate successful video styles.
 

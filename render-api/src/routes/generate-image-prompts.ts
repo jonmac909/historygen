@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient } from '../lib/anthropic-client';
 import { saveCost } from '../lib/cost-tracker';
 
 const router = Router();
@@ -423,7 +424,7 @@ router.post('/', async (req: Request, res: Response) => {
     sendEvent({ type: 'progress', progress: 5, message: '5%' });
 
     // Initialize Anthropic client
-    const anthropic = new Anthropic({ apiKey: anthropicApiKey });
+    const anthropic = createAnthropicClient(anthropicApiKey);
 
     // Track token usage for cost tracking
     let totalInputTokens = 0;

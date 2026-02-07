@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient } from '../lib/anthropic-client';
 import { saveCost } from '../lib/cost-tracker';
 
 const router = Router();
@@ -25,7 +26,7 @@ interface GenerateScriptChunkOptions {
 async function generateScriptChunk(options: GenerateScriptChunkOptions): Promise<{ text: string; stopReason: string }> {
   const { apiKey, model, systemPrompt, messages, maxTokens, usePromptCaching } = options;
 
-  const anthropic = new Anthropic({ apiKey });
+  const anthropic = createAnthropicClient(apiKey);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_CALL_TIMEOUT);
@@ -64,7 +65,7 @@ async function generateScriptChunk(options: GenerateScriptChunkOptions): Promise
 async function generateScriptChunkStreaming(options: GenerateScriptChunkOptions): Promise<{ text: string; stopReason: string; inputTokens: number; outputTokens: number }> {
   const { apiKey, model, systemPrompt, messages, maxTokens, usePromptCaching, onToken } = options;
 
-  const anthropic = new Anthropic({ apiKey });
+  const anthropic = createAnthropicClient(apiKey);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_CALL_TIMEOUT);
@@ -622,7 +623,7 @@ router.post('/rate', async (req: Request, res: Response) => {
     // Use topic if provided, otherwise fall back to title
     const topicFocus = topic || title || 'History Documentary';
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = createAnthropicClient(apiKey);
 
     const systemPrompt = `You are an expert script evaluator for SLEEP-FRIENDLY long-form history documentary narration. These are 2-3 hour videos designed to help viewers drift peacefully through history while falling asleep.
 
@@ -795,7 +796,7 @@ router.post('/quick-edit', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'API key not configured' });
     }
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = createAnthropicClient(apiKey);
 
     console.log(`🔧 Quick-editing script (${script.length} chars)...`);
     console.log(`📝 Fix prompt: ${fixPrompt}`);

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient } from '../lib/anthropic-client';
 import { fetch, ProxyAgent } from 'undici';
 
 const router = Router();
@@ -63,7 +64,7 @@ router.post('/', async (req: Request, res: Response) => {
     else if (contentType.includes('gif')) mediaType = 'image/gif';
     else if (contentType.includes('webp')) mediaType = 'image/webp';
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = createAnthropicClient(apiKey);
 
     const systemPrompt = `You are an expert thumbnail designer analyzing YouTube thumbnails.
 Your job is to extract the visual style and composition so it can be recreated for a similar video.

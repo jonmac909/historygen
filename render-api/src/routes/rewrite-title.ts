@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient } from '../lib/anthropic-client';
 
 const router = Router();
 
@@ -37,7 +38,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     console.log(`[RewriteTitle] Rewriting: "${originalTitle}"`);
 
-    const anthropic = new Anthropic({ apiKey });
+    const anthropic = createAnthropicClient(apiKey);
 
     const systemPrompt = `You are an expert YouTube title writer specializing in history and educational content.
 Your job is to rewrite video titles to be similar in style and appeal but unique enough to avoid duplication.

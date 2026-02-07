@@ -16,6 +16,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { createAnthropicClient } from './anthropic-client';
 import { fetch, ProxyAgent } from 'undici';
 import { randomUUID } from 'crypto';
 import { internalApiKey } from './runtime-config';
@@ -209,7 +210,7 @@ async function gradeScript(
   apiKey: string
 ): Promise<{ grade: 'A' | 'B' | 'C'; feedback: string }> {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
-  const client = new Anthropic({ apiKey });
+  const client = createAnthropicClient(apiKey);
 
   // Sample beginning, middle, and end of script for comprehensive review
   const totalLen = script.length;

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient } from '../lib/anthropic-client';
 
 const router = Router();
 
@@ -32,9 +33,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     // Initialize Anthropic client
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+    const anthropic = createAnthropicClient();
 
     // Truncate script if too long (keep first 8000 chars for context)
     const truncatedScript = script.length > 8000

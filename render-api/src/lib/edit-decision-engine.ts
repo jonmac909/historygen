@@ -3,11 +3,10 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
+import { createAnthropicClient } from './anthropic-client';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || '',
-});
+const anthropic = createAnthropicClient();
 
 let supabase: SupabaseClient | null = null;
 
