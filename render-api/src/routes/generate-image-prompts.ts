@@ -8,7 +8,7 @@ const router = Router();
 // Constants
 const MAX_TOKENS = 16384;  // Sonnet max tokens
 const BATCH_SIZE_PARALLEL = 10; // Smaller batches for parallel processing
-const MAX_CONCURRENT_BATCHES = 5; // Limit concurrent API calls to avoid rate limits
+const MAX_CONCURRENT_BATCHES = 20; // Limit concurrent API calls to avoid rate limits
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 1000; // 1s → 2s → 4s exponential backoff
 
