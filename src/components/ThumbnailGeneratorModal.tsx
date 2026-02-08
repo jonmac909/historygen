@@ -9,6 +9,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "@/hooks/use-toast";
@@ -396,6 +397,63 @@ export function ThumbnailGeneratorModal({
     setGeneratedThumbnails([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const extractYouTubeVideoId = (url: string): string | null => {
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
+    ];
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  const handleYouTubeUrl = async (url: string) => {
+    const videoId = extractYouTubeVideoId(url);
+    if (!videoId) return;
+
+    setIsUploading(true);
+    try {
+      // Try maxresdefault first, fall back to hqdefault
+      const thumbnailUrls = [
+        `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+        `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      ];
+
+      let blob: Blob | null = null;
+      for (const thumbUrl of thumbnailUrls) {
+        const response = await fetch(thumbUrl);
+        if (response.ok) {
+          blob = await response.blob();
+          // maxresdefault returns a tiny placeholder if unavailable
+          if (blob.size > 5000) break;
+        }
+      }
+
+      if (!blob || blob.size < 1000) {
+        throw new Error('Could not fetch YouTube thumbnail');
+      }
+
+      const file = new File([blob], `youtube-${videoId}.jpg`, { type: 'image/jpeg' });
+      setExampleImage(file);
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setExamplePreview(e.target?.result as string);
+        setIsUploading(false);
+      };
+      reader.onerror = () => {
+        toast({ title: "Failed", description: "Could not load YouTube thumbnail.", variant: "destructive" });
+        setIsUploading(false);
+      };
+      reader.readAsDataURL(file);
+      setGeneratedThumbnails([]);
+    } catch (error) {
+      toast({ title: "Failed", description: "Could not fetch YouTube thumbnail.", variant: "destructive" });
+      setIsUploading(false);
     }
   };
 
@@ -876,6 +934,31 @@ export function ThumbnailGeneratorModal({
                       <Upload className="w-3 h-3" />
                       Change Reference
                     </Button>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <div className="flex-1 h-px bg-border" />
+                      <span>or</span>
+                      <div className="flex-1 h-px bg-border" />
+                    </div>
+                    <Input
+                      placeholder="Paste YouTube URL..."
+                      className="h-7 text-xs"
+                      onKeyDown={(e) => e.stopPropagation()}
+                      onPaste={(e) => {
+                        const text = e.clipboardData.getData('text');
+                        if (extractYouTubeVideoId(text)) {
+                          e.preventDefault();
+                          handleYouTubeUrl(text);
+                          (e.target as HTMLInputElement).value = '';
+                        }
+                      }}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (extractYouTubeVideoId(val)) {
+                          handleYouTubeUrl(val);
+                          e.target.value = '';
+                        }
+                      }}
+                    />
                   </div>
                 ) : (
                   <div
@@ -896,6 +979,26 @@ export function ThumbnailGeneratorModal({
                       </div>
                     )}
                   </div>
+                  <Input
+                    placeholder="Paste YouTube URL..."
+                    className="h-7 text-xs"
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onPaste={(e) => {
+                      const text = e.clipboardData.getData('text');
+                      if (extractYouTubeVideoId(text)) {
+                        e.preventDefault();
+                        handleYouTubeUrl(text);
+                        (e.target as HTMLInputElement).value = '';
+                      }
+                    }}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (extractYouTubeVideoId(val)) {
+                        handleYouTubeUrl(val);
+                        e.target.value = '';
+                      }
+                    }}
+                  />
                 )}
 
                 <input
