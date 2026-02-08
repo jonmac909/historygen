@@ -8,6 +8,7 @@ const router = Router();
 // Constants
 const MAX_TOKENS = 16384;  // Sonnet max tokens
 const BATCH_SIZE_PARALLEL = 10; // Smaller batches for parallel processing
+const MAX_CONCURRENT_BATCHES = 5; // Limit concurrent API calls to avoid rate limits
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 1000; // 1s → 2s → 4s exponential backoff
 
@@ -31,6 +32,38 @@ async function retryWithBackoff<T>(
     }
   }
   throw lastError!;
+}
+
+// Process promises with controlled concurrency to avoid rate limits
+async function processBatchesWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  maxConcurrent: number
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = [];
+  const executing: Promise<void>[] = [];
+
+  for (let i = 0; i < tasks.length; i++) {
+    const task = tasks[i];
+    const promise = task()
+      .then(value => {
+        results[i] = { status: 'fulfilled', value };
+      })
+      .catch(reason => {
+        results[i] = { status: 'rejected', reason };
+      })
+      .finally(() => {
+        executing.splice(executing.indexOf(promise), 1);
+      });
+
+    executing.push(promise);
+
+    if (executing.length >= maxConcurrent) {
+      await Promise.race(executing);
+    }
+  }
+
+  await Promise.all(executing);
+  return results;
 }
 
 // Robustly extract a JSON array from Claude's response text
@@ -586,8 +619,8 @@ Output format:
       }
     ];
 
-    // Create all batch promises to run in parallel (with per-batch retry)
-    const batchPromises = Array.from({ length: numBatches }, async (_, batchIndex) => {
+    // Create all batch tasks (functions that return promises) for controlled concurrency
+    const batchTasks = Array.from({ length: numBatches }, (_, batchIndex) => async () => {
       const batchStart = batchIndex * BATCH_SIZE_PARALLEL;
       const batchEnd = Math.min((batchIndex + 1) * BATCH_SIZE_PARALLEL, imageCount);
       const batchWindows = windows.slice(batchStart, batchEnd);
@@ -639,6 +672,13 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
 
         // Get token usage from this batch
         const finalMessage = await messageStream.finalMessage();
+
+        // Debug: log finalMessage when response is too short
+        if (fullResponse.length < 200) {
+          console.error(`[Batch ${batchIndex + 1}] Short response (${fullResponse.length} chars). Stop reason: ${finalMessage?.stop_reason}`);
+          console.error(`[Batch ${batchIndex + 1}] Full response: "${fullResponse}"`);
+          console.error(`[Batch ${batchIndex + 1}] Message content:`, JSON.stringify(finalMessage?.content?.slice(0, 1), null, 2));
+        }
         if (finalMessage?.usage) {
           totalInputTokens += finalMessage.usage.input_tokens || 0;
           totalOutputTokens += finalMessage.usage.output_tokens || 0;
@@ -647,6 +687,7 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
         // Parse the JSON response for this batch (robust extraction)
         const batchDescriptions = extractJsonArray(fullResponse) as { index: number; sceneDescription: string }[] | null;
         if (!batchDescriptions || !Array.isArray(batchDescriptions) || batchDescriptions.length === 0) {
+          console.error(`[Batch ${batchIndex + 1}] Invalid response (${fullResponse.length} chars): ${fullResponse.substring(0, 500)}`);
           throw new Error(`No valid JSON array found in batch ${batchIndex + 1} response (length=${fullResponse.length})`);
         }
 
@@ -663,8 +704,9 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
       }, `batch ${batchIndex + 1}/${numBatches}`);
     });
 
-    // Run all batches in parallel — use allSettled so one failure doesn't kill the rest
-    const batchSettled = await Promise.allSettled(batchPromises);
+    // Run batches with controlled concurrency to avoid rate limits
+    console.log(`📊 Processing batches with max ${MAX_CONCURRENT_BATCHES} concurrent requests`);
+    const batchSettled = await processBatchesWithConcurrency(batchTasks, MAX_CONCURRENT_BATCHES);
 
     const sceneDescriptions: { index: number; sceneDescription: string }[] = [];
     const failedBatches: number[] = [];
