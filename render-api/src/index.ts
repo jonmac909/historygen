@@ -230,54 +230,12 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   });
   console.log('🔄 Cache refresh scheduled: Daily at 13:00 UTC (5am PST)');
 
-  // Schedule Auto Poster to run daily at 6am PST = 14:00 UTC (no DST adjustment - PST is fixed)
-  // Note: During PDT (Mar-Nov), this will be 7am local time. Use 13:00 UTC for 6am PDT.
-  cron.schedule('0 14 * * *', async () => {
-    console.log('[Cron] 🕕 Checking Auto Poster status at 14:00 UTC (6am PST)...');
-    try {
-      // Check if cron is enabled
-      const statusRes = await fetch(`http://localhost:${PORT}/auto-clone/cron-status`);
-      const statusData = await statusRes.json() as { enabled?: boolean };
-      
-      if (!statusData.enabled) {
-        console.log('[Cron] Auto Poster is DISABLED - skipping');
-        return;
-      }
+  // Auto Poster cron DISABLED - removed at user request
+  // User can manually trigger via UI or API if needed
+  console.log('⏰ Auto Poster cron: DISABLED (removed from code)');
 
-      console.log('[Cron] Auto Poster is enabled - triggering...');
-      const response = await fetch(`http://localhost:${PORT}/auto-clone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: false }),
-      });
-      const result = await response.json() as { success?: boolean; error?: string };
-      console.log('[Cron] Auto Poster triggered:', result.success ? 'Started' : result.error || 'Failed');
-    } catch (error) {
-      console.error('[Cron] Failed to trigger Auto Poster:', error);
-    }
-  });
-  console.log('⏰ Auto Poster scheduled: Daily at 14:00 UTC (6am PST)');
-
-  // ONE-TIME scheduler: Run Auto Poster for Sumerian Prison video at 03:16 UTC (Jan 13, 2026)
-  cron.schedule('16 3 13 1 *', async () => {
-    console.log('[Cron] 🎯 ONE-TIME: Running Auto Poster for Sumerian Prison video...');
-    try {
-      const response = await fetch(`http://localhost:${PORT}/auto-clone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          force: true,
-          videoUrl: 'https://www.youtube.com/watch?v=GbHa-UiT7NM',
-          outlierMultiplier: 8
-        }),
-      });
-      const result = await response.json() as { success?: boolean; error?: string };
-      console.log('[Cron] ONE-TIME Auto Poster triggered:', result.success ? 'Started' : result.error || 'Failed');
-    } catch (error) {
-      console.error('[Cron] ONE-TIME Failed to trigger Auto Poster:', error);
-    }
-  });
-  console.log('🎯 ONE-TIME Auto Poster scheduled: 03:16 UTC Jan 13 (Sumerian Prison video)');
+  // ONE-TIME Auto Poster cron DISABLED - removed at user request
+  console.log('🎯 ONE-TIME Auto Poster: DISABLED (removed from code)');
 
 });
 
