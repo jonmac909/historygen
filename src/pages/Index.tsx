@@ -3726,8 +3726,8 @@ const Index = () => {
         projectId={projectId}
         projectTitle={videoTitle}
         audioUrl={pendingAudioUrl}
-        imageUrls={pendingImages}
-        imageTimings={imagePrompts.map(p => ({ startSeconds: p.startSeconds, endSeconds: p.endSeconds }))}
+        imageUrls={pendingImages.slice(0, imagePrompts.length)}
+        imageTimings={imagePrompts.slice(0, pendingImages.length).map(p => ({ startSeconds: p.startSeconds, endSeconds: p.endSeconds }))}
         srtContent={pendingSrtContent}
         introClips={generatedClips.length > 0 ? generatedClips.map(c => ({
           index: c.index,

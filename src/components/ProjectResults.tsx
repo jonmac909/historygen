@@ -2447,8 +2447,8 @@ export function ProjectResults({
           projectId={projectId}
           projectTitle={projectTitle}
           audioUrl={audioUrl}
-          imageUrls={imagePrompts.map(p => p.imageUrl).filter((url): url is string => !!url)}
-          imageTimings={imagePrompts.map(p => ({ startSeconds: p.startTime, endSeconds: p.endTime }))}
+          imageUrls={imagePrompts.filter(p => !!p.imageUrl).map(p => p.imageUrl as string)}
+          imageTimings={imagePrompts.filter(p => !!p.imageUrl).map(p => ({ startSeconds: p.startTime, endSeconds: p.endTime }))}
           srtContent={srtContent}
           existingBasicVideoUrl={basicVideoUrl || undefined}
           existingEffectsVideoUrl={smokeEmbersVideoUrl || embersVideoUrl || undefined}

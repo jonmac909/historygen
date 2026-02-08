@@ -1633,7 +1633,8 @@ export async function renderVideoStreaming(
     if (!startResponse.ok) {
       const errorText = await startResponse.text();
       console.error('Failed to start render job:', startResponse.status, errorText);
-      return { success: false, error: `Failed to start render: ${startResponse.status}` };
+      const serverError = (() => { try { return JSON.parse(errorText)?.error; } catch { return errorText; } })();
+      return { success: false, error: serverError || `Failed to start render: ${startResponse.status}` };
     }
 
     const startResult = await startResponse.json();
