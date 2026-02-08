@@ -667,4 +667,58 @@ async function handleStreamingThumbnails(
   }
 }
 
+// Generate thumbnail prompt ideas from a simple topic
+router.post('/suggest-prompts', async (req: Request, res: Response) => {
+  try {
+    const { topic } = req.body;
+    if (!topic || typeof topic !== 'string') {
+      return res.status(400).json({ error: 'topic is required' });
+    }
+
+    const { createAnthropicClient } = await import('../lib/anthropic-client');
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    }
+
+    const anthropic = createAnthropicClient(apiKey);
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 1500,
+      system: `You are a YouTube thumbnail designer. Given a topic, generate 4 creative thumbnail prompt ideas. Each prompt should describe a visually striking thumbnail composition including: subject appearance, setting, lighting, mood, color palette, and text overlay suggestions. Keep each prompt to 2-3 sentences. Focus on dramatic, eye-catching compositions that work at small sizes.
+
+Respond as a JSON array of strings, nothing else.`,
+      messages: [{
+        role: 'user',
+        content: `Generate 4 thumbnail prompt ideas for: "${topic}"`
+      }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text response from Claude');
+    }
+
+    let prompts: string[];
+    try {
+      let jsonStr = textContent.text;
+      const jsonMatch = jsonStr.match(/```json\s*([\s\S]*?)\s*```/) || jsonStr.match(/```\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) jsonStr = jsonMatch[1];
+      const arrayMatch = jsonStr.match(/\[[\s\S]*\]/);
+      if (arrayMatch) jsonStr = arrayMatch[0];
+      prompts = JSON.parse(jsonStr);
+    } catch {
+      prompts = [textContent.text];
+    }
+
+    res.json({ success: true, prompts });
+  } catch (error) {
+    console.error('[SuggestPrompts] Error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to suggest prompts'
+    });
+  }
+});
+
 export default router;

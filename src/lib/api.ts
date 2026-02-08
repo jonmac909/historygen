@@ -1783,6 +1783,38 @@ export async function suggestThumbnailContent(
   }
 }
 
+// Suggest thumbnail prompts from a simple topic name
+export async function suggestThumbnailPrompts(
+  topic: string
+): Promise<{ success: boolean; prompts?: string[]; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured' };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-thumbnails/suggest-prompts`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ topic })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `Failed: ${response.status} ${errorText}` };
+    }
+
+    const data = await response.json();
+    return { success: data.success, prompts: data.prompts, error: data.error };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to suggest prompts'
+    };
+  }
+}
+
 export async function generateThumbnailsStreaming(
   exampleImageBase64: string,
   prompt: string,

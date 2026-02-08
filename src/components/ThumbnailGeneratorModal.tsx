@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "@/hooks/use-toast";
-import { generateThumbnailsStreaming, type ThumbnailGenerationProgress } from "@/lib/api";
+import { generateThumbnailsStreaming, suggestThumbnailPrompts, type ThumbnailGenerationProgress } from "@/lib/api";
 import JSZip from "jszip";
 
 interface ThumbnailGeneratorModalProps {
@@ -90,6 +90,9 @@ export function ThumbnailGeneratorModal({
 
   // Generation state - single prompt for everything
   const [imagePrompt, setImagePrompt] = useState("");
+  const [topicInput, setTopicInput] = useState("");
+  const [suggestedPrompts, setSuggestedPrompts] = useState<string[]>([]);
+  const [isSuggesting, setIsSuggesting] = useState(false);
   const [thumbnailCount, setThumbnailCount] = useState(3);
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState<ThumbnailGenerationProgress | null>(null);
@@ -454,6 +457,25 @@ export function ThumbnailGeneratorModal({
     } catch (error) {
       toast({ title: "Failed", description: "Could not fetch YouTube thumbnail.", variant: "destructive" });
       setIsUploading(false);
+    }
+  };
+
+  const handleSuggestPrompts = async () => {
+    const topic = topicInput.trim();
+    if (!topic) return;
+    setIsSuggesting(true);
+    setSuggestedPrompts([]);
+    try {
+      const result = await suggestThumbnailPrompts(topic);
+      if (result.success && result.prompts) {
+        setSuggestedPrompts(result.prompts);
+      } else {
+        toast({ title: "Failed", description: result.error || "Could not generate suggestions.", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Failed", description: "Could not generate suggestions.", variant: "destructive" });
+    } finally {
+      setIsSuggesting(false);
     }
   };
 
@@ -1008,6 +1030,52 @@ export function ThumbnailGeneratorModal({
                   className="hidden"
                   onChange={handleFileSelect}
                 />
+              </div>
+
+              {/* Topic → Prompt Suggestions */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Prompt Ideas:</label>
+                <div className="flex gap-1">
+                  <Input
+                    placeholder="e.g. Queen Charlotte"
+                    value={topicInput}
+                    onChange={(e) => setTopicInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') handleSuggestPrompts();
+                    }}
+                    className="h-7 text-xs flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 px-2 gap-1"
+                    onClick={handleSuggestPrompts}
+                    disabled={!topicInput.trim() || isSuggesting}
+                  >
+                    {isSuggesting ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3 h-3" />
+                    )}
+                  </Button>
+                </div>
+                {suggestedPrompts.length > 0 && (
+                  <div className="space-y-1 max-h-[120px] overflow-y-auto">
+                    {suggestedPrompts.map((prompt, i) => (
+                      <button
+                        key={i}
+                        className="w-full text-left text-xs p-1.5 rounded border hover:bg-secondary/50 transition-colors leading-tight"
+                        onClick={() => {
+                          setImagePrompt(prompt);
+                          setSuggestedPrompts([]);
+                        }}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Image Prompt */}
