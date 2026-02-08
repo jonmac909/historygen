@@ -1374,6 +1374,18 @@ const Index = () => {
 
       console.log(`[handlePromptsConfirm] Image generation complete. Requested: ${editedPrompts.length}, Received: ${imageResult.images?.length || 0}`);
 
+      // CRITICAL: Check if we received images
+      if (!imageResult.images || imageResult.images.length === 0) {
+        console.error('[handlePromptsConfirm] No images received from backend!');
+        console.error('[handlePromptsConfirm] imageResult:', JSON.stringify(imageResult, null, 2));
+        toast({
+          title: "Image Sync Error",
+          description: "Images may have generated but weren't received. Check browser console and try reloading the project.",
+          variant: "destructive",
+          duration: 10000,
+        });
+      }
+
       updateStep("images", "completed", "Done");
       setPendingImages(imageResult.images || []);
 
