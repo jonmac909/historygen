@@ -113,6 +113,11 @@ export function VideoRenderModal({
         setEffectsVideoUrl(existingEffectsVideoUrl);
         autoRenderTriggered.current = true;
         setCurrentPass('complete');
+      } else if (existingBasicVideoUrl) {
+        // Basic video exists but no effects video — still show as complete
+        autoRenderTriggered.current = true;
+        setCurrentPass('complete');
+        setActiveTab('basic');
       }
     }
   }, [isOpen, existingBasicVideoUrl, existingEffectsVideoUrl]);
