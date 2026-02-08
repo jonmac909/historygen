@@ -1754,7 +1754,7 @@ const Index = () => {
   // ============================================================================
 
   // Regenerate all image prompts (re-call Claude to generate new scene descriptions)
-  const handleRegenerateImagePrompts = async () => {
+  const handleRegenerateImagePrompts = async (modernKeywordFilter: boolean) => {
     if (!pendingSrtContent && !srtContent) {
       toast({
         title: "Error",
@@ -1788,13 +1788,14 @@ const Index = () => {
       const promptCount = imagePrompts.length > 0 ? imagePrompts.length : settings.imageCount;
 
       console.log(`[RegenerateImagePrompts] Using prompt count: ${promptCount} (imagePrompts.length: ${imagePrompts.length}, settings.imageCount: ${settings.imageCount})`);
+      console.log(`[RegenerateImagePrompts] Modern keyword filter: ${modernKeywordFilter}`);
 
       const promptResult = await generateImagePrompts(
         scriptForPrompts,
         srt,
         promptCount,
         getSelectedImageStyle(),
-        settings.modernKeywordFilter,
+        modernKeywordFilter,
         pendingAudioDuration,
         (progress, message) => {
           console.log(`[RegeneratePrompts] ${progress}%: ${message}`);
@@ -3628,6 +3629,7 @@ const Index = () => {
         prompts={imagePrompts}
         stylePrompt={settings.customStylePrompt?.trim() || getSelectedImageStyle()}
         imageTemplates={imageTemplates}
+        modernKeywordFilter={settings.modernKeywordFilter}
         onConfirm={handlePromptsConfirm}
         onCancel={handleCancelRequest}
         onBack={handleBackToCaptions}

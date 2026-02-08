@@ -33,11 +33,12 @@ interface ImagePromptsPreviewModalProps {
   prompts: ImagePrompt[];
   stylePrompt: string;
   imageTemplates: ImageTemplate[];  // Saved templates from settings
+  modernKeywordFilter: boolean;  // Initial modern keyword filter state
   onConfirm: (editedPrompts: ImagePrompt[], editedStylePrompt: string) => void;
   onCancel: () => void;
   onBack?: () => void;
   onForward?: () => void;
-  onRegenerate?: () => void;
+  onRegenerate?: (modernKeywordFilter: boolean) => void;  // Now passes filter state
   isRegenerating?: boolean;
 }
 
@@ -134,6 +135,7 @@ export function ImagePromptsPreviewModal({
   prompts,
   stylePrompt,
   imageTemplates,
+  modernKeywordFilter,
   onConfirm,
   onCancel,
   onBack,
@@ -142,6 +144,7 @@ export function ImagePromptsPreviewModal({
   isRegenerating = false
 }: ImagePromptsPreviewModalProps) {
   const [editedPrompts, setEditedPrompts] = useState<ImagePrompt[]>(prompts);
+  const [filterEnabled, setFilterEnabled] = useState(modernKeywordFilter);
 
   // Pagination for large prompt lists (prevents stack overflow with 500+ items)
   const PROMPTS_PER_PAGE = 20;
@@ -397,6 +400,43 @@ export function ImagePromptsPreviewModal({
           </div>
         )}
 
+        {/* Modern Keyword Filter Toggle */}
+        <div className="border rounded-lg p-3 bg-muted/30">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+                <span className="text-sm font-medium">Keyword Filter</span>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Filter modern/anachronistic keywords for historical content
+              </p>
+            </div>
+            <div className="flex bg-muted rounded-lg p-1">
+              <button
+                onClick={() => setFilterEnabled(false)}
+                className={`py-1.5 px-3 rounded-md text-xs font-medium transition-colors ${
+                  !filterEnabled
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Modern/Any
+              </button>
+              <button
+                onClick={() => setFilterEnabled(true)}
+                className={`py-1.5 px-3 rounded-md text-xs font-medium transition-colors ${
+                  filterEnabled
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Historical Only
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="overflow-y-auto max-h-[50vh] py-4 pr-2">
           {/* Pagination controls for large lists */}
           {totalPages > 1 && (
@@ -451,7 +491,7 @@ export function ImagePromptsPreviewModal({
               Download
             </Button>
             {onRegenerate && (
-              <Button variant="outline" onClick={onRegenerate} disabled={isRegenerating}>
+              <Button variant="outline" onClick={() => onRegenerate(filterEnabled)} disabled={isRegenerating}>
                 <RefreshCw className={`w-4 h-4 mr-2 ${isRegenerating ? 'animate-spin' : ''}`} />
                 {isRegenerating ? 'Regenerating...' : 'Redo Prompts'}
               </Button>
