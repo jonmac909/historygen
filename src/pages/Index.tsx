@@ -1374,13 +1374,31 @@ const Index = () => {
 
       console.log(`[handlePromptsConfirm] Image generation complete. Requested: ${editedPrompts.length}, Received: ${imageResult.images?.length || 0}`);
 
-      // CRITICAL: Check if we received images
+      // CRITICAL: Check if we received images - if not, try to fetch from Supabase as fallback
       if (!imageResult.images || imageResult.images.length === 0) {
-        console.error('[handlePromptsConfirm] No images received from backend!');
-        console.error('[handlePromptsConfirm] imageResult:', JSON.stringify(imageResult, null, 2));
+        console.error('[handlePromptsConfirm] No images received from backend! Attempting fallback fetch from Supabase...');
+
+        // Try to fetch the project from Supabase to get the images
+        const { data: savedProject, error: fetchError } = await supabase
+          .from('projects')
+          .select('imageUrls')
+          .eq('id', projectId)
+          .single();
+
+        if (!fetchError && savedProject?.imageUrls && savedProject.imageUrls.length > 0) {
+          console.log(`[handlePromptsConfirm] Fallback success! Fetched ${savedProject.imageUrls.length} images from Supabase`);
+          setPendingImages(savedProject.imageUrls);
+          updateStep("images", "completed", "Done");
+          autoSave("images", { imageUrls: savedProject.imageUrls });
+          await new Promise(resolve => setTimeout(resolve, 300));
+          setViewState("review-images");
+          return; // Skip the error handling below
+        }
+
+        console.error('[handlePromptsConfirm] Fallback failed. imageResult:', JSON.stringify(imageResult, null, 2));
         toast({
           title: "Image Sync Error",
-          description: "Images may have generated but weren't received. Check browser console and try reloading the project.",
+          description: "Images may have generated but couldn't be retrieved. Try reloading the project from Projects tab.",
           variant: "destructive",
           duration: 10000,
         });
