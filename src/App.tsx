@@ -106,4 +106,4 @@ const App = () => {
 };
 
 export default App;
-// Auto-deploy test - Sun Feb  8 2026
+// Deploy hook test - Sun Feb 8 2026
