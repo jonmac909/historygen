@@ -8,6 +8,72 @@ const router = Router();
 // Constants
 const MAX_TOKENS = 16384;  // Sonnet max tokens
 const BATCH_SIZE_PARALLEL = 10; // Smaller batches for parallel processing
+const RETRY_MAX_ATTEMPTS = 3;
+const RETRY_BASE_DELAY_MS = 1000; // 1s → 2s → 4s exponential backoff
+
+// Retry a function with exponential backoff
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  label: string,
+  maxAttempts: number = RETRY_MAX_ATTEMPTS,
+): Promise<T> {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxAttempts) {
+        const delay = RETRY_BASE_DELAY_MS * Math.pow(2, attempt - 1);
+        console.warn(`[Retry] ${label} attempt ${attempt}/${maxAttempts} failed: ${lastError.message}. Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+  throw lastError!;
+}
+
+// Robustly extract a JSON array from Claude's response text
+function extractJsonArray(text: string): object[] | null {
+  // 1. Try direct regex match for JSON array
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      return JSON.parse(arrayMatch[0]);
+    } catch { /* fall through */ }
+  }
+
+  // 2. Strip markdown code fences and retry
+  const stripped = text
+    .replace(/```(?:json)?\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+  const strippedMatch = stripped.match(/\[[\s\S]*\]/);
+  if (strippedMatch) {
+    try {
+      return JSON.parse(strippedMatch[0]);
+    } catch { /* fall through */ }
+  }
+
+  // 3. Try to fix truncated JSON (missing closing bracket)
+  const openBracket = stripped.indexOf('[');
+  if (openBracket !== -1) {
+    let partial = stripped.substring(openBracket);
+    // Close any unclosed strings and objects, then close the array
+    if (!partial.trimEnd().endsWith(']')) {
+      // Attempt to close at the last complete object
+      const lastCloseBrace = partial.lastIndexOf('}');
+      if (lastCloseBrace > 0) {
+        partial = partial.substring(0, lastCloseBrace + 1) + ']';
+        try {
+          return JSON.parse(partial);
+        } catch { /* fall through */ }
+      }
+    }
+  }
+
+  return null;
+}
 
 interface SrtSegment {
   index: number;
@@ -520,7 +586,7 @@ Output format:
       }
     ];
 
-    // Create all batch promises to run in parallel
+    // Create all batch promises to run in parallel (with per-batch retry)
     const batchPromises = Array.from({ length: numBatches }, async (_, batchIndex) => {
       const batchStart = batchIndex * BATCH_SIZE_PARALLEL;
       const batchEnd = Math.min((batchIndex + 1) * BATCH_SIZE_PARALLEL, imageCount);
@@ -535,16 +601,18 @@ Output format:
       // Calculate tokens needed for this batch (use model-specific limit)
       const batchTokens = Math.min(MAX_TOKENS, batchSize * 150 + 500);
 
-      let fullResponse = '';
+      // Retry the Claude API call + JSON parsing up to 3 times per batch
+      return retryWithBackoff(async () => {
+        let fullResponse = '';
 
-      const messageStream = await anthropic.messages.stream({
-        model: selectedModel,
-        max_tokens: batchTokens,
-        system: systemConfig,
-        messages: [
-          {
-            role: 'user',
-            content: `Generate exactly ${batchSize} visual scene descriptions for images ${batchStart + 1} to ${batchEnd}. Return ONLY the JSON array, nothing else.
+        const messageStream = await anthropic.messages.stream({
+          model: selectedModel,
+          max_tokens: batchTokens,
+          system: systemConfig,
+          messages: [
+            {
+              role: 'user',
+              content: `Generate exactly ${batchSize} visual scene descriptions for images ${batchStart + 1} to ${batchEnd}. Return ONLY the JSON array, nothing else.
 
 SCRIPT CONTEXT:
 ${script.substring(0, 12000)}
@@ -553,51 +621,82 @@ TIME-CODED SEGMENTS:
 ${windowDescriptions}
 
 Remember: Output ONLY a JSON array with ${batchSize} items, starting with index ${batchStart + 1}. No explanations.`
+            }
+          ],
+        });
+
+        // Process stream and track progress
+        for await (const event of messageStream) {
+          if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+            fullResponse += event.delta.text;
+
+            // Count completed scenes in this batch
+            const completedInBatch = (fullResponse.match(/\"sceneDescription\"\s*:\s*\"[^\"]+\"/g) || []).length;
+            batchProgress[batchIndex] = completedInBatch;
+            updateTotalProgress();
           }
-        ],
-      });
-
-      // Process stream and track progress
-      for await (const event of messageStream) {
-        if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-          fullResponse += event.delta.text;
-
-          // Count completed scenes in this batch
-          const completedInBatch = (fullResponse.match(/\"sceneDescription\"\s*:\s*\"[^\"]+\"/g) || []).length;
-          batchProgress[batchIndex] = completedInBatch;
-          updateTotalProgress();
         }
-      }
 
-      // Get token usage from this batch
-      const finalMessage = await messageStream.finalMessage();
-      if (finalMessage?.usage) {
-        totalInputTokens += finalMessage.usage.input_tokens || 0;
-        totalOutputTokens += finalMessage.usage.output_tokens || 0;
-      }
-
-      // Parse the JSON response for this batch
-      const jsonMatch = fullResponse.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        throw new Error(`No JSON array found in batch ${batchIndex + 1} response`);
-      }
-      const batchDescriptions = JSON.parse(jsonMatch[0]) as { index: number; sceneDescription: string }[];
-
-      // Adjust indices if needed (Claude might start from 1 in each batch)
-      for (const desc of batchDescriptions) {
-        // If index is within batch range (1 to batchSize), adjust to global index
-        if (desc.index >= 1 && desc.index <= batchSize) {
-          desc.index = batchStart + desc.index;
+        // Get token usage from this batch
+        const finalMessage = await messageStream.finalMessage();
+        if (finalMessage?.usage) {
+          totalInputTokens += finalMessage.usage.input_tokens || 0;
+          totalOutputTokens += finalMessage.usage.output_tokens || 0;
         }
-      }
 
-      console.log(`Batch ${batchIndex + 1}/${numBatches}: generated ${batchDescriptions.length} descriptions`);
-      return batchDescriptions;
+        // Parse the JSON response for this batch (robust extraction)
+        const batchDescriptions = extractJsonArray(fullResponse) as { index: number; sceneDescription: string }[] | null;
+        if (!batchDescriptions || !Array.isArray(batchDescriptions) || batchDescriptions.length === 0) {
+          throw new Error(`No valid JSON array found in batch ${batchIndex + 1} response (length=${fullResponse.length})`);
+        }
+
+        // Adjust indices if needed (Claude might start from 1 in each batch)
+        for (const desc of batchDescriptions) {
+          // If index is within batch range (1 to batchSize), adjust to global index
+          if (desc.index >= 1 && desc.index <= batchSize) {
+            desc.index = batchStart + desc.index;
+          }
+        }
+
+        console.log(`Batch ${batchIndex + 1}/${numBatches}: generated ${batchDescriptions.length} descriptions`);
+        return batchDescriptions;
+      }, `batch ${batchIndex + 1}/${numBatches}`);
     });
 
-    // Run all batches in parallel
-    const batchResults = await Promise.all(batchPromises);
-    const sceneDescriptions = batchResults.flat();
+    // Run all batches in parallel — use allSettled so one failure doesn't kill the rest
+    const batchSettled = await Promise.allSettled(batchPromises);
+
+    const sceneDescriptions: { index: number; sceneDescription: string }[] = [];
+    const failedBatches: number[] = [];
+
+    for (let i = 0; i < batchSettled.length; i++) {
+      const result = batchSettled[i];
+      if (result.status === 'fulfilled') {
+        sceneDescriptions.push(...result.value);
+      } else {
+        failedBatches.push(i + 1);
+        console.error(`Batch ${i + 1}/${numBatches} failed after ${RETRY_MAX_ATTEMPTS} retries: ${result.reason}`);
+      }
+    }
+
+    // Warn frontend about failed batches (non-fatal — we continue with partial results)
+    if (failedBatches.length > 0) {
+      const failedImageRanges = failedBatches.map(b => {
+        const start = (b - 1) * BATCH_SIZE_PARALLEL + 1;
+        const end = Math.min(b * BATCH_SIZE_PARALLEL, imageCount);
+        return `${start}-${end}`;
+      });
+      console.warn(`[generate-image-prompts] ${failedBatches.length} batch(es) failed: images ${failedImageRanges.join(', ')}`);
+      sendEvent({
+        type: 'warning',
+        message: `${failedBatches.length} batch(es) failed after retries. Images ${failedImageRanges.join(', ')} will use fallback descriptions.`,
+      });
+    }
+
+    // If ALL batches failed, that's a hard error
+    if (sceneDescriptions.length === 0) {
+      throw new Error(`All ${numBatches} batch(es) failed to generate image prompts after retries`);
+    }
 
     // Phase 2: Check and regenerate prompts with modern keywords IN PARALLEL
     // This happens after initial generation and can take significant time
