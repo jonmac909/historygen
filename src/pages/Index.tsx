@@ -59,6 +59,7 @@ import {
   createProjectVersion,
   duplicateProject,
   getProject,
+  toggleFavoriteThumbnail,
   type Project,
 } from "@/lib/projectStore";
 import { ProjectsDrawer } from "@/components/ProjectsDrawer";
@@ -246,14 +247,7 @@ const Index = () => {
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [generatedThumbnails, setGeneratedThumbnails] = useState<string[]>([]);
   const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number | undefined>();
-  const [favoriteThumbnails, setFavoriteThumbnails] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('historygenai-favorite-thumbnails');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [favoriteThumbnails, setFavoriteThumbnails] = useState<string[]>([]);
   const [renderedVideoUrl, setRenderedVideoUrl] = useState<string | undefined>();
   const [videoUrl, setVideoUrl] = useState<string | undefined>();
   const [videoUrlCaptioned, setVideoUrlCaptioned] = useState<string | undefined>();
@@ -354,6 +348,7 @@ const Index = () => {
       if (project.smokeEmbersVideoUrl) setSmokeEmbersVideoUrl(project.smokeEmbersVideoUrl);
       if (project.thumbnails) setGeneratedThumbnails(project.thumbnails);
       if (project.selectedThumbnailIndex !== undefined) setSelectedThumbnailIndex(project.selectedThumbnailIndex);
+      if (project.favoriteThumbnails) setFavoriteThumbnails(project.favoriteThumbnails);
       if (project.approvedSteps) setApprovedSteps(project.approvedSteps);
       // Restore YouTube metadata
       if (project.youtubeTitle) setYoutubeTitle(project.youtubeTitle);
@@ -660,6 +655,7 @@ const Index = () => {
     if (savedProject.smokeEmbersVideoUrl) setSmokeEmbersVideoUrl(savedProject.smokeEmbersVideoUrl);
     if (savedProject.thumbnails) setGeneratedThumbnails(savedProject.thumbnails);
     if (savedProject.selectedThumbnailIndex !== undefined) setSelectedThumbnailIndex(savedProject.selectedThumbnailIndex);
+    if (savedProject.favoriteThumbnails) setFavoriteThumbnails(savedProject.favoriteThumbnails);
     if (savedProject.approvedSteps) setApprovedSteps(savedProject.approvedSteps);
     // Restore YouTube metadata
     if (savedProject.youtubeTitle) setYoutubeTitle(savedProject.youtubeTitle);
@@ -2129,16 +2125,19 @@ const Index = () => {
     setViewState("review-youtube");
   };
 
-  // Favorite thumbnail toggle
-  const handleFavoriteThumbnailToggle = (url: string) => {
-    setFavoriteThumbnails(prev => {
-      const newFavorites = prev.includes(url)
-        ? prev.filter(u => u !== url)
-        : [...prev, url];
-      // Persist to localStorage
-      localStorage.setItem('historygenai-favorite-thumbnails', JSON.stringify(newFavorites));
-      return newFavorites;
-    });
+  // Favorite thumbnail toggle (persisted to Supabase)
+  const handleFavoriteThumbnailToggle = async (url: string) => {
+    if (!currentProjectId) return;
+    // Optimistic update
+    setFavoriteThumbnails(prev =>
+      prev.includes(url) ? prev.filter(u => u !== url) : [...prev, url]
+    );
+    try {
+      const updated = await toggleFavoriteThumbnail(currentProjectId, url);
+      setFavoriteThumbnails(updated);
+    } catch (error) {
+      console.error('Failed to toggle favorite thumbnail:', error);
+    }
   };
 
   // Video render handler (2-pass: basic + effects)
@@ -2202,6 +2201,7 @@ const Index = () => {
     setPendingImages([]);
     setGeneratedThumbnails([]);
     setSelectedThumbnailIndex(undefined);
+    setFavoriteThumbnails([]);
     setRenderedVideoUrl(undefined);
     setVideoUrl(undefined);
     setVideoUrlCaptioned(undefined);
@@ -2771,6 +2771,7 @@ const Index = () => {
     setSmokeEmbersVideoUrl(undefined);
     setGeneratedThumbnails([]);
     setSelectedThumbnailIndex(undefined);
+    setFavoriteThumbnails([]);
     setApprovedSteps({});
     setYoutubeTitle("");
     setYoutubeDescription("");
@@ -2852,6 +2853,9 @@ const Index = () => {
     }
     if (project.selectedThumbnailIndex !== undefined) {
       setSelectedThumbnailIndex(project.selectedThumbnailIndex);
+    }
+    if (project.favoriteThumbnails) {
+      setFavoriteThumbnails(project.favoriteThumbnails);
     }
     if (project.approvedSteps) {
       setApprovedSteps(project.approvedSteps);

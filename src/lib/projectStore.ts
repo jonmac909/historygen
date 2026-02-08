@@ -58,6 +58,7 @@ export interface Project {
   // Thumbnails
   thumbnails?: string[];  // Array of generated thumbnail URLs
   selectedThumbnailIndex?: number;  // Index of selected thumbnail for YouTube upload
+  favoriteThumbnails?: string[];  // Array of favorited thumbnail URLs
 
   // Approval tracking for pipeline steps
   approvedSteps?: ('script' | 'audio' | 'captions' | 'prompts' | 'images' | 'thumbnails' | 'render' | 'youtube')[];
@@ -150,6 +151,7 @@ function rowToProject(row: {
     clips: (row.clips as GeneratedClip[]) || undefined,
     thumbnails: (row.thumbnails as string[]) || undefined,
     selectedThumbnailIndex: row.selected_thumbnail_index ?? undefined,
+    favoriteThumbnails: (row.favorite_thumbnails as string[]) || undefined,
     approvedSteps: (row.approved_steps as Project['approvedSteps']) || undefined,
     isFavorite: row.is_favorite || false,
     tags: (row.tags as string[]) || undefined,
@@ -195,6 +197,7 @@ function projectToRow(project: Partial<Project> & { id: string }, isNew: boolean
   if (project.settings !== undefined) row.settings = project.settings || null;
   if (project.thumbnails !== undefined) row.thumbnails = project.thumbnails || [];
   if (project.selectedThumbnailIndex !== undefined) row.selected_thumbnail_index = project.selectedThumbnailIndex ?? null;
+  if (project.favoriteThumbnails !== undefined) row.favorite_thumbnails = project.favoriteThumbnails || [];
   if (project.approvedSteps !== undefined) row.approved_steps = project.approvedSteps || [];
   if (project.isFavorite !== undefined) row.is_favorite = project.isFavorite;
   if (project.tags !== undefined) row.tags = project.tags || [];
@@ -393,6 +396,36 @@ export async function toggleFavorite(id: string): Promise<boolean> {
 
   console.log(`[projectStore] Toggled favorite for ${id}: ${newValue}`);
   return newValue;
+}
+
+export async function toggleFavoriteThumbnail(projectId: string, url: string): Promise<string[]> {
+  const { data: current, error: fetchError } = await supabase
+    .from('generation_projects')
+    .select('favorite_thumbnails')
+    .eq('id', projectId)
+    .single();
+
+  if (fetchError) {
+    console.error('[projectStore] Error fetching favorite thumbnails:', fetchError);
+    throw fetchError;
+  }
+
+  const existing: string[] = (current?.favorite_thumbnails as string[]) || [];
+  const updated = existing.includes(url)
+    ? existing.filter(u => u !== url)
+    : [...existing, url];
+
+  const { error } = await supabase
+    .from('generation_projects')
+    .update({ favorite_thumbnails: updated, updated_at: new Date().toISOString() })
+    .eq('id', projectId);
+
+  if (error) {
+    console.error('[projectStore] Error updating favorite thumbnails:', error);
+    throw error;
+  }
+
+  return updated;
 }
 
 export async function getMostRecentInProgress(): Promise<Project | null> {
