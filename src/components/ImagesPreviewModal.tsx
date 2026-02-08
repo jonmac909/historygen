@@ -1,4 +1,4 @@
-import { Check, X, Image as ImageIcon, RefreshCw, ZoomIn, Edit2, ChevronLeft, ChevronRight, Download, CheckSquare, Square, Loader2 } from "lucide-react";
+import { Check, X, Image as ImageIcon, RefreshCw, ZoomIn, Edit2, ChevronLeft, ChevronRight, Download, CheckSquare, Square, Loader2, Bug } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -25,12 +25,14 @@ interface ImagesPreviewModalProps {
   images: string[];
   prompts?: ImagePrompt[];
   srtContent?: string;
+  projectId?: string;  // For debugging and reconnecting orphaned images
   onConfirm: () => void;
   onCancel: () => void;
   onBack?: () => void;
   onForward?: () => void;
   onRegenerate?: (index: number, editedPrompt?: string) => void;
   onRegenerateMultiple?: (indices: number[], editedPrompts?: Map<number, string>) => Promise<void>;
+  onReconnectImages?: () => Promise<void>;  // Callback to reconnect images
   regeneratingIndices?: Set<number>;
 }
 
@@ -84,12 +86,14 @@ export function ImagesPreviewModal({
   images,
   prompts,
   srtContent,
+  projectId,
   onConfirm,
   onCancel,
   onBack,
   onForward,
   onRegenerate,
   onRegenerateMultiple,
+  onReconnectImages,
   regeneratingIndices = new Set()
 }: ImagesPreviewModalProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -713,6 +717,12 @@ export function ImagesPreviewModal({
               <Download className="w-4 h-4 mr-2" />
               Images
             </Button>
+            {images.length === 0 && onReconnectImages && (
+              <Button variant="outline" onClick={onReconnectImages} className="border-orange-500 text-orange-600 hover:bg-orange-50">
+                <Bug className="w-4 h-4 mr-2" />
+                Reconnect Images
+              </Button>
+            )}
           </div>
 
           {/* Right side: Exit + Forward/Continue */}

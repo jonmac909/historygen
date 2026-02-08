@@ -3691,12 +3691,30 @@ const Index = () => {
         images={pendingImages}
         prompts={imagePrompts}
         srtContent={pendingSrtContent || srtContent}
+        projectId={projectId}
         onConfirm={handleImagesConfirm}
         onCancel={handleCancelRequest}
         onBack={handleBackToPrompts}
         onForward={() => disableAutoAndGoTo("review-render")}
         onRegenerate={handleRegenerateImage}
         onRegenerateMultiple={handleRegenerateMultipleImages}
+        onReconnectImages={async () => {
+          const { reconnectOrphanedImages } = await import('@/lib/api');
+          const result = await reconnectOrphanedImages(projectId);
+          if (result.success && result.imageUrls) {
+            setPendingImages(result.imageUrls);
+            toast({
+              title: "Images Reconnected!",
+              description: `Found ${result.imageUrls.length} images in storage`,
+            });
+          } else {
+            toast({
+              title: "Reconnect Failed",
+              description: result.error || "No images found in storage",
+              variant: "destructive",
+            });
+          }
+        }}
         regeneratingIndices={regeneratingImageIndices}
       />
 
