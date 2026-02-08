@@ -1374,11 +1374,11 @@ const Index = () => {
 
       console.log(`[handlePromptsConfirm] Image generation complete. Requested: ${editedPrompts.length}, Received: ${imageResult.images?.length || 0}`);
 
-      // CRITICAL: Check if we received images - if not, try to fetch from Supabase as fallback
+      // CRITICAL: Check if we received images - if not, try to reconnect from storage
       if (!imageResult.images || imageResult.images.length === 0) {
-        console.error('[handlePromptsConfirm] No images received from backend! Attempting fallback fetch from Supabase...');
+        console.error('[handlePromptsConfirm] No images received from backend! Attempting to reconnect from storage...');
 
-        // Try to fetch the project from Supabase to get the images
+        // First try: Check if URLs are already in the project table
         const { data: savedProject, error: fetchError } = await supabase
           .from('projects')
           .select('imageUrls')
@@ -1386,19 +1386,36 @@ const Index = () => {
           .single();
 
         if (!fetchError && savedProject?.imageUrls && savedProject.imageUrls.length > 0) {
-          console.log(`[handlePromptsConfirm] Fallback success! Fetched ${savedProject.imageUrls.length} images from Supabase`);
+          console.log(`[handlePromptsConfirm] Found ${savedProject.imageUrls.length} images in project table`);
           setPendingImages(savedProject.imageUrls);
           updateStep("images", "completed", "Done");
-          autoSave("images", { imageUrls: savedProject.imageUrls });
           await new Promise(resolve => setTimeout(resolve, 300));
           setViewState("review-images");
-          return; // Skip the error handling below
+          return;
         }
 
-        console.error('[handlePromptsConfirm] Fallback failed. imageResult:', JSON.stringify(imageResult, null, 2));
+        // Second try: Scan storage for orphaned images and reconnect them
+        console.log('[handlePromptsConfirm] No URLs in project table, scanning storage...');
+        const { reconnectOrphanedImages } = await import('@/lib/api');
+        const reconnectResult = await reconnectOrphanedImages(projectId);
+
+        if (reconnectResult.success && reconnectResult.imageUrls) {
+          console.log(`[handlePromptsConfirm] Reconnected ${reconnectResult.imageUrls.length} orphaned images from storage!`);
+          setPendingImages(reconnectResult.imageUrls);
+          updateStep("images", "completed", "Done");
+          toast({
+            title: "Images Reconnected",
+            description: `Found and reconnected ${reconnectResult.imageUrls.length} images from storage`,
+          });
+          await new Promise(resolve => setTimeout(resolve, 300));
+          setViewState("review-images");
+          return;
+        }
+
+        console.error('[handlePromptsConfirm] All fallback attempts failed');
         toast({
           title: "Image Sync Error",
-          description: "Images may have generated but couldn't be retrieved. Try reloading the project from Projects tab.",
+          description: "Images may have generated but couldn't be retrieved. Check Supabase storage manually.",
           variant: "destructive",
           duration: 10000,
         });

@@ -2469,3 +2469,63 @@ export async function fetchProjectCosts(projectId: string): Promise<ProjectCosts
     };
   }
 }
+/**
+ * Reconnect orphaned images from Supabase storage
+ * Scans storage for images matching projectId and saves URLs to project
+ */
+export async function reconnectOrphanedImages(projectId: string): Promise<{ success: boolean; imageUrls?: string[]; error?: string }> {
+  try {
+    console.log(`[reconnectOrphanedImages] Scanning storage for project ${projectId}`);
+    
+    // List all files in the project's images folder
+    const { data: files, error: listError } = await supabase.storage
+      .from('generated-assets')
+      .list(`${projectId}/images`, {
+        limit: 500,
+        sortBy: { column: 'name', order: 'asc' }
+      });
+
+    if (listError) {
+      console.error('[reconnectOrphanedImages] List error:', listError);
+      return { success: false, error: listError.message };
+    }
+
+    if (!files || files.length === 0) {
+      console.log('[reconnectOrphanedImages] No images found in storage');
+      return { success: false, error: 'No images found in storage for this project' };
+    }
+
+    // Get public URLs for all image files
+    const imageUrls = files
+      .filter(file => file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg'))
+      .map(file => {
+        const { data } = supabase.storage
+          .from('generated-assets')
+          .getPublicUrl(`${projectId}/images/${file.name}`);
+        return data.publicUrl;
+      });
+
+    console.log(`[reconnectOrphanedImages] Found ${imageUrls.length} images in storage`);
+
+    // Update the project with the image URLs
+    const { error: updateError } = await supabase
+      .from('projects')
+      .update({ imageUrls })
+      .eq('id', projectId);
+
+    if (updateError) {
+      console.error('[reconnectOrphanedImages] Update error:', updateError);
+      return { success: false, error: updateError.message };
+    }
+
+    console.log(`[reconnectOrphanedImages] Successfully reconnected ${imageUrls.length} images`);
+    return { success: true, imageUrls };
+
+  } catch (error) {
+    console.error('[reconnectOrphanedImages] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to reconnect images'
+    };
+  }
+}
