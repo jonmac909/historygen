@@ -3730,8 +3730,22 @@ const Index = () => {
         projectId={projectId}
         projectTitle={videoTitle}
         audioUrl={pendingAudioUrl}
-        imageUrls={pendingImages.slice(0, imagePrompts.length)}
-        imageTimings={imagePrompts.slice(0, pendingImages.length).map(p => ({ startSeconds: p.startSeconds, endSeconds: p.endSeconds }))}
+        imageUrls={(() => {
+          const allImages = pendingImages.slice(0, imagePrompts.length);
+          if (generatedClips.length === 0) return allImages;
+          // Skip images whose timings fall within the intro clip range
+          const clipEndTime = Math.max(...generatedClips.map(c => c.endSeconds));
+          return allImages.filter((_, i) => {
+            const prompt = imagePrompts[i];
+            return prompt && prompt.startSeconds >= clipEndTime;
+          });
+        })()}
+        imageTimings={(() => {
+          const allTimings = imagePrompts.slice(0, pendingImages.length).map(p => ({ startSeconds: p.startSeconds, endSeconds: p.endSeconds }));
+          if (generatedClips.length === 0) return allTimings;
+          const clipEndTime = Math.max(...generatedClips.map(c => c.endSeconds));
+          return allTimings.filter(t => t.startSeconds >= clipEndTime);
+        })()}
         srtContent={pendingSrtContent}
         introClips={generatedClips.length > 0 ? generatedClips.map(c => ({
           index: c.index,
