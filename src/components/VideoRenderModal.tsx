@@ -563,7 +563,7 @@ export function VideoRenderModal({
           {onForward ? (
             <Button
               onClick={onForward}
-              disabled={isRendering || !effectsVideoUrl}
+              disabled={isRendering || (!effectsVideoUrl && !basicVideoUrl)}
             >
               Thumbnails
               <ChevronRight className="w-4 h-4 ml-2" />
@@ -571,7 +571,7 @@ export function VideoRenderModal({
           ) : (
             <Button
               onClick={handleConfirm}
-              disabled={!effectsVideoUrl}
+              disabled={!effectsVideoUrl && !basicVideoUrl}
             >
               <Check className="w-4 h-4 mr-2" />
               Continue
