@@ -1254,8 +1254,7 @@ export function ThumbnailGeneratorModal({
                                 }`}
                                 style={{ aspectRatio: '16/9', objectFit: 'cover' }}
                                 onClick={() => {
-                                  setLightboxSource('generated');
-                                  setLightboxIndex(index);
+                                  setSelectedThumbnail(isSelected ? null : url);
                                 }}
                               />
                               {isSelected && (
@@ -1267,14 +1266,15 @@ export function ThumbnailGeneratorModal({
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className={`h-6 w-6 ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-background/80 hover:bg-background'}`}
+                                  className="h-6 w-6 bg-background/80 hover:bg-background"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedThumbnail(isSelected ? null : url);
+                                    setLightboxSource('generated');
+                                    setLightboxIndex(index);
                                   }}
-                                  title={isSelected ? "Deselect" : "Select for YouTube"}
+                                  title="Expand"
                                 >
-                                  <Check className="w-3 h-3" />
+                                  <Expand className="w-3 h-3" />
                                 </Button>
                                 {onFavoriteToggle && (
                                   <Button
@@ -1354,8 +1354,7 @@ export function ThumbnailGeneratorModal({
                                 }`}
                                 style={{ aspectRatio: '16/9', objectFit: 'cover' }}
                                 onClick={() => {
-                                  setLightboxSource('favorites');
-                                  setLightboxIndex(index);
+                                  setSelectedThumbnail(isSelected ? null : url);
                                 }}
                               />
                               {isSelected && (
@@ -1367,14 +1366,15 @@ export function ThumbnailGeneratorModal({
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className={`h-6 w-6 ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-background/80 hover:bg-background'}`}
+                                  className="h-6 w-6 bg-background/80 hover:bg-background"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedThumbnail(isSelected ? null : url);
+                                    setLightboxSource('generated');
+                                    setLightboxIndex(index);
                                   }}
-                                  title={isSelected ? "Deselect" : "Select for YouTube"}
+                                  title="Expand"
                                 >
-                                  <Check className="w-3 h-3" />
+                                  <Expand className="w-3 h-3" />
                                 </Button>
                                 {onFavoriteToggle && (
                                   <Button
@@ -1445,8 +1445,7 @@ export function ThumbnailGeneratorModal({
                                 }`}
                                 style={{ aspectRatio: '16/9', objectFit: 'cover' }}
                                 onClick={() => {
-                                  setLightboxSource('uploaded');
-                                  setLightboxIndex(index);
+                                  setSelectedThumbnail(isSelected ? null : url);
                                 }}
                               />
                               {isSelected && (
@@ -1458,14 +1457,15 @@ export function ThumbnailGeneratorModal({
                                 <Button
                                   variant="ghost"
                                   size="icon"
-                                  className={`h-6 w-6 ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-background/80 hover:bg-background'}`}
+                                  className="h-6 w-6 bg-background/80 hover:bg-background"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedThumbnail(isSelected ? null : url);
+                                    setLightboxSource('generated');
+                                    setLightboxIndex(index);
                                   }}
-                                  title={isSelected ? "Deselect" : "Select for YouTube"}
+                                  title="Expand"
                                 >
-                                  <Check className="w-3 h-3" />
+                                  <Expand className="w-3 h-3" />
                                 </Button>
                                 <Button
                                   variant="ghost"
