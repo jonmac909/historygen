@@ -20,6 +20,7 @@ interface ImagePromptRequest {
   srtContent: string;
   imageCount: number;
   stylePrompt: string;
+  modernKeywordFilter?: boolean; // Filter anachronistic keywords (default true)
   audioDuration?: number; // Optional audio duration in seconds
 }
 
@@ -285,7 +286,9 @@ serve(async (req) => {
   }
 
   try {
-    const { script, srtContent, imageCount, stylePrompt, audioDuration }: ImagePromptRequest = await req.json();
+    const { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration }: ImagePromptRequest = await req.json();
+    // Default to true for backward compatibility (filter enabled by default)
+    const shouldFilterKeywords = modernKeywordFilter !== false;
 
     if (!script || !srtContent) {
       return new Response(
@@ -427,10 +430,11 @@ Remember:
       const scene = sceneDescriptions.find(s => s.index === i + 1);
       let sceneDesc = scene?.sceneDescription || `Historical scene depicting: ${window.text.substring(0, 200)}`;
 
-      // Check for modern keywords
-      const foundKeywords = containsModernKeywords(sceneDesc);
+      // Check for modern keywords (only if filter is enabled)
+      if (shouldFilterKeywords) {
+        const foundKeywords = containsModernKeywords(sceneDesc);
 
-      if (foundKeywords.length > 0) {
+        if (foundKeywords.length > 0) {
         console.log(`Image ${i + 1}: Found modern keywords [${foundKeywords.join(', ')}], regenerating...`);
         regeneratedCount++;
 
@@ -466,6 +470,7 @@ Remember:
             console.log(`Image ${i + 1}: Warning - still has keywords after 2 regeneration attempts, using best attempt`);
             sceneDesc = secondAttempt;
           }
+        }
         }
       }
 

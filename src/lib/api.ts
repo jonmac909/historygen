@@ -925,6 +925,7 @@ export async function generateImagePrompts(
   srtContent: string,
   imageCount: number,
   stylePrompt: string,
+  modernKeywordFilter: boolean,
   audioDuration?: number,
   onProgress?: (progress: number, message: string) => void
 ): Promise<ImagePromptsResult> {
@@ -942,7 +943,7 @@ export async function generateImagePrompts(
       const response = await fetch(`${renderUrl}/generate-image-prompts`, {
         method: 'POST',
         headers: withRenderAuth({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, audioDuration, stream: true })
+        body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, stream: true })
       });
 
       if (!response.ok) {
@@ -997,7 +998,7 @@ export async function generateImagePrompts(
 
   // Fallback to Supabase Edge Function (no streaming)
   const { data, error } = await supabase.functions.invoke('generate-image-prompts', {
-    body: { script, srtContent, imageCount, stylePrompt, audioDuration }
+    body: { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration }
   });
 
   if (error) {

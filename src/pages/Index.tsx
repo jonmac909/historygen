@@ -77,6 +77,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   projectTitle: "",
   topic: "",  // Specific topic to prevent drift (e.g., "Viking Winters", "History of Bread")
   fullAutomation: false,
+  modernKeywordFilter: true,  // Filter anachronistic keywords by default (turn off for modern videos)
   scriptTemplate: "template-a",
   imageTemplate: "image-a",
   aiModel: "claude-sonnet-4-5",
@@ -1302,6 +1303,7 @@ const Index = () => {
         srt,
         settings.imageCount,
         getSelectedImageStyle(),
+        settings.modernKeywordFilter,
         pendingAudioDuration,
         (progress, message) => {
           updateStep("prompts", "active", message);
@@ -1613,6 +1615,7 @@ const Index = () => {
         srt,
         settings.imageCount,
         getSelectedImageStyle(),
+        settings.modernKeywordFilter,
         pendingAudioDuration,
         (progress, message) => {
           updateStep("prompts", "active", message);
@@ -1791,6 +1794,7 @@ const Index = () => {
         srt,
         promptCount,
         getSelectedImageStyle(),
+        settings.modernKeywordFilter,
         pendingAudioDuration,
         (progress, message) => {
           console.log(`[RegeneratePrompts] ${progress}%: ${message}`);
@@ -2605,6 +2609,7 @@ const Index = () => {
         captionsText,
         settings.imageCount,
         getSelectedImageStyle(),
+        settings.modernKeywordFilter,
         audioDuration
       );
 
@@ -3206,6 +3211,33 @@ const Index = () => {
                     }`}
                   >
                     Full Auto
+                  </button>
+                </div>
+              </div>
+
+              {/* Modern Keyword Filter toggle */}
+              <div className="flex items-center gap-3">
+                <label className="text-sm font-medium text-muted-foreground w-28 text-left shrink-0">Image Style</label>
+                <div className="flex bg-muted rounded-lg p-1 flex-1">
+                  <button
+                    onClick={() => setSettings(prev => ({ ...prev, modernKeywordFilter: false }))}
+                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      !settings.modernKeywordFilter
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Modern/Any
+                  </button>
+                  <button
+                    onClick={() => setSettings(prev => ({ ...prev, modernKeywordFilter: true }))}
+                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
+                      settings.modernKeywordFilter
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    }`}
+                  >
+                    Historical Only
                   </button>
                 </div>
               </div>

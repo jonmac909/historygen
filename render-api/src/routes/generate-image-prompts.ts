@@ -452,9 +452,11 @@ function groupSegmentsForImages(segments: SrtSegment[], imageCount: number, audi
 }
 
 router.post('/', async (req: Request, res: Response) => {
-  const { script, srtContent, imageCount, stylePrompt, masterStylePrompt, audioDuration, stream, projectId } = req.body;
+  const { script, srtContent, imageCount, stylePrompt, masterStylePrompt, modernKeywordFilter, audioDuration, stream, projectId } = req.body;
   // Accept both stylePrompt (from frontend) and masterStylePrompt (from pipeline) for compatibility
   const effectiveStylePrompt = stylePrompt || masterStylePrompt || '';
+  // Default to true for backward compatibility (filter enabled by default)
+  const shouldFilterKeywords = modernKeywordFilter !== false;
 
   // Always use Sonnet for best quality scene descriptions
   const selectedModel = 'claude-sonnet-4-5-20250929';
@@ -753,25 +755,28 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
     }
     const regenTasks: RegenTask[] = [];
 
-    for (let i = 0; i < windows.length; i++) {
-      const scene = sceneDescriptions.find(s => s.index === i + 1);
-      const sceneDesc = scene?.sceneDescription || `Historical scene depicting: ${windows[i].text.substring(0, 200)}`;
-      const foundKeywords = containsModernKeywords(sceneDesc);
+    // Only check for modern keywords if filter is enabled
+    if (shouldFilterKeywords) {
+      for (let i = 0; i < windows.length; i++) {
+        const scene = sceneDescriptions.find(s => s.index === i + 1);
+        const sceneDesc = scene?.sceneDescription || `Historical scene depicting: ${windows[i].text.substring(0, 200)}`;
+        const foundKeywords = containsModernKeywords(sceneDesc);
 
-      if (foundKeywords.length > 0) {
-        regenTasks.push({
-          index: i,
-          sceneDesc,
-          foundKeywords,
-          narrationText: windows[i].text,
-        });
+        if (foundKeywords.length > 0) {
+          regenTasks.push({
+            index: i,
+            sceneDesc,
+            foundKeywords,
+            narrationText: windows[i].text,
+          });
+        }
       }
     }
 
     // Map to store regenerated descriptions by index
     const regeneratedDescriptions = new Map<number, string>();
 
-    if (regenTasks.length > 0) {
+    if (shouldFilterKeywords && regenTasks.length > 0) {
       console.log(`Found ${regenTasks.length} prompts with modern keywords, regenerating in parallel...`);
       sendEvent({ type: 'progress', progress: 86, message: `Regenerating ${regenTasks.length} prompts with modern keywords...` });
 
