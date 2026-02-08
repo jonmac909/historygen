@@ -182,6 +182,31 @@ async function updateJobStatus(
   }
 }
 
+// Update the generation_projects table with the rendered video URL
+async function updateProjectVideoUrl(
+  supabase: SupabaseClient,
+  projectId: string,
+  videoUrl: string,
+  effects?: VideoEffects
+): Promise<void> {
+  const column = effects?.smoke_embers
+    ? 'smoke_embers_video_url'
+    : effects?.embers
+      ? 'embers_video_url'
+      : 'video_url';
+
+  const { error } = await supabase
+    .from('generation_projects')
+    .update({ [column]: videoUrl })
+    .eq('id', projectId);
+
+  if (error) {
+    console.error(`Failed to update project ${projectId} ${column}:`, error);
+  } else {
+    console.log(`Updated project ${projectId} ${column} = ${videoUrl}`);
+  }
+}
+
 // Download file from URL to temp directory
 async function downloadFile(url: string, destPath: string): Promise<void> {
   assertAllowedAssetUrl(url, 'download');
@@ -277,6 +302,7 @@ async function processRenderJobGpu(jobId: string, params: RenderVideoRequest): P
           await updateJobStatus(supabase, jobId, 'complete', 100,
             `Video rendered successfully (GPU: ${renderTime.toFixed(1)}s)`,
             { video_url: videoUrl });
+          await updateProjectVideoUrl(supabase, params.projectId, videoUrl, params.effects);
           return;
         } else if (statusData.output?.error) {
           throw new Error(`GPU render failed: ${statusData.output.error}`);
@@ -624,6 +650,7 @@ async function processRenderJobParallel(jobId: string, params: RenderVideoReques
     await updateJobStatus(supabase, jobId, 'complete', 100,
       `Video rendered successfully (Parallel: ${totalTime}s)`,
       { video_url: videoUrl });
+    await updateProjectVideoUrl(supabase, params.projectId, videoUrl, params.effects);
 
   } catch (error: any) {
     console.error(`Job ${jobId} failed:`, error);
@@ -726,6 +753,7 @@ async function processRenderJobCpuRunpod(jobId: string, params: RenderVideoReque
           await updateJobStatus(supabase, jobId, 'complete', 100,
             `Video rendered successfully (CPU: ${renderTime.toFixed(1)}s)`,
             { video_url: videoUrl });
+          await updateProjectVideoUrl(supabase, params.projectId, videoUrl, params.effects);
           return;
         } else if (statusData.output?.error) {
           throw new Error(`CPU render failed: ${statusData.output.error}`);
@@ -1305,6 +1333,7 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
 
     // Complete!
     await updateJobStatus(supabase, jobId, 'complete', 100, 'Video rendering complete!', { video_url: videoUrl });
+    await updateProjectVideoUrl(supabase, params.projectId, videoUrl, params.effects);
 
   } catch (error: any) {
     console.error(`Job ${jobId} failed:`, error);
