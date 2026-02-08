@@ -14,7 +14,7 @@ import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback";
 
 const queryClient = new QueryClient();
 
-const PASSWORD = "9090";
+const PASSWORD = "909090";
 
 function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState("");
