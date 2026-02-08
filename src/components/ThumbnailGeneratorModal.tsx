@@ -960,7 +960,7 @@ export function ThumbnailGeneratorModal({
                       }}
                     />
                   </div>
-                ) : (
+                ) : (<>
                   <div
                     className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-colors aspect-video flex items-center justify-center"
                     onClick={() => fileInputRef.current?.click()}
@@ -999,7 +999,7 @@ export function ThumbnailGeneratorModal({
                       }
                     }}
                   />
-                )}
+                </>)}
 
                 <input
                   ref={fileInputRef}
