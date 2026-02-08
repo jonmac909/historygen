@@ -3703,6 +3703,8 @@ const Index = () => {
           const result = await reconnectOrphanedImages(projectId);
           if (result.success && result.imageUrls) {
             setPendingImages(result.imageUrls);
+            // Save to database
+            autoSave("images", { imageUrls: result.imageUrls });
             toast({
               title: "Images Reconnected!",
               description: `Found ${result.imageUrls.length} images in storage`,

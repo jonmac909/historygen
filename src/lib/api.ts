@@ -2507,18 +2507,9 @@ export async function reconnectOrphanedImages(projectId: string): Promise<{ succ
 
     console.log(`[reconnectOrphanedImages] Found ${imageUrls.length} images in storage`);
 
-    // Update the project with the image URLs
-    const { error: updateError } = await supabase
-      .from('projects')
-      .update({ imageUrls })
-      .eq('id', projectId);
-
-    if (updateError) {
-      console.error('[reconnectOrphanedImages] Update error:', updateError);
-      return { success: false, error: updateError.message };
-    }
-
-    console.log(`[reconnectOrphanedImages] Successfully reconnected ${imageUrls.length} images`);
+    // Return the image URLs - the caller will handle updating state
+    // (Database update will happen via autoSave when user navigates)
+    console.log(`[reconnectOrphanedImages] Successfully retrieved ${imageUrls.length} images from storage`);
     return { success: true, imageUrls };
 
   } catch (error) {
