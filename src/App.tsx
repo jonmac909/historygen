@@ -106,4 +106,4 @@ const App = () => {
 };
 
 export default App;
-// Trigger Vercel deployment - Sun Feb  8 07:05:27 PST 2026
+// Auto-deploy test - Sun Feb  8 2026
