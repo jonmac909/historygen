@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { createAnthropicClient } from '../lib/anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
 import { saveCost } from '../lib/cost-tracker';
 
 const router = Router();
@@ -338,7 +338,7 @@ Output format - JSON array ONLY:
     const messageStream = await anthropic.messages.stream({
       model: selectedModel,
       max_tokens: 8192,
-      system: systemConfig,
+      system: formatSystemPrompt(systemConfig) as Anthropic.MessageCreateParams['system'],
       messages: [
         {
           role: 'user',

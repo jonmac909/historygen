@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
 
 // Lazy load sharp - it has native dependencies that may fail on some platforms
@@ -675,7 +676,7 @@ router.post('/suggest-prompts', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'topic is required' });
     }
 
-    const { createAnthropicClient } = await import('../lib/anthropic-client');
+    const { createAnthropicClient, formatSystemPrompt } = await import('../lib/anthropic-client');
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
@@ -686,9 +687,9 @@ router.post('/suggest-prompts', async (req: Request, res: Response) => {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 1500,
-      system: `You are a YouTube thumbnail designer. Given a topic, generate 4 creative thumbnail prompt ideas. Each prompt should describe a visually striking thumbnail composition including: subject appearance, setting, lighting, mood, color palette, and text overlay suggestions. Keep each prompt to 2-3 sentences. Focus on dramatic, eye-catching compositions that work at small sizes.
+      system: formatSystemPrompt(`You are a YouTube thumbnail designer. Given a topic, generate 4 creative thumbnail prompt ideas. Each prompt should describe a visually striking thumbnail composition including: subject appearance, setting, lighting, mood, color palette, and text overlay suggestions. Keep each prompt to 2-3 sentences. Focus on dramatic, eye-catching compositions that work at small sizes.
 
-Respond as a JSON array of strings, nothing else.`,
+Respond as a JSON array of strings, nothing else.`) as Anthropic.MessageCreateParams['system'],
       messages: [{
         role: 'user',
         content: `Generate 4 thumbnail prompt ideas for: "${topic}"`

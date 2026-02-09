@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { createAnthropicClient } from '../lib/anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
 
 const router = Router();
 
@@ -97,7 +97,7 @@ Return ONLY this JSON structure (no markdown, no code blocks):
           content: userPrompt,
         },
       ],
-      system: systemPrompt,
+      system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
     });
 
     // Extract text content

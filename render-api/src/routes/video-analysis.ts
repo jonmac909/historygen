@@ -15,7 +15,7 @@
 import { Router, Request, Response } from 'express';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
-import { createAnthropicClient } from '../lib/anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
 import {
   preprocessVideo,
   cleanupTempFiles,
@@ -573,7 +573,7 @@ Your goal is to help the Auto Poster system recreate videos in the same style as
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
-      system: systemPrompt,
+      system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
       messages: [
         {
           role: 'user',

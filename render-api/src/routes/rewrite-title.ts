@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { createAnthropicClient } from '../lib/anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
 
 const router = Router();
 
@@ -84,7 +84,7 @@ Respond in this exact JSON format:
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
-      system: systemPrompt,
+      system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
       messages: [
         {
           role: 'user',

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { createAnthropicClient } from '../lib/anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
 import { saveCost } from '../lib/cost-tracker';
 
 const router = Router();
@@ -46,7 +46,7 @@ async function generateScriptChunk(options: GenerateScriptChunkOptions): Promise
     const response = await anthropic.messages.create({
       model,
       max_tokens: maxTokens,
-      system: systemConfig,
+      system: formatSystemPrompt(systemConfig) as Anthropic.MessageCreateParams['system'],
       messages,
     }, {
       signal: controller.signal as any
@@ -91,7 +91,7 @@ async function generateScriptChunkStreaming(options: GenerateScriptChunkOptions)
     const stream = await anthropic.messages.stream({
       model,
       max_tokens: maxTokens,
-      system: systemConfig,
+      system: formatSystemPrompt(systemConfig) as Anthropic.MessageCreateParams['system'],
       messages,
     });
 
@@ -714,7 +714,7 @@ Example response with topic drift:
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 1000,
-      system: systemPrompt,
+      system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
       messages: [
         {
           role: 'user',
@@ -873,7 +873,7 @@ Return the edited script with the issues fixed. Preserve the original as much as
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 16000,
-      system: systemPrompt,
+      system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
       messages: [
         {
           role: 'user',

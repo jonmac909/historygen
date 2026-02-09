@@ -3,7 +3,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { createAnthropicClient } from './anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from './anthropic-client';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const anthropic = createAnthropicClient();
@@ -78,7 +78,7 @@ export async function generateEditDecisions(
     model: 'claude-sonnet-4-20250514',
     max_tokens: 16000,
     temperature: 0.7,
-    system: EDIT_DECISION_SYSTEM_PROMPT,
+    system: formatSystemPrompt(EDIT_DECISION_SYSTEM_PROMPT) as Anthropic.MessageCreateParams['system'],
     messages: [
       {
         role: 'user',

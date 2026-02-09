@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
-import { createAnthropicClient } from '../lib/anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
 import { fetch, ProxyAgent } from 'undici';
 
 const router = Router();
@@ -85,7 +85,7 @@ Output a detailed recreation prompt that could be used to generate a similar thu
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2000,
-      system: systemPrompt,
+      system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
       messages: [
         {
           role: 'user',
