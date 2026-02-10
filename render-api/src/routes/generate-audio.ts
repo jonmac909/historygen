@@ -14,6 +14,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { getPronunciationFixesRecord } from './pronunciation';
 import { saveCost } from '../lib/cost-tracker';
+import { saveAudioToProject } from '../lib/supabase-project';
 
 // Set FFmpeg and FFprobe paths
 if (ffmpegStatic) {
@@ -2672,6 +2673,19 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       size: r.size,
       text: r.text,
     }));
+
+    // Save to project database (fire-and-forget - allows user to close browser)
+    if (projectId) {
+      saveAudioToProject(projectId, combinedUrlData.publicUrl, Math.round(combinedDuration), cleanedSegments)
+        .then(result => {
+          if (result.success) {
+            console.log(`[Audio] Saved to project ${projectId}`);
+          } else {
+            console.warn(`[Audio] Failed to save to project: ${result.error}`);
+          }
+        })
+        .catch(err => console.error(`[Audio] Error saving to project:`, err));
+    }
 
     sendEvent({
       type: 'complete',

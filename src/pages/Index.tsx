@@ -2836,6 +2836,7 @@ const Index = () => {
     setVideoUrlCaptioned(undefined);
     setEmbersVideoUrl(undefined);
     setSmokeEmbersVideoUrl(undefined);
+    setRenderedVideoUrl(undefined);
     setGeneratedThumbnails([]);
     setSelectedThumbnailIndex(undefined);
     setFavoriteThumbnails([]);

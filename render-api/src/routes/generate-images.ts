@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { saveCost } from '../lib/cost-tracker';
 import { imageGenerationConfig } from '../lib/runtime-config';
+import { saveImagesToProject } from '../lib/supabase-project';
 
 const router = Router();
 
@@ -480,6 +481,19 @@ async function handleStreamingImages(
         units: successfulImages.length,
         unitType: 'images',
       }).catch(err => console.error('[cost-tracker] Failed to save images cost:', err));
+    }
+
+    // Save to project database (fire-and-forget - allows user to close browser)
+    if (projectId && successfulImages.length > 0) {
+      saveImagesToProject(projectId, successfulImages)
+        .then(result => {
+          if (result.success) {
+            console.log(`[Images] Saved ${successfulImages.length} images to project ${projectId}`);
+          } else {
+            console.warn(`[Images] Failed to save to project: ${result.error}`);
+          }
+        })
+        .catch(err => console.error(`[Images] Error saving to project:`, err));
     }
 
     sendEvent({

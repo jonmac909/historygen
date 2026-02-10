@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
 import { saveCost } from '../lib/cost-tracker';
+import { saveScriptToProject } from '../lib/supabase-project';
 
 const router = Router();
 
@@ -478,6 +479,19 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
           } catch (costError) {
             console.error('[rewrite-script] Error saving costs:', costError);
           }
+        }
+
+        // Save to project database (fire-and-forget - allows user to close browser)
+        if (projectId && fullScript) {
+          saveScriptToProject(projectId, fullScript)
+            .then(result => {
+              if (result.success) {
+                console.log(`[Script] Saved to project ${projectId}`);
+              } else {
+                console.warn(`[Script] Failed to save to project: ${result.error}`);
+              }
+            })
+            .catch(err => console.error(`[Script] Error saving to project:`, err));
         }
 
         sendEvent({
