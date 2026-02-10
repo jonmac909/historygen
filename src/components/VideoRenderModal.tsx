@@ -32,6 +32,8 @@ interface VideoRenderModalProps {
   existingBasicVideoUrl?: string;  // Pre-rendered basic video URL
   existingEffectsVideoUrl?: string;  // Pre-rendered effects video URL
   autoRender?: boolean;  // Auto-start rendering when modal opens (for full automation mode)
+  segmentsNeedRecombine?: boolean;  // Whether audio segments need to be recombined
+  onRecombineAudio?: () => Promise<string>;  // Callback to recombine audio, returns new URL
   onConfirm: (basicVideoUrl: string, effectsVideoUrl: string) => void;
   onCancel: () => void;
   onBack?: () => void;
@@ -71,6 +73,8 @@ export function VideoRenderModal({
   existingBasicVideoUrl,
   existingEffectsVideoUrl,
   autoRender = false,
+  segmentsNeedRecombine = false,
+  onRecombineAudio,
   onConfirm,
   onCancel,
   onBack,
@@ -83,9 +87,15 @@ export function VideoRenderModal({
   const [basicVideoUrl, setBasicVideoUrl] = useState<string | null>(null);
   const [effectsVideoUrl, setEffectsVideoUrl] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'basic' | 'effects'>('effects'); // Default to effects tab
+  const [actualAudioUrl, setActualAudioUrl] = useState<string>(audioUrl); // Track actual audio URL (may be updated after recombine)
   const autoRenderTriggered = useRef(false);
   const hasInitializedRef = useRef(false);
   const lastPropsRef = useRef({ basic: '', effects: '' });
+
+  // Update actual audio URL when prop changes
+  useEffect(() => {
+    setActualAudioUrl(audioUrl);
+  }, [audioUrl]);
 
   // Single consolidated effect for syncing props to state - runs only when modal opens or props change
   useEffect(() => {
@@ -164,6 +174,30 @@ export function VideoRenderModal({
 
   // Render both passes sequentially
   const handleRenderBothPasses = async () => {
+    let audioUrlToUse = actualAudioUrl;
+
+    // Recombine audio first if segments were regenerated
+    if (segmentsNeedRecombine && onRecombineAudio) {
+      setCurrentPass('pass1');
+      setRenderProgress({ stage: 'downloading', percent: 0, message: 'Recombining audio segments...' });
+
+      try {
+        audioUrlToUse = await onRecombineAudio();
+        setActualAudioUrl(audioUrlToUse);
+        console.log('Audio recombined before render:', audioUrlToUse);
+      } catch (error) {
+        console.error('Failed to recombine audio:', error);
+        toast({
+          title: "Audio Recombine Failed",
+          description: error instanceof Error ? error.message : "Failed to recombine audio",
+          variant: "destructive",
+        });
+        setCurrentPass('idle');
+        setRenderProgress(null);
+        return;
+      }
+    }
+
     // Pass 1: Basic video (no effects)
     setCurrentPass('pass1');
     setRenderProgress({ stage: 'downloading', percent: 0, message: 'Pass 1: Starting basic video render...' });
@@ -171,7 +205,7 @@ export function VideoRenderModal({
     try {
       const pass1Result = await renderVideoStreaming(
         projectId,
-        audioUrl,
+        audioUrlToUse,
         imageUrls,
         imageTimings,
         srtContent,
@@ -210,7 +244,7 @@ export function VideoRenderModal({
 
       const pass2Result = await renderVideoStreaming(
         projectId,
-        audioUrl,
+        audioUrlToUse,
         imageUrls,
         imageTimings,
         srtContent,
@@ -258,13 +292,36 @@ export function VideoRenderModal({
 
   // Re-render effects only (Pass 2) - useful when basic video is fine but effects failed
   const handleRenderEffectsOnly = async () => {
+    let audioUrlToUse = actualAudioUrl;
+
+    // Recombine audio first if segments were regenerated
+    if (segmentsNeedRecombine && onRecombineAudio) {
+      setCurrentPass('pass2');
+      setRenderProgress({ stage: 'downloading', percent: 0, message: 'Recombining audio segments...' });
+
+      try {
+        audioUrlToUse = await onRecombineAudio();
+        setActualAudioUrl(audioUrlToUse);
+      } catch (error) {
+        console.error('Failed to recombine audio:', error);
+        toast({
+          title: "Audio Recombine Failed",
+          description: error instanceof Error ? error.message : "Failed to recombine audio",
+          variant: "destructive",
+        });
+        setCurrentPass('idle');
+        setRenderProgress(null);
+        return;
+      }
+    }
+
     setCurrentPass('pass2');
     setRenderProgress({ stage: 'downloading', percent: 0, message: 'Starting effects render...' });
 
     try {
       const pass2Result = await renderVideoStreaming(
         projectId,
-        audioUrl,
+        audioUrlToUse,
         imageUrls,
         imageTimings,
         srtContent,

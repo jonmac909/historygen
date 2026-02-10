@@ -2215,6 +2215,26 @@ const Index = () => {
     setViewState("review-render");
   };
 
+  // Recombine audio and return the new URL (for VideoRenderModal to call before rendering)
+  const handleRecombineForRender = async (): Promise<string> => {
+    console.log("Recombining audio for render...");
+
+    const recombineResult = await recombineAudioSegments(projectId, pendingAudioSegments.length);
+
+    if (!recombineResult.success || !recombineResult.audioUrl) {
+      throw new Error(recombineResult.error || "Failed to recombine audio segments");
+    }
+
+    // Update state
+    setPendingAudioUrl(recombineResult.audioUrl);
+    if (recombineResult.duration) setPendingAudioDuration(recombineResult.duration);
+    if (recombineResult.size) setPendingAudioSize(recombineResult.size);
+    setSegmentsNeedRecombine(false);
+
+    console.log(`Recombined audio for render: ${recombineResult.audioUrl}`);
+    return recombineResult.audioUrl;
+  };
+
   const handleBackToThumbnails = () => {
     setSettings(prev => ({ ...prev, fullAutomation: false }));
     setViewState("review-thumbnails");
@@ -3814,6 +3834,8 @@ const Index = () => {
         existingBasicVideoUrl={videoUrl}
         existingEffectsVideoUrl={smokeEmbersVideoUrl}
         autoRender={settings.fullAutomation}
+        segmentsNeedRecombine={segmentsNeedRecombine}
+        onRecombineAudio={handleRecombineForRender}
         onConfirm={handleRenderConfirm}
         onCancel={handleCancelRequest}
         onBack={handleBackToImages}
