@@ -1430,8 +1430,6 @@ router.post('/resume-project/:projectId', async (req: Request, res: Response) =>
         clips: project.clips,
         thumbnailUrl: project.thumbnails?.[0],
       },
-    }, (step, progress, message) => {
-      console.log(`[Resume Project] ${step}: ${message} (${progress}%)`);
     }).then(async (result) => {
       console.log(`[Resume Project] Pipeline completed. Success: ${result.success}`);
       if (!result.success) {

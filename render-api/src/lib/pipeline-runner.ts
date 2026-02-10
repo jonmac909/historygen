@@ -720,7 +720,7 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
             stream: true,
           }, (data) => {
             if (data.type === 'progress') {
-              reportProgress('script', 15 + Math.round(data.progress * 0.1), `Generating script${attemptLabel}... ${data.progress}%`);
+              reportProgress('script', 15 + Math.round((data.progress / 100) * 10), `Generating script${attemptLabel}... ${data.progress}%`);
             }
           }, 1800000);
 
@@ -811,7 +811,7 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
           stream: true,
         }, (data) => {
           if (data.type === 'progress') {
-            reportProgress('audio', 25 + Math.round(data.progress * 0.15), `Generating audio... ${data.progress}%`);
+            reportProgress('audio', 25 + Math.round((data.progress / 100) * 15), `Generating audio... ${data.progress}%`);
           }
         }, 1200000);  // 20 min timeout
         audioUrl = audioRes.audioUrl;
@@ -865,7 +865,7 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
           stream: true,
         }, (data) => {
           if (data.type === 'progress') {
-            reportProgress('captions', 40 + Math.round(data.progress * 0.05), `Generating captions... ${data.progress}%`);
+            reportProgress('captions', 40 + Math.round((data.progress / 100) * 5), `Generating captions... ${data.progress}%`);
           }
         });
         captionsUrl = captionsRes.captionsUrl;
@@ -920,7 +920,8 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
           stream: true,
         }, (data) => {
           if (data.type === 'progress') {
-            reportProgress('imagePrompts', 45 + Math.round(data.progress * 0.03), `Generating image prompts...`);
+            const pct = 45 + Math.round((data.progress / 100) * 10);  // 45-55% range
+            reportProgress('imagePrompts', pct, `Generating image prompts... ${data.progress}%`);
           }
         });
         imagePrompts = promptsRes.prompts;
@@ -1013,7 +1014,7 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
           stream: true,
         }, (data) => {
           if (data.type === 'progress') {
-            reportProgress('clipPrompts', 58 + Math.round(data.progress * 0.02), `Generating clip prompts...`);
+            reportProgress('clipPrompts', 58 + Math.round((data.progress / 100) * 5), `Generating clip prompts... ${data.progress}%`);
           }
         });
         clipPrompts = clipPromptsRes.prompts;
@@ -1182,13 +1183,32 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
       ? imagePrompts.slice(imagesUsedForClips)
       : imagePrompts;
 
-    console.log(`[Pipeline] Render: ${introClips.length} intro clips (${imagesUsedForClips} images used), ${slideshowImageUrls.length} images remaining for slideshow`);
+    console.log(`[Pipeline] Render: ${introClips.length} intro clips (${imagesUsedForClips} images used), ${slideshowImageUrls.length} images / ${slideshowImagePrompts.length} prompts remaining for slideshow`);
 
-    // Build image timings from the prompts (each prompt has startSeconds/endSeconds)
-    const imageTimings = slideshowImagePrompts.map((p: any) => ({
-      startSeconds: p.startSeconds,
-      endSeconds: p.endSeconds,
-    }));
+    // Build image timings to match actual image count
+    // If counts match, use prompt timings directly. Otherwise, distribute evenly across audio duration.
+    let imageTimings: { startSeconds: number; endSeconds: number }[];
+    if (slideshowImagePrompts.length === slideshowImageUrls.length) {
+      imageTimings = slideshowImagePrompts.map((p: any) => ({
+        startSeconds: p.startSeconds,
+        endSeconds: p.endSeconds,
+      }));
+    } else {
+      // Some images failed — distribute evenly across remaining audio duration
+      const introEnd = introClips.length > 0
+        ? Math.max(...introClips.map(c => c.endSeconds))
+        : 0;
+      const totalDuration = audioDuration || (slideshowImagePrompts.length > 0
+        ? Math.max(...slideshowImagePrompts.map((p: any) => p.endSeconds || 0))
+        : 0);
+      const slideshowDuration = totalDuration - introEnd;
+      const perImage = slideshowDuration / slideshowImageUrls.length;
+      imageTimings = slideshowImageUrls.map((_, i) => ({
+        startSeconds: introEnd + i * perImage,
+        endSeconds: introEnd + (i + 1) * perImage,
+      }));
+      console.log(`[Pipeline] Redistributed ${slideshowImageUrls.length} image timings across ${slideshowDuration.toFixed(1)}s (${perImage.toFixed(1)}s each)`);
+    }
 
     try {
       // Start render job (returns immediately with job ID)
