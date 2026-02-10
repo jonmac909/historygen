@@ -605,10 +605,15 @@ RULES:
 4. For war/conflict topics: show battlefields, armies, fortifications, commanders leading troops, military camps - NOT maps, museums, or artifacts
 5. For medical topics: show period-appropriate healers, apothecaries, patients - NOT modern research
 6. For abstract concepts: show period-appropriate scenes with settings and people from that era
-7. Include specific details: setting, lighting, objects, people, actions, atmosphere
-8. 50-100 words per description
-9. Do NOT include any text, titles, or words in the image
-10. Start each description with the era context, e.g., "In ${timePeriod.era.split(' - ')[0]}, ..."
+
+CRITICAL PROMPT FORMAT (AI image models work best with short, focused prompts):
+7. Keep descriptions SHORT: 30-50 words maximum
+8. Focus on ONE main subject or action - don't try to include everything from the narration
+9. Put the MOST IMPORTANT visual element FIRST in the description
+10. Use comma-separated keywords rather than long sentences
+11. Example format: "Egyptian queen Cleopatra in royal chamber, golden throne, hieroglyphic walls, oil lamps, dramatic lighting, ancient Alexandria"
+12. Do NOT include any text, titles, or words in the image
+13. Start with the era/setting, then the main subject, then supporting details
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
 
