@@ -50,9 +50,15 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
   return typeof data === 'object' && data !== null && 'status' in data;
 };
 
+// Safety terms to ensure PG-rated content
+const SAFETY_PREFIX = "SFW, family-friendly, fully clothed, modest attire, ";
+const SAFETY_SUFFIX = ", no nudity, no revealing clothing, tasteful, appropriate for all ages";
+
 // Start a RunPod job for Z-Image generation
 async function startImageJob(apiKey: string, prompt: string, quality: string, aspectRatio: string): Promise<string> {
-  console.log(`Starting RunPod job for: ${prompt.substring(0, 50)}...`);
+  // Add safety terms to ensure PG-rated content
+  const safePrompt = `${SAFETY_PREFIX}${prompt}${SAFETY_SUFFIX}`;
+  console.log(`Starting RunPod job for: ${safePrompt.substring(0, 80)}...`);
 
   const response = await fetch(`${RUNPOD_API_URL}/run`, {
     method: 'POST',
@@ -62,7 +68,7 @@ async function startImageJob(apiKey: string, prompt: string, quality: string, as
     },
     body: JSON.stringify({
       input: {
-        prompt,
+        prompt: safePrompt,
         quality: quality === "high" ? "high" : "basic",
         aspectRatio,
       },

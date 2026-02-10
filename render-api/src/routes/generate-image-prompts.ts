@@ -588,11 +588,15 @@ REQUIRED: Every scene must show events AS THEY HAPPENED in ${timePeriod.era} - p
 
 YOUR TASK: Create visual scene descriptions based on the script and narration segments provided.
 
-CONTENT SAFETY:
-- NO nudity, partial nudity, or sexually suggestive content
+CONTENT SAFETY (CRITICAL - MUST BE FAMILY-FRIENDLY):
+- NO nudity, partial nudity, bare skin, or sexually suggestive content
+- ALL people must be FULLY CLOTHED in period-appropriate, modest attire
+- NO revealing, tight, or suggestive clothing - use conservative, loose-fitting historical garments
+- NO bathing, swimming, or changing scenes
 - NO gore, blood, graphic violence, or injury depictions
 - NO disturbing, shocking, or traumatic imagery
 - You may depict dramatic historical scenes including warfare and conflict - avoid explicit gore
+- ALWAYS describe clothing explicitly: "wearing a full-length robe", "dressed in formal attire", "clothed in traditional garments"
 
 RULES:
 1. ALL scenes MUST be set in ${timePeriod.era}, ${timePeriod.region}
