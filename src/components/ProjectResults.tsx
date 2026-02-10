@@ -268,6 +268,52 @@ export function ProjectResults({
 
   // State for Resume Full Auto
   const [isResuming, setIsResuming] = useState(false);
+  const [pipelineStep, setPipelineStep] = useState<string | null>(null);
+  const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
+
+  // Pipeline step labels and progress percentages
+  const PIPELINE_STEPS: Record<string, { label: string; percent: number }> = {
+    transcript: { label: 'Transcript', percent: 5 },
+    script: { label: 'Script', percent: 15 },
+    audio: { label: 'Audio', percent: 25 },
+    captions: { label: 'Captions', percent: 35 },
+    imagePrompts: { label: 'Image Prompts', percent: 40 },
+    prompts: { label: 'Image Prompts', percent: 40 },
+    images: { label: 'Images', percent: 55 },
+    clipPrompts: { label: 'Clip Prompts', percent: 65 },
+    videoClips: { label: 'Video Clips', percent: 70 },
+    thumbnail: { label: 'Thumbnails', percent: 80 },
+    render: { label: 'Rendering', percent: 90 },
+    upload: { label: 'Uploading', percent: 95 },
+    complete: { label: 'Complete', percent: 100 },
+  };
+
+  // Poll project status from Supabase while pipeline is running
+  useEffect(() => {
+    if (!isResuming || !projectId) return;
+
+    const poll = async () => {
+      try {
+        const { data } = await supabase
+          .from('generation_projects')
+          .select('current_step, status')
+          .eq('id', projectId)
+          .single();
+        if (data) {
+          setPipelineStep(data.current_step);
+          setPipelineStatus(data.status);
+          if (data.status === 'completed' || data.current_step === 'complete') {
+            setIsResuming(false);
+            toast({ title: "Pipeline Complete", description: "All steps finished. Refresh to see results." });
+          }
+        }
+      } catch { /* ignore poll errors */ }
+    };
+
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => clearInterval(interval);
+  }, [isResuming, projectId]);
 
   // Determine the next pipeline step to resume from based on what data exists
   const getResumeStep = (): string | null => {
@@ -299,6 +345,7 @@ export function ProjectResults({
     if (!resumeFrom || !projectId) return;
 
     setIsResuming(true);
+    setPipelineStep(resumeFrom);
     const renderUrl = import.meta.env.VITE_RENDER_API_URL;
     try {
       const response = await fetch(`${renderUrl}/auto-clone/resume-project/${projectId}`, {
@@ -307,18 +354,15 @@ export function ProjectResults({
         body: JSON.stringify({ resumeFrom }),
       });
       const data = await response.json();
-      if (data.success) {
-        toast({
-          title: "Pipeline Started",
-          description: `Resuming from ${resumeFrom}. Check back shortly.`,
-        });
-      } else {
+      if (!data.success) {
         toast({ title: "Resume Failed", description: data.error, variant: "destructive" });
         setIsResuming(false);
+        setPipelineStep(null);
       }
     } catch (error) {
       toast({ title: "Resume Failed", description: "Could not connect to API", variant: "destructive" });
       setIsResuming(false);
+      setPipelineStep(null);
     }
   };
 
@@ -1363,23 +1407,42 @@ export function ProjectResults({
       </div>
 
       {/* Resume Full Auto Banner */}
-      {getResumeStep() && (
-        <div className="mb-6 flex items-center gap-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
-          <Button
-            onClick={handleResumeFullAuto}
-            disabled={isResuming}
-            className="gap-2"
-          >
-            {isResuming ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Zap className="w-4 h-4" />
-            )}
-            {isResuming ? 'Pipeline Running...' : 'Resume Full Auto'}
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            from <span className="font-medium text-foreground">{getResumeStep()}</span>
-          </span>
+      {(getResumeStep() || isResuming) && (
+        <div className="mb-6 p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-3">
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleResumeFullAuto}
+              disabled={isResuming}
+              className="gap-2 shrink-0"
+            >
+              {isResuming ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Zap className="w-4 h-4" />
+              )}
+              {isResuming ? 'Pipeline Running...' : 'Resume Full Auto'}
+            </Button>
+            <span className="text-sm text-muted-foreground">
+              {isResuming && pipelineStep
+                ? <><span className="font-medium text-foreground">{PIPELINE_STEPS[pipelineStep]?.label || pipelineStep}</span></>
+                : <>from <span className="font-medium text-foreground">{PIPELINE_STEPS[getResumeStep() || '']?.label || getResumeStep()}</span></>
+              }
+            </span>
+          </div>
+          {isResuming && pipelineStep && (
+            <div className="space-y-1">
+              <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full bg-primary rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${PIPELINE_STEPS[pipelineStep]?.percent || 0}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{PIPELINE_STEPS[pipelineStep]?.label || pipelineStep}</span>
+                <span>{PIPELINE_STEPS[pipelineStep]?.percent || 0}%</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
