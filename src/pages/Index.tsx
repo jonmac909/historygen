@@ -2778,6 +2778,8 @@ const Index = () => {
     setYoutubeTags("");
     setYoutubeCategoryId("27");
     setYoutubePlaylistId(null);
+    setClipPrompts([]);
+    setGeneratedClips([]);
     setGeneratedAssets([]);
 
     // Set project state
@@ -2835,6 +2837,10 @@ const Index = () => {
       }));
       setImagePrompts(basicPrompts);
     }
+    // Load clip prompts and video clips
+    if (project.clipPrompts) setClipPrompts(project.clipPrompts);
+    if (project.clips) setGeneratedClips(project.clips);
+
     // Load video URLs if available
     if (project.videoUrl) {
       setVideoUrl(project.videoUrl);
