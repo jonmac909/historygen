@@ -292,6 +292,32 @@ export function ProjectResults({
     complete: { label: 'Complete', percent: 100 },
   };
 
+  // Auto-detect actively running pipeline on mount (check if updated_at is recent)
+  useEffect(() => {
+    if (!projectId) return;
+    const detect = async () => {
+      try {
+        const { data } = await supabase
+          .from('generation_projects')
+          .select('status, current_step, current_progress, progress_message, updated_at')
+          .eq('id', projectId)
+          .single();
+        if (!data || data.status !== 'in_progress' || !data.current_step) return;
+        if (data.current_step === 'complete') return;
+        // Only consider it running if updated_at is within the last 30 seconds
+        const updatedAt = new Date(data.updated_at).getTime();
+        const age = Date.now() - updatedAt;
+        if (age < 30_000) {
+          setIsResuming(true);
+          setPipelineStep(data.current_step);
+          if (data.current_progress != null) setPipelineProgress(data.current_progress);
+          if (data.progress_message) setProgressMessage(data.progress_message);
+        }
+      } catch { /* ignore */ }
+    };
+    detect();
+  }, [projectId]);
+
   // Poll pipeline progress from Supabase while actively running
   useEffect(() => {
     if (!isResuming || !projectId) return;
@@ -300,7 +326,7 @@ export function ProjectResults({
       try {
         const { data } = await supabase
           .from('generation_projects')
-          .select('current_step, status, current_progress, progress_message')
+          .select('current_step, status, current_progress, progress_message, updated_at')
           .eq('id', projectId)
           .single();
         if (!data) return;
@@ -314,6 +340,14 @@ export function ProjectResults({
           setIsResuming(false);
           setPipelineProgress(100);
           toast({ title: "Pipeline Complete", description: "All steps finished. Refresh to see results." });
+          return;
+        }
+
+        // Detect stalled pipeline (no update in 60s)
+        const age = Date.now() - new Date(data.updated_at).getTime();
+        if (age > 60_000) {
+          setIsResuming(false);
+          toast({ title: "Pipeline Stalled", description: "No progress updates in 60s. Click Resume to retry.", variant: "destructive" });
         }
       } catch { /* ignore poll errors */ }
     };
