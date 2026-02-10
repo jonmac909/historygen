@@ -44,6 +44,12 @@ function ClipCard({ clip, prompt, onRegenerate, isRegenerating, onOpenFullscreen
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
 
+  // Reset error state when video URL changes (e.g., after regeneration)
+  useEffect(() => {
+    setHasError(false);
+    setIsPlaying(false);
+  }, [clip.videoUrl]);
+
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (videoRef.current) {
@@ -80,6 +86,7 @@ function ClipCard({ clip, prompt, onRegenerate, isRegenerating, onOpenFullscreen
         ) : (
           <>
             <video
+              key={clip.videoUrl}
               ref={videoRef}
               src={clip.videoUrl}
               className="w-full h-full object-contain cursor-pointer"
@@ -171,6 +178,16 @@ export function VideoClipsPreviewModal({
   const currentClipIndex = fullscreenClip ? clips.findIndex(c => c.index === fullscreenClip.index) : -1;
   const canGoNext = currentClipIndex < clips.length - 1;
   const canGoPrev = currentClipIndex > 0;
+
+  // Update fullscreen clip when clips array changes (e.g., after regeneration)
+  useEffect(() => {
+    if (fullscreenClip) {
+      const updatedClip = clips.find(c => c.index === fullscreenClip.index);
+      if (updatedClip && updatedClip.videoUrl !== fullscreenClip.videoUrl) {
+        setFullscreenClip(updatedClip);
+      }
+    }
+  }, [clips, fullscreenClip]);
 
   // Keyboard navigation for fullscreen (capture phase to bypass Radix Dialog)
   useEffect(() => {
@@ -401,6 +418,7 @@ export function VideoClipsPreviewModal({
 
             {/* Video player */}
             <video
+              key={fullscreenClip.videoUrl}
               ref={fullscreenVideoRef}
               src={fullscreenClip.videoUrl}
               className="max-w-full max-h-[80vh] rounded-lg"

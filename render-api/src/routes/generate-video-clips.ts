@@ -243,13 +243,15 @@ async function copyToSupabase(
       return videoUrl;
     }
 
-    // Get public URL
+    // Get public URL with cache-busting timestamp
     const { data: urlData } = supabase.storage
       .from('generated-assets')
       .getPublicUrl(storagePath);
 
-    console.log(`[I2V] Copied to Supabase: ${urlData.publicUrl}`);
-    return urlData.publicUrl;
+    // Add timestamp to bust browser/CDN cache on regeneration
+    const urlWithCacheBust = `${urlData.publicUrl}?t=${Date.now()}`;
+    console.log(`[I2V] Copied to Supabase: ${urlWithCacheBust}`);
+    return urlWithCacheBust;
   } catch (err) {
     console.error(`[I2V] Error copying to Supabase:`, err);
     // Return original URL if copy fails
