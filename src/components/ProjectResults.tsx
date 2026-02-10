@@ -288,9 +288,9 @@ export function ProjectResults({
     complete: { label: 'Complete', percent: 100 },
   };
 
-  // Auto-detect running pipeline on mount + poll while running
+  // Poll pipeline progress from Supabase while actively running
   useEffect(() => {
-    if (!projectId) return;
+    if (!isResuming || !projectId) return;
 
     const poll = async () => {
       try {
@@ -304,16 +304,9 @@ export function ProjectResults({
         setPipelineStep(data.current_step);
         setPipelineStatus(data.status);
 
-        // Auto-detect: if DB says in_progress, show progress bar
-        if (data.status === 'in_progress' && data.current_step && data.current_step !== 'complete') {
-          setIsResuming(true);
-        }
-
         if (data.status === 'completed' || data.current_step === 'complete') {
-          if (isResuming) {
-            toast({ title: "Pipeline Complete", description: "All steps finished. Refresh to see results." });
-          }
           setIsResuming(false);
+          toast({ title: "Pipeline Complete", description: "All steps finished. Refresh to see results." });
         }
       } catch { /* ignore poll errors */ }
     };
@@ -321,7 +314,7 @@ export function ProjectResults({
     poll();
     const interval = setInterval(poll, 5000);
     return () => clearInterval(interval);
-  }, [projectId, isResuming]);
+  }, [isResuming, projectId]);
 
   // Determine the next pipeline step to resume from based on what data exists
   const getResumeStep = (): string | null => {
