@@ -30,6 +30,9 @@ const DEFAULT_FIXES: PronunciationFix[] = [
   { word: 'ecclesiastical', phonetic: 'eh-klee-zee-as-ti-cal' },
   { word: 'Alexios', phonetic: 'Ah-lex-ee-os' },
   { word: 'Kerbogha', phonetic: 'Ker-bow-gah' },
+  // Titles and royalty
+  { word: 'archduchess', phonetic: 'arch-duch-ess' },
+  { word: 'archduke', phonetic: 'arch-duke' },
   // Common words that get garbled
   { word: 'courts', phonetic: 'korts' },
   { word: 'preachers', phonetic: 'pree-chers' },
