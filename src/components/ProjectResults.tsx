@@ -1423,6 +1423,17 @@ export function ProjectResults({
               )}
               {isResuming ? 'Pipeline Running...' : 'Resume Full Auto'}
             </Button>
+            {isResuming && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setIsResuming(false); setPipelineStep(null); }}
+                className="gap-1 text-muted-foreground hover:text-destructive shrink-0"
+              >
+                <X className="w-4 h-4" />
+                Cancel
+              </Button>
+            )}
             <span className="text-sm text-muted-foreground">
               {isResuming && pipelineStep
                 ? <><span className="font-medium text-foreground">{PIPELINE_STEPS[pipelineStep]?.label || pipelineStep}</span></>
