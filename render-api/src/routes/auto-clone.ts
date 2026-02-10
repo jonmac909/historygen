@@ -1376,6 +1376,7 @@ router.post('/resume-project/:projectId', async (req: Request, res: Response) =>
     const supabase = getSupabaseClient();
     const { projectId } = req.params;
     const resumeFrom = (req.body.resumeFrom || 'captions') as string;
+    const modernKeywordFilter = req.body.modernKeywordFilter !== false;  // Default true
 
     // Fetch existing project data
     const { data: project, error: projectError } = await supabase
@@ -1413,6 +1414,7 @@ router.post('/resume-project/:projectId', async (req: Request, res: Response) =>
       sourceVideoUrl: project.source_url,
       originalTitle: project.video_title,
       originalThumbnailUrl: `https://i.ytimg.com/vi/${sourceVideoId}/maxresdefault.jpg`,
+      modernKeywordFilter,
       resumeFrom: resumeFrom as any,
       existingProjectId: projectId,
       existingData: {

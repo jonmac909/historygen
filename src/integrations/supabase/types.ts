@@ -22,6 +22,8 @@ export type Database = {
           status: string
           video_title: string | null
           current_step: string | null
+          current_progress: number | null
+          progress_message: string | null
           script_content: string | null
           audio_url: string | null
           audio_duration: number | null
@@ -47,6 +49,8 @@ export type Database = {
           status?: string
           video_title?: string | null
           current_step?: string | null
+          current_progress?: number | null
+          progress_message?: string | null
           script_content?: string | null
           audio_url?: string | null
           audio_duration?: number | null
@@ -72,6 +76,8 @@ export type Database = {
           status?: string
           video_title?: string | null
           current_step?: string | null
+          current_progress?: number | null
+          progress_message?: string | null
           script_content?: string | null
           audio_url?: string | null
           audio_duration?: number | null

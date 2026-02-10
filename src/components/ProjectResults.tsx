@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -270,6 +271,9 @@ export function ProjectResults({
   const [isResuming, setIsResuming] = useState(false);
   const [pipelineStep, setPipelineStep] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
+  const [pipelineProgress, setPipelineProgress] = useState<number>(0);
+  const [progressMessage, setProgressMessage] = useState<string>('');
+  const [modernKeywordFilter, setModernKeywordFilter] = useState(true);
 
   // Pipeline step labels and progress percentages
   const PIPELINE_STEPS: Record<string, { label: string; percent: number }> = {
@@ -296,16 +300,19 @@ export function ProjectResults({
       try {
         const { data } = await supabase
           .from('generation_projects')
-          .select('current_step, status')
+          .select('current_step, status, current_progress, progress_message')
           .eq('id', projectId)
           .single();
         if (!data) return;
 
         setPipelineStep(data.current_step);
         setPipelineStatus(data.status);
+        if (data.current_progress != null) setPipelineProgress(data.current_progress);
+        if (data.progress_message) setProgressMessage(data.progress_message);
 
         if (data.status === 'completed' || data.current_step === 'complete') {
           setIsResuming(false);
+          setPipelineProgress(100);
           toast({ title: "Pipeline Complete", description: "All steps finished. Refresh to see results." });
         }
       } catch { /* ignore poll errors */ }
@@ -352,7 +359,7 @@ export function ProjectResults({
       const response = await fetch(`${renderUrl}/auto-clone/resume-project/${projectId}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resumeFrom }),
+        body: JSON.stringify({ resumeFrom, modernKeywordFilter }),
       });
       const data = await response.json();
       if (!data.success) {
@@ -1427,7 +1434,7 @@ export function ProjectResults({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setIsResuming(false); setPipelineStep(null); }}
+                onClick={() => { setIsResuming(false); setPipelineStep(null); setPipelineProgress(0); }}
                 className="gap-1 text-muted-foreground hover:text-destructive shrink-0"
               >
                 <X className="w-4 h-4" />
@@ -1441,17 +1448,25 @@ export function ProjectResults({
               }
             </span>
           </div>
-          {isResuming && pipelineStep && (
+          {!isResuming && (
+            <div className="flex items-center gap-2">
+              <Switch checked={modernKeywordFilter} onCheckedChange={setModernKeywordFilter} id="keyword-filter" />
+              <label htmlFor="keyword-filter" className="text-sm text-muted-foreground cursor-pointer">
+                Modern keyword filter
+              </label>
+            </div>
+          )}
+          {isResuming && (
             <div className="space-y-1">
               <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
                 <div
                   className="h-full bg-primary rounded-full transition-all duration-1000 ease-out"
-                  style={{ width: `${PIPELINE_STEPS[pipelineStep]?.percent || 0}%` }}
+                  style={{ width: `${pipelineProgress}%` }}
                 />
               </div>
               <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{PIPELINE_STEPS[pipelineStep]?.label || pipelineStep}</span>
-                <span>{PIPELINE_STEPS[pipelineStep]?.percent || 0}%</span>
+                <span>{progressMessage || PIPELINE_STEPS[pipelineStep || '']?.label || pipelineStep}</span>
+                <span>{pipelineProgress}%</span>
               </div>
             </div>
           )}

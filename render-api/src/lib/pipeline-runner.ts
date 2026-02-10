@@ -43,6 +43,7 @@ export interface PipelineInput {
   publishAt?: string;  // ISO timestamp for scheduled publish (5 PM PST)
   sourceDurationSeconds?: number;  // Original video duration for matching script length
   targetWordCount?: number;  // Override calculated word count (default: duration * 150 wpm)
+  modernKeywordFilter?: boolean;  // Enable/disable modern keyword filtering for image prompts (default: true)
   // Resume from a specific step (skips earlier steps if data provided)
   resumeFrom?: 'transcript' | 'script' | 'audio' | 'captions' | 'imagePrompts' | 'images' | 'clipPrompts' | 'videoClips' | 'thumbnail' | 'render' | 'upload';
   existingProjectId?: string;  // Use existing project instead of creating new one
@@ -598,6 +599,14 @@ export async function runPipeline(
   const reportProgress = (step: string, progress: number, message: string) => {
     console.log(`[Pipeline] ${step}: ${message} (${progress}%)`);
     if (onProgress) onProgress(step, progress, message);
+    // Save progress to database for frontend polling
+    supabase
+      .from('generation_projects')
+      .update({ current_step: step, current_progress: progress, progress_message: message, updated_at: new Date().toISOString() })
+      .eq('id', projectId)
+      .then(({ error }) => {
+        if (error) console.error(`[Pipeline] Failed to save progress: ${error.message}`);
+      });
   };
 
   try {
@@ -897,6 +906,7 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
           projectId,
           imageCount: calculatedImageCount,
           masterStylePrompt: DUTCH_GOLDEN_AGE_STYLE,  // Use Dutch Golden Age style for Auto Poster
+          modernKeywordFilter: input.modernKeywordFilter !== false,  // Default true
           stream: true,
         }, (data) => {
           if (data.type === 'progress') {
