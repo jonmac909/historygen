@@ -1761,12 +1761,16 @@ const Index = () => {
       );
 
       if (clipsResult.success && clipsResult.clips && clipsResult.clips.length > 0) {
+        const newClip = clipsResult.clips[0];
+        console.log(`[Regenerate] Clip ${clipIndex} new URL:`, newClip.videoUrl);
+
         // Update the clip in our array
         setGeneratedClips(prev => {
           const updated = [...prev];
           const existingIndex = updated.findIndex(c => c.index === clipIndex);
           if (existingIndex >= 0) {
-            updated[existingIndex] = clipsResult.clips![0];
+            console.log(`[Regenerate] Replacing clip at index ${existingIndex}, old URL:`, updated[existingIndex].videoUrl);
+            updated[existingIndex] = newClip;
           }
           return updated;
         });
