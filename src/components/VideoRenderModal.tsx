@@ -174,7 +174,42 @@ export function VideoRenderModal({
 
   // Render both passes sequentially
   const handleRenderBothPasses = async () => {
-    console.log('[Render] Starting render with intro clips:', introClips?.length || 0, introClips);
+    // Log all render inputs for debugging
+    console.log('[Render] Starting render with:', {
+      introClips: introClips?.length || 0,
+      images: imageUrls?.length || 0,
+      audioUrl: actualAudioUrl?.substring(0, 50) + '...',
+      hasRecombineCallback: !!onRecombineAudio
+    });
+
+    // Warn about missing data
+    if (!actualAudioUrl) {
+      toast({
+        title: "Missing Audio",
+        description: "No audio URL found. Please go back and regenerate audio.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!imageUrls || imageUrls.length === 0) {
+      toast({
+        title: "Missing Images",
+        description: "No images found. Please go back and generate images.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Info toast about what will be rendered
+    const clipInfo = introClips && introClips.length > 0
+      ? `${introClips.length} intro clips + `
+      : '';
+    toast({
+      title: "Starting Render",
+      description: `${clipInfo}${imageUrls.length} images`,
+    });
+
     let audioUrlToUse = actualAudioUrl;
 
     // Always recombine audio before rendering to ensure we have the latest segments
