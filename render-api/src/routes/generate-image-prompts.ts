@@ -569,7 +569,10 @@ ERA: ${timePeriod.era}
 REGION: ${timePeriod.region}
 VISUAL CONSTRAINTS: ${timePeriod.visualConstraints || 'Period-accurate clothing, tools, and architecture'}
 
-ALL images MUST depict scenes from ${timePeriod.era} in ${timePeriod.region}. Any scene showing people, clothing, tools, or architecture from a DIFFERENT time period will be REJECTED.${eraAnachronisms}
+#1 PRIORITY: HISTORICAL ERA ACCURACY
+ALL images MUST be VISUALLY AUTHENTIC to ${timePeriod.era} in ${timePeriod.region}. The image does NOT need to match the exact narration - it just needs to show something that ACTUALLY EXISTED during that time period.
+
+THINK LIKE A HISTORIAN: What would a painter living in ${timePeriod.era} have actually witnessed and painted?${eraAnachronisms}
 
 CRITICAL RULE - IMMERSIVE HISTORICAL SCENES ONLY:
 You are generating prompts for an AI image generator. The resulting images must look like PAINTINGS from ${timePeriod.era}, as if an artist was present at the time witnessing events firsthand.
@@ -586,7 +589,12 @@ ABSOLUTELY FORBIDDEN (these will cause the prompt to be rejected and regenerated
 
 REQUIRED: Every scene must show events AS THEY HAPPENED in ${timePeriod.era} - people LIVING history, not studying it.
 
-YOUR TASK: Create visual scene descriptions based on the script and narration segments provided.
+YOUR TASK: Create visual scene descriptions that are AUTHENTIC to the era. The scene should be INSPIRED BY the narration but does NOT need to literally match it. Focus on showing scenes, locations, and activities that were REAL and COMMON during ${timePeriod.era}.
+
+EXAMPLE - Ptolemaic Egypt (Cleopatra's era, 69-30 BCE):
+- GOOD: "Ptolemaic Alexandria harbor, merchant ships with square sails, Greek and Egyptian traders, limestone lighthouse, Mediterranean sea, golden sunset"
+- GOOD: "Royal palace courtyard in Alexandria, marble columns, palm trees, servants carrying amphoras, Egyptian guards in bronze armor"
+- BAD: A boat scene that looks medieval European instead of Ptolemaic Egyptian
 
 CONTENT SAFETY (CRITICAL - MUST BE FAMILY-FRIENDLY):
 - NO nudity, partial nudity, bare skin, or sexually suggestive content
@@ -596,24 +604,23 @@ CONTENT SAFETY (CRITICAL - MUST BE FAMILY-FRIENDLY):
 - NO gore, blood, graphic violence, or injury depictions
 - NO disturbing, shocking, or traumatic imagery
 - You may depict dramatic historical scenes including warfare and conflict - avoid explicit gore
-- ALWAYS describe clothing explicitly: "wearing a full-length robe", "dressed in formal attire", "clothed in traditional garments"
+- ALWAYS describe clothing explicitly: "wearing a full-length linen robe", "dressed in formal Greek chiton", "clothed in Egyptian royal garments"
 
 RULES:
-1. ALL scenes MUST be set in ${timePeriod.era}, ${timePeriod.region}
-2. For each image segment, create a scene that illustrates the narration content
-3. Include PERIOD-ACCURATE details: ${timePeriod.visualConstraints || 'appropriate clothing, tools, architecture for the era'}
+1. ALL scenes MUST be VISUALLY AUTHENTIC to ${timePeriod.era}, ${timePeriod.region} - this is the #1 priority
+2. Use the narration as INSPIRATION but prioritize showing ERA-ACCURATE scenes over matching exact narration content
+3. Include SPECIFIC PERIOD DETAILS: ${timePeriod.visualConstraints || 'architecture, clothing, tools, and objects that actually existed in this era'}
 4. For war/conflict topics: show battlefields, armies, fortifications, commanders leading troops, military camps - NOT maps, museums, or artifacts
 5. For medical topics: show period-appropriate healers, apothecaries, patients - NOT modern research
 6. For abstract concepts: show period-appropriate scenes with settings and people from that era
 
 CRITICAL PROMPT FORMAT (AI image models work best with short, focused prompts):
 7. Keep descriptions SHORT: 30-50 words maximum
-8. Focus on ONE main subject or action - don't try to include everything from the narration
-9. Put the MOST IMPORTANT visual element FIRST in the description
+8. Start with the SPECIFIC ERA AND LOCATION (e.g., "Ptolemaic Alexandria", "Ancient Rome 44 BCE", "Medieval Paris 1347")
+9. Include SPECIFIC architectural and cultural details from that exact era
 10. Use comma-separated keywords rather than long sentences
-11. Example format: "Egyptian queen Cleopatra in royal chamber, golden throne, hieroglyphic walls, oil lamps, dramatic lighting, ancient Alexandria"
+11. Example format: "Ptolemaic Alexandria palace, Queen Cleopatra in golden Egyptian headdress and linen robes, hieroglyphic walls, Greek marble columns, oil lamps, Mediterranean light"
 12. Do NOT include any text, titles, or words in the image
-13. Start with the era/setting, then the main subject, then supporting details
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
 
@@ -660,11 +667,13 @@ Output format:
               role: 'user',
               content: `Generate exactly ${batchSize} visual scene descriptions for images ${batchStart + 1} to ${batchEnd}. Return ONLY the JSON array, nothing else.
 
-SCRIPT CONTEXT:
+SCRIPT CONTEXT (for understanding the era and setting):
 ${script.substring(0, 12000)}
 
-TIME-CODED SEGMENTS:
+TIME-CODED SEGMENTS (use as INSPIRATION, but prioritize ERA ACCURACY):
 ${windowDescriptions}
+
+PRIORITY: Create images that are VISUALLY AUTHENTIC to ${timePeriod.era} in ${timePeriod.region}. The image doesn't need to literally match the narration - it should show scenes, architecture, clothing, and activities that ACTUALLY EXISTED during that era.
 
 Remember: Output ONLY a JSON array with ${batchSize} items, starting with index ${batchStart + 1}. No explanations.`
             }
