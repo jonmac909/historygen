@@ -40,9 +40,6 @@ const DEFAULT_FIXES: PronunciationFix[] = [
   { word: 'Armenian', phonetic: 'Ar-mee-nee-an' },
   { word: 'dream', phonetic: 'dreem' },
   { word: 'dreams', phonetic: 'dreems' },
-  { word: 'story', phonetic: 'stor-ee' },
-  { word: 'unfolds', phonetic: 'un-folds' },
-  { word: 'glittering', phonetic: 'glit-ter-ing' },
 ];
 
 // Load fixes from file, falling back to defaults
