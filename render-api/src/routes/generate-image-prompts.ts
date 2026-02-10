@@ -143,6 +143,7 @@ async function extractTimePeriod(
   const response = await anthropic.messages.create({
     model: 'claude-sonnet-4-5-20250929',
     max_tokens: 500,
+    system: formatSystemPrompt('You are a helpful assistant that analyzes historical scripts.') as Anthropic.MessageCreateParams['system'],
     messages: [{
       role: 'user',
       content: `Analyze this historical documentary script and extract the PRIMARY time period being depicted.
@@ -321,6 +322,7 @@ async function regeneratePrompt(
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 500,
+      system: formatSystemPrompt('You rewrite scene descriptions for historical accuracy.') as Anthropic.MessageCreateParams['system'],
       messages: [{
         role: 'user',
         content: `TASK: Completely rewrite this scene description to show the ACTUAL HISTORICAL EVENT, not a modern interpretation of it.

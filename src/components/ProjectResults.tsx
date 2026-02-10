@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Download, ChevronLeft, ChevronDown, Video, Loader2, Sparkles, Square, CheckSquare, Play, Pause, Upload, FileText, Mic, MessageSquare, Palette, Image, Target, Film, Youtube, Save, Pencil, Check, X, Tag, Plus, Copy } from "lucide-react";
+import { Download, ChevronLeft, ChevronDown, Video, Loader2, Sparkles, Square, CheckSquare, Play, Pause, Upload, FileText, Mic, MessageSquare, Palette, Image, Target, Film, Youtube, Save, Pencil, Check, X, Tag, Plus, Copy, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
@@ -265,6 +265,62 @@ export function ProjectResults({
 
   // State for video render modal
   const [isVideoRenderModalOpen, setIsVideoRenderModalOpen] = useState(false);
+
+  // State for Resume Full Auto
+  const [isResuming, setIsResuming] = useState(false);
+
+  // Determine the next pipeline step to resume from based on what data exists
+  const getResumeStep = (): string | null => {
+    if (!projectId) return null;
+    const hasScript = !!script || !!assets.find(a => a.id === 'script');
+    const hasAudio = !!audioUrl;
+    const hasCaptions = !!srtContent;
+    const hasImagePrompts = imagePrompts && imagePrompts.length > 0;
+    const hasImages = assets.some(a => a.id.startsWith('image-')) || (imagePrompts && imagePrompts.some(p => (p as any).imageUrl));
+    const hasClipPrompts = clipPrompts && clipPrompts.length > 0;
+    const hasClips = clipUrls && clipUrls.length > 0;
+    const hasThumbnails = thumbnails && thumbnails.length > 0;
+    const hasVideo = !!basicVideoUrl || !!smokeEmbersVideoUrl;
+
+    if (hasVideo) return null; // Already complete
+    if (hasThumbnails) return 'render';
+    if (hasClips) return 'thumbnail';
+    if (hasClipPrompts) return 'videoClips';
+    if (hasImages) return 'clipPrompts';
+    if (hasImagePrompts) return 'images';
+    if (hasCaptions) return 'imagePrompts';
+    if (hasAudio) return 'captions';
+    if (hasScript) return 'audio';
+    return 'transcript';
+  };
+
+  const handleResumeFullAuto = async () => {
+    const resumeFrom = getResumeStep();
+    if (!resumeFrom || !projectId) return;
+
+    setIsResuming(true);
+    const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+    try {
+      const response = await fetch(`${renderUrl}/auto-clone/resume-project/${projectId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resumeFrom }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast({
+          title: "Pipeline Started",
+          description: `Resuming from ${resumeFrom}. Check back shortly.`,
+        });
+      } else {
+        toast({ title: "Resume Failed", description: data.error, variant: "destructive" });
+        setIsResuming(false);
+      }
+    } catch (error) {
+      toast({ title: "Resume Failed", description: "Could not connect to API", variant: "destructive" });
+      setIsResuming(false);
+    }
+  };
 
   // State for project costs
   const [costs, setCosts] = useState<{ steps: ProjectCostStep[]; totalCost: number } | null>(null);
@@ -1305,6 +1361,27 @@ export function ProjectResults({
           </div>
         )}
       </div>
+
+      {/* Resume Full Auto Banner */}
+      {getResumeStep() && (
+        <div className="mb-6 flex items-center gap-3 p-3 rounded-lg border border-primary/20 bg-primary/5">
+          <Button
+            onClick={handleResumeFullAuto}
+            disabled={isResuming}
+            className="gap-2"
+          >
+            {isResuming ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Zap className="w-4 h-4" />
+            )}
+            {isResuming ? 'Pipeline Running...' : 'Resume Full Auto'}
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            from <span className="font-medium text-foreground">{getResumeStep()}</span>
+          </span>
+        </div>
+      )}
 
       {/* Two Column Layout */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-stretch">

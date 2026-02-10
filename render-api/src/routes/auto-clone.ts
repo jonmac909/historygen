@@ -1370,6 +1370,80 @@ router.post('/resume/:videoId', async (req: Request, res: Response) => {
   }
 });
 
+// Resume pipeline by project ID (for UI-created projects)
+router.post('/resume-project/:projectId', async (req: Request, res: Response) => {
+  try {
+    const supabase = getSupabaseClient();
+    const { projectId } = req.params;
+    const resumeFrom = (req.body.resumeFrom || 'captions') as string;
+
+    // Fetch existing project data
+    const { data: project, error: projectError } = await supabase
+      .from('generation_projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ success: false, error: 'Project not found' });
+    }
+
+    // Extract video ID from source URL
+    const urlMatch = project.source_url?.match(/(?:v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+    const sourceVideoId = urlMatch?.[1] || projectId;
+
+    console.log(`[Resume Project] Found project ${projectId}: "${project.video_title}"`);
+    console.log(`  - Script: ${project.script_content?.length || 0} chars`);
+    console.log(`  - Audio: ${project.audio_url || 'N/A'}`);
+    console.log(`  - SRT: ${project.srt_url || 'N/A'}`);
+    console.log(`  - Image prompts: ${project.image_prompts?.length || 0}`);
+    console.log(`  - Images: ${project.image_urls?.length || 0}`);
+    console.log(`  - Resuming from: ${resumeFrom}`);
+
+    res.json({
+      success: true,
+      message: `Resume started from ${resumeFrom}`,
+      projectId,
+      title: project.video_title,
+    });
+
+    // Run pipeline in background
+    runPipeline({
+      sourceVideoId,
+      sourceVideoUrl: project.source_url,
+      originalTitle: project.video_title,
+      originalThumbnailUrl: `https://i.ytimg.com/vi/${sourceVideoId}/maxresdefault.jpg`,
+      resumeFrom: resumeFrom as any,
+      existingProjectId: projectId,
+      existingData: {
+        script: project.script_content,
+        audioUrl: project.audio_url,
+        audioDuration: project.audio_duration,
+        audioSegments: project.audio_segments,
+        srtUrl: project.srt_url,
+        srtContent: project.srt_content,
+        imagePrompts: project.image_prompts,
+        imageUrls: project.image_urls,
+        clipPrompts: project.clip_prompts,
+        clips: project.clips,
+        thumbnailUrl: project.thumbnails?.[0],
+      },
+    }, (step, progress, message) => {
+      console.log(`[Resume Project] ${step}: ${message} (${progress}%)`);
+    }).then(async (result) => {
+      console.log(`[Resume Project] Pipeline completed. Success: ${result.success}`);
+      if (!result.success) {
+        console.error(`[Resume Project] Pipeline failed: ${result.error}`);
+      }
+    }).catch((error) => {
+      console.error(`[Resume Project] Pipeline crashed:`, error);
+    });
+
+  } catch (error: any) {
+    return res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // Get cron enabled status
 router.get('/cron-status', async (req: Request, res: Response) => {
   try {

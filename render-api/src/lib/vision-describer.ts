@@ -3,7 +3,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { createAnthropicClient } from './anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from './anthropic-client';
 
 const anthropic = createAnthropicClient();
 
@@ -122,6 +122,7 @@ Frame 1: Wide shot with dark gradient background (#1a1a2e to #16213e). White san
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
+      system: formatSystemPrompt('You describe video frames for documentary production.') as Anthropic.MessageCreateParams['system'],
       messages: [
         {
           role: 'user',
