@@ -117,6 +117,7 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
   return (
     <div className="border rounded-lg p-4 space-y-3 bg-card">
       <audio
+        key={segment.audioUrl}
         ref={audioRef}
         src={segment.audioUrl}
         preload="auto"
@@ -361,6 +362,7 @@ export function AudioSegmentsPreviewModal({
           {combinedAudioUrl && (
             <div className="border-2 border-primary/30 rounded-lg p-4 space-y-3 bg-primary/5">
               <audio
+                key={combinedAudioUrl}
                 ref={combinedAudioRef}
                 src={combinedAudioUrl}
                 preload="auto"
