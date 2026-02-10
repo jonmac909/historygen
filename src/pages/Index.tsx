@@ -1101,34 +1101,32 @@ const Index = () => {
         throw new Error(result.error || "Failed to regenerate segment");
       }
 
-      // Update the segment in the array (include new text if it was edited)
-      setPendingAudioSegments(prev => {
-        const newSegments = [...prev];
-        const idx = newSegments.findIndex(s => s.index === segmentIndex);
-        if (idx !== -1) {
-          newSegments[idx] = {
-            ...result.segment!,
-            text: textToUse // Preserve the edited text in the segment
-          };
-        }
-        return newSegments;
-      });
+      // Compute updated segments array
+      const updatedSegments = pendingAudioSegments.map(seg =>
+        seg.index === segmentIndex
+          ? { ...result.segment!, text: textToUse }
+          : seg
+      );
+
+      // Update the segment in state
+      setPendingAudioSegments(updatedSegments);
 
       // Recalculate totals
-      const newTotalDuration = pendingAudioSegments.reduce((sum, seg) => {
-        if (seg.index === segmentIndex) {
-          return sum + result.segment!.duration;
-        }
-        return sum + seg.duration;
-      }, 0);
+      const newTotalDuration = updatedSegments.reduce((sum, seg) => sum + seg.duration, 0);
       setPendingAudioDuration(newTotalDuration);
 
       // Mark that combined audio needs to be recombined before generating captions
       setSegmentsNeedRecombine(true);
 
+      // CRITICAL: Save updated segments to database so they persist after page refresh
+      autoSave("audio", {
+        audioSegments: updatedSegments,
+        audioDuration: newTotalDuration,
+      });
+
       toast({
         title: "Segment Regenerated",
-        description: `Segment ${segmentIndex} has been regenerated. Click "Confirm Audio" to update captions.`,
+        description: `Segment ${segmentIndex} has been regenerated. Audio will be recombined on next render.`,
       });
 
     } catch (error) {
