@@ -596,17 +596,27 @@ export async function runPipeline(
   const resumeFrom = input.resumeFrom;
   const existing = input.existingData || {};
 
+  let lastDbWriteTime = 0;
+  let lastDbProgress = -1;
+  const DB_WRITE_THROTTLE_MS = 3000;
+
   const reportProgress = (step: string, progress: number, message: string) => {
     console.log(`[Pipeline] ${step}: ${message} (${progress}%)`);
     if (onProgress) onProgress(step, progress, message);
-    // Save progress to database for frontend polling
-    supabase
-      .from('generation_projects')
-      .update({ current_step: step, current_progress: progress, progress_message: message, updated_at: new Date().toISOString() })
-      .eq('id', projectId)
-      .then(({ error }) => {
-        if (error) console.error(`[Pipeline] Failed to save progress: ${error.message}`);
-      });
+
+    // Throttle DB writes: only write if progress changed AND 3s elapsed
+    const now = Date.now();
+    if (progress !== lastDbProgress && now - lastDbWriteTime >= DB_WRITE_THROTTLE_MS) {
+      lastDbWriteTime = now;
+      lastDbProgress = progress;
+      supabase
+        .from('generation_projects')
+        .update({ current_step: step, current_progress: progress, progress_message: message, updated_at: new Date().toISOString() })
+        .eq('id', projectId)
+        .then(({ error }) => {
+          if (error) console.error(`[Pipeline] Failed to save progress: ${error.message}`);
+        });
+    }
   };
 
   try {
