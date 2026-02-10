@@ -512,10 +512,15 @@ export function ThumbnailGeneratorModal({
       }
       const base64Data = examplePreview.substring(prefixIndex + base64Prefix.length);
 
-      // Call the thumbnail generation API with the user's prompt
+      // Combine topic (character/subject) with style prompt
+      const fullPrompt = topicInput.trim()
+        ? `${topicInput.trim()}, ${imagePrompt.trim()}`
+        : imagePrompt.trim();
+
+      // Call the thumbnail generation API with the combined prompt
       const result = await generateThumbnailsStreaming(
         base64Data,
-        imagePrompt,
+        fullPrompt,
         thumbnailCount,
         projectId,
         (progress) => setProgress(progress)
