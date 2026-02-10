@@ -2285,6 +2285,10 @@ const Index = () => {
 
   const handleCancelRequest = () => {
     // Auto-save is always enabled, so no confirmation needed
+    // CRITICAL: Disable fullAutomation when closing modals to prevent auto-generation
+    // when user is just viewing assets (not actively generating)
+    setSettings(prev => ({ ...prev, fullAutomation: false }));
+
     // If we have a loaded project, go back to results without resetting assets
     // Otherwise reset everything and go to create page
     if (generatedAssets.length > 0) {
