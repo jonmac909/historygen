@@ -50,9 +50,10 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
   return typeof data === 'object' && data !== null && 'status' in data;
 };
 
-// Safety terms to ensure PG-rated content
-const SAFETY_PREFIX = "SFW, family-friendly, fully clothed, modest attire, ";
-const SAFETY_SUFFIX = ", no nudity, no revealing clothing, tasteful, appropriate for all ages";
+// Safety terms to ensure PG-rated content - VERY STRICT
+const SAFETY_PREFIX = "SFW, G-rated, family-friendly, conservative, all figures wearing full clothing covering entire body, long robes, tunics, dresses, ";
+const SAFETY_SUFFIX = ", everyone fully dressed, modest conservative clothing, no exposed skin, no bare chest, no nudity, no partial nudity, no revealing clothing, no classical nude art style, PG rating";
+const NEGATIVE_PROMPT = "nudity, nude, naked, bare chest, bare skin, exposed skin, topless, shirtless, revealing clothing, classical nude, artistic nude, partial nudity, undressed, unclothed, nsfw, adult content";
 
 // Start a RunPod job for Z-Image generation
 async function startImageJob(apiKey: string, prompt: string, quality: string, aspectRatio: string): Promise<string> {
@@ -69,6 +70,7 @@ async function startImageJob(apiKey: string, prompt: string, quality: string, as
     body: JSON.stringify({
       input: {
         prompt: safePrompt,
+        negative_prompt: NEGATIVE_PROMPT,  // Explicitly tell model what NOT to generate
         quality: quality === "high" ? "high" : "basic",
         aspectRatio,
       },
