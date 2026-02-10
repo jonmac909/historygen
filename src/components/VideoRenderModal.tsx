@@ -116,11 +116,12 @@ export function VideoRenderModal({
         effects: existingEffectsVideoUrl || ''
       };
 
-      if (existingBasicVideoUrl) {
-        setBasicVideoUrl(existingBasicVideoUrl);
-      }
+      // CRITICAL: Always sync internal state with props, including clearing when undefined
+      // This ensures switching projects properly resets the video URLs
+      setBasicVideoUrl(existingBasicVideoUrl || null);
+      setEffectsVideoUrl(existingEffectsVideoUrl || null);
+
       if (existingEffectsVideoUrl) {
-        setEffectsVideoUrl(existingEffectsVideoUrl);
         autoRenderTriggered.current = true;
         setCurrentPass('complete');
       } else if (existingBasicVideoUrl) {
@@ -128,6 +129,10 @@ export function VideoRenderModal({
         autoRenderTriggered.current = true;
         setCurrentPass('complete');
         setActiveTab('basic');
+      } else {
+        // No videos exist - reset to idle state for fresh render
+        autoRenderTriggered.current = false;
+        setCurrentPass('idle');
       }
     }
   }, [isOpen, existingBasicVideoUrl, existingEffectsVideoUrl]);

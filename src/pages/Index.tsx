@@ -1937,6 +1937,10 @@ const Index = () => {
         return newImages;
       });
 
+      // Clear existing video URLs since images changed - user needs to re-render
+      setVideoUrl(undefined);
+      setSmokeEmbersVideoUrl(undefined);
+
       toast({
         title: "Image Regenerated",
         description: `Image ${index + 1} has been regenerated successfully.`,
@@ -2031,6 +2035,10 @@ const Index = () => {
           }
         }));
       }
+
+      // Clear existing video URLs since images changed - user needs to re-render
+      setVideoUrl(undefined);
+      setSmokeEmbersVideoUrl(undefined);
 
       toast({
         title: "Images Regenerated",
