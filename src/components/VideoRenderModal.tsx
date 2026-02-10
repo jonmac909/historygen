@@ -176,8 +176,9 @@ export function VideoRenderModal({
   const handleRenderBothPasses = async () => {
     let audioUrlToUse = actualAudioUrl;
 
-    // Recombine audio first if segments were regenerated
-    if (segmentsNeedRecombine && onRecombineAudio) {
+    // Always recombine audio before rendering to ensure we have the latest segments
+    // This handles the case where user refreshed and lost the "needsRecombine" state
+    if (onRecombineAudio) {
       setCurrentPass('pass1');
       setRenderProgress({ stage: 'downloading', percent: 0, message: 'Recombining audio segments...' });
 
@@ -294,8 +295,8 @@ export function VideoRenderModal({
   const handleRenderEffectsOnly = async () => {
     let audioUrlToUse = actualAudioUrl;
 
-    // Recombine audio first if segments were regenerated
-    if (segmentsNeedRecombine && onRecombineAudio) {
+    // Always recombine audio before rendering to ensure we have the latest segments
+    if (onRecombineAudio) {
       setCurrentPass('pass2');
       setRenderProgress({ stage: 'downloading', percent: 0, message: 'Recombining audio segments...' });
 
