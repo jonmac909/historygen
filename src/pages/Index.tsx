@@ -2131,13 +2131,13 @@ const Index = () => {
 
   // Favorite thumbnail toggle (persisted to Supabase)
   const handleFavoriteThumbnailToggle = async (url: string) => {
-    if (!currentProjectId) return;
+    if (!projectId) return;
     // Optimistic update
     setFavoriteThumbnails(prev =>
       prev.includes(url) ? prev.filter(u => u !== url) : [...prev, url]
     );
     try {
-      const updated = await toggleFavoriteThumbnail(currentProjectId, url);
+      const updated = await toggleFavoriteThumbnail(projectId, url);
       setFavoriteThumbnails(updated);
     } catch (error) {
       console.error('Failed to toggle favorite thumbnail:', error);

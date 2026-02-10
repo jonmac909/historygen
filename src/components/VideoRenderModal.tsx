@@ -174,6 +174,7 @@ export function VideoRenderModal({
 
   // Render both passes sequentially
   const handleRenderBothPasses = async () => {
+    console.log('[Render] Starting render with intro clips:', introClips?.length || 0, introClips);
     let audioUrlToUse = actualAudioUrl;
 
     // Always recombine audio before rendering to ensure we have the latest segments
