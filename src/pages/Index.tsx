@@ -1927,10 +1927,13 @@ const Index = () => {
         throw new Error(imageResult.error || 'Failed to regenerate image');
       }
 
-      // Update the image at the specific index
+      // Update the image at the specific index and save to database
+      const newImageUrl = imageResult.images![0];
       setPendingImages(prev => {
         const newImages = [...prev];
-        newImages[index] = imageResult.images![0];
+        newImages[index] = newImageUrl;
+        // Save updated images to database
+        autoSave("images", { imageUrls: newImages });
         return newImages;
       });
 
@@ -2006,10 +2009,13 @@ const Index = () => {
             );
 
             if (imageResult.success && imageResult.images && imageResult.images.length > 0) {
-              // Update the image at the specific index
+              // Update the image at the specific index and save to database
+              const newImageUrl = imageResult.images![0];
               setPendingImages(prev => {
                 const newImages = [...prev];
-                newImages[index] = imageResult.images![0];
+                newImages[index] = newImageUrl;
+                // Save updated images to database
+                autoSave("images", { imageUrls: newImages });
                 return newImages;
               });
             }
