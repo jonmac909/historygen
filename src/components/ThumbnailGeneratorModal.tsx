@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { toast } from "@/hooks/use-toast";
-import { generateThumbnailsStreaming, suggestThumbnailPrompts, type ThumbnailGenerationProgress } from "@/lib/api";
+import { generateThumbnailsStreaming, suggestThumbnailPrompts, expandTopicToDescription, type ThumbnailGenerationProgress } from "@/lib/api";
 import JSZip from "jszip";
 
 interface ThumbnailGeneratorModalProps {
@@ -512,10 +512,27 @@ export function ThumbnailGeneratorModal({
       }
       const base64Data = examplePreview.substring(prefixIndex + base64Prefix.length);
 
-      // Combine topic (character/subject) with style prompt
-      const fullPrompt = topicInput.trim()
-        ? `${topicInput.trim()}, ${imagePrompt.trim()}`
+      // If there's a topic, expand it into a detailed character/subject description
+      let subjectDescription = '';
+      if (topicInput.trim()) {
+        setProgress({ stage: 'generating', percent: 5, message: 'Expanding topic description...' });
+        const expandResult = await expandTopicToDescription(topicInput.trim());
+        if (expandResult.success && expandResult.description) {
+          subjectDescription = expandResult.description;
+          console.log('[Thumbnails] Expanded topic:', subjectDescription);
+        } else {
+          // Fall back to using the topic as-is
+          subjectDescription = topicInput.trim();
+          console.warn('[Thumbnails] Topic expansion failed, using raw topic');
+        }
+      }
+
+      // Combine expanded subject description with style prompt
+      const fullPrompt = subjectDescription
+        ? `${subjectDescription}, ${imagePrompt.trim()}`
         : imagePrompt.trim();
+
+      console.log('[Thumbnails] Full prompt:', fullPrompt);
 
       // Call the thumbnail generation API with the combined prompt
       const result = await generateThumbnailsStreaming(

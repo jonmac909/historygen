@@ -668,6 +668,46 @@ async function handleStreamingThumbnails(
   }
 }
 
+// Expand a topic into a detailed character/subject description for image generation
+router.post('/expand-topic', async (req: Request, res: Response) => {
+  try {
+    const { topic } = req.body;
+    if (!topic || typeof topic !== 'string') {
+      return res.status(400).json({ error: 'topic is required' });
+    }
+
+    const { createAnthropicClient, formatSystemPrompt } = await import('../lib/anthropic-client');
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
+    }
+
+    const anthropic = createAnthropicClient(apiKey);
+
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 300,
+      system: formatSystemPrompt(`You are an image prompt expert. Given a topic (usually a historical figure, character, or subject), create a detailed visual description suitable for image generation. Include: physical appearance, clothing/costume details, distinguishing features, and relevant historical/cultural context. Be specific and visual. Output ONLY the description, no quotes or explanation. Keep it to 2-3 sentences.`) as Anthropic.MessageCreateParams['system'],
+      messages: [{
+        role: 'user',
+        content: topic
+      }],
+    });
+
+    const textContent = response.content.find(c => c.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text response from Claude');
+    }
+
+    res.json({ success: true, description: textContent.text.trim() });
+  } catch (error) {
+    console.error('[ExpandTopic] Error:', error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to expand topic'
+    });
+  }
+});
+
 // Generate thumbnail prompt ideas from a simple topic
 router.post('/suggest-prompts', async (req: Request, res: Response) => {
   try {

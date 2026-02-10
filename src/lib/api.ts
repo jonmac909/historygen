@@ -1783,6 +1783,38 @@ export async function suggestThumbnailContent(
   }
 }
 
+// Expand a topic into a detailed character/subject description
+export async function expandTopicToDescription(
+  topic: string
+): Promise<{ success: boolean; description?: string; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured' };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-thumbnails/expand-topic`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ topic })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `Failed: ${response.status} ${errorText}` };
+    }
+
+    const data = await response.json();
+    return { success: data.success, description: data.description, error: data.error };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to expand topic'
+    };
+  }
+}
+
 // Suggest thumbnail prompts from a simple topic name
 export async function suggestThumbnailPrompts(
   topic: string
