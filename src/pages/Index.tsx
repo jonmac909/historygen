@@ -2105,8 +2105,8 @@ const Index = () => {
   };
 
   const handleImagesConfirm = () => {
-    // Go to video render step (no effects)
-    setViewState("review-render");
+    // Go to video render step (ensures audio is recombined if needed)
+    handleGoToRender();
   };
 
   // Thumbnail handlers
@@ -2167,6 +2167,51 @@ const Index = () => {
 
   const handleBackToRender = () => {
     setSettings(prev => ({ ...prev, fullAutomation: false }));
+    handleGoToRender();
+  };
+
+  // Ensure audio is recombined before going to render (if segments were regenerated)
+  const handleGoToRender = async () => {
+    // If segments were regenerated, recombine audio first
+    if (segmentsNeedRecombine && pendingAudioSegments.length > 0) {
+      console.log("Recombining audio before render...");
+
+      // Show a quick toast to indicate recombining
+      toast({
+        title: "Updating Audio",
+        description: "Recombining audio segments before render...",
+      });
+
+      try {
+        const recombineResult = await recombineAudioSegments(projectId, pendingAudioSegments.length);
+
+        if (!recombineResult.success || !recombineResult.audioUrl) {
+          throw new Error(recombineResult.error || "Failed to recombine audio segments");
+        }
+
+        // Update the audio URL with the recombined version
+        setPendingAudioUrl(recombineResult.audioUrl);
+        if (recombineResult.duration) setPendingAudioDuration(recombineResult.duration);
+        if (recombineResult.size) setPendingAudioSize(recombineResult.size);
+        setSegmentsNeedRecombine(false);
+
+        console.log(`Recombined audio ready: ${recombineResult.audioUrl}`);
+
+        toast({
+          title: "Audio Updated",
+          description: "Audio segments recombined successfully.",
+        });
+      } catch (error) {
+        console.error("Failed to recombine audio:", error);
+        toast({
+          title: "Audio Update Failed",
+          description: error instanceof Error ? error.message : "Failed to recombine audio",
+          variant: "destructive",
+        });
+        // Still proceed to render - the user can re-render after fixing
+      }
+    }
+
     setViewState("review-render");
   };
 
@@ -3709,7 +3754,10 @@ const Index = () => {
         onConfirm={handleImagesConfirm}
         onCancel={handleCancelRequest}
         onBack={handleBackToPrompts}
-        onForward={() => disableAutoAndGoTo("review-render")}
+        onForward={() => {
+          setSettings(prev => ({ ...prev, fullAutomation: false }));
+          handleGoToRender();
+        }}
         onRegenerate={handleRegenerateImage}
         onRegenerateMultiple={handleRegenerateMultipleImages}
         onReconnectImages={async () => {
