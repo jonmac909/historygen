@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import cron from 'node-cron';
+
 import { initPotProvider } from './lib/pot-provider';
 import {
   corsAllowedOrigins,
@@ -213,22 +213,8 @@ const server = app.listen(PORT, '0.0.0.0', () => {
   //   console.warn('⚠️ PO Token provider init failed:', err.message);
   // });
 
-  // Schedule daily cache refresh at 5am PST = 13:00 UTC (1 hour before Auto Poster)
-  // Scrapes fresh videos from all 14+ whitelisted channels
-  cron.schedule('0 13 * * *', async () => {
-    console.log('[Cron] 🔄 Running daily cache refresh at 13:00 UTC (5am PST)...');
-    try {
-      const response = await fetch(`http://localhost:${PORT}/auto-clone/refresh-cache`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const result = await response.json() as { success?: boolean; channelsScanned?: number; outliersFound?: number; error?: string };
-      console.log('[Cron] Cache refresh:', result.success ? `Done (${result.channelsScanned} channels, ${result.outliersFound} outliers)` : result.error || 'Failed');
-    } catch (error) {
-      console.error('[Cron] Failed to refresh cache:', error);
-    }
-  });
-  console.log('🔄 Cache refresh scheduled: Daily at 13:00 UTC (5am PST)');
+  // Cache refresh cron DISABLED - all cron jobs removed at user request
+  console.log('🔄 Cache refresh cron: DISABLED (removed from code)');
 
   // Auto Poster cron DISABLED - removed at user request
   // User can manually trigger via UI or API if needed
