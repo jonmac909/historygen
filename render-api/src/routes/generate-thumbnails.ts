@@ -687,7 +687,7 @@ router.post('/expand-topic', async (req: Request, res: Response) => {
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 300,
-      system: formatSystemPrompt(`You are an image prompt expert. Given a topic (usually a historical figure, character, or subject), create a detailed visual description suitable for image generation. Include: physical appearance, clothing/costume details, distinguishing features, and relevant historical/cultural context. Be specific and visual. Output ONLY the description, no quotes or explanation. Keep it to 2-3 sentences.`) as Anthropic.MessageCreateParams['system'],
+      system: formatSystemPrompt(`You are an image prompt expert. Given a topic (usually a historical figure, character, or subject), create a detailed visual description suitable for image generation. Include: physical appearance, clothing/costume details, distinguishing features, and pose/setting. Be specific and visual. Do NOT include any text overlays, titles, or font suggestions - only describe the visual subject. Output ONLY the description, no quotes or explanation. Keep it to 2-3 sentences.`) as Anthropic.MessageCreateParams['system'],
       messages: [{
         role: 'user',
         content: topic
