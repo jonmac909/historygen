@@ -195,7 +195,11 @@ function normalizeText(text: string): string {
   const pronunciationFixes = getPronunciationFixesRecord();
   for (const [word, phonetic] of Object.entries(pronunciationFixes)) {
     const regex = new RegExp(`\\b${word}\\b`, 'gi');
+    const before = result;
     result = result.replace(regex, phonetic);
+    if (before !== result) {
+      console.log(`[PRONUNCIATION FIX] "${word}" → "${phonetic}"`);
+    }
   }
 
   // Convert numbers to words for better TTS pronunciation
@@ -2877,7 +2881,13 @@ router.post('/segment', async (req: Request, res: Response) => {
 
     // Normalize and chunk the segment text
     const normalizedText = normalizeText(cleanSegmentText);
+    console.log(`[SEGMENT ${segmentIndex}] Original text (${cleanSegmentText.length} chars):\n${cleanSegmentText.substring(0, 500)}...`);
+    console.log(`[SEGMENT ${segmentIndex}] Normalized text (${normalizedText.length} chars):\n${normalizedText.substring(0, 500)}...`);
+
     const rawChunks = splitIntoChunks(normalizedText, MAX_TTS_CHUNK_LENGTH);
+    console.log(`[SEGMENT ${segmentIndex}] Raw chunks: ${rawChunks.length}`);
+    rawChunks.forEach((c, i) => console.log(`  Chunk ${i+1}: "${c.substring(0, 80)}..."`));
+
     const chunks: string[] = [];
 
     for (const chunk of rawChunks) {
