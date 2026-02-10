@@ -2174,7 +2174,8 @@ const Index = () => {
 
   const handleBackToImages = () => {
     setSettings(prev => ({ ...prev, fullAutomation: false }));
-    setViewState("review-images");
+    // Delay viewState change to ensure fullAutomation: false is processed first
+    setTimeout(() => setViewState("review-images"), 50);
   };
 
   const handleBackToRender = () => {
@@ -2249,7 +2250,8 @@ const Index = () => {
 
   const handleBackToThumbnails = () => {
     setSettings(prev => ({ ...prev, fullAutomation: false }));
-    setViewState("review-thumbnails");
+    // Delay viewState change to ensure fullAutomation: false is processed first
+    setTimeout(() => setViewState("review-thumbnails"), 50);
   };
 
   // YouTube upload handlers
@@ -2303,20 +2305,27 @@ const Index = () => {
     // when user is just viewing assets (not actively generating)
     setSettings(prev => ({ ...prev, fullAutomation: false }));
 
-    // If we have a loaded project, go back to results without resetting assets
-    // Otherwise reset everything and go to create page
-    if (generatedAssets.length > 0) {
-      setViewState("results");
-    } else {
-      resetPendingState();
-      setViewState("create");
-    }
+    // Delay viewState change to ensure fullAutomation: false is processed first
+    // This prevents race conditions where useEffect sees new viewState with old settings
+    setTimeout(() => {
+      // If we have a loaded project, go back to results without resetting assets
+      // Otherwise reset everything and go to create page
+      if (generatedAssets.length > 0) {
+        setViewState("results");
+      } else {
+        resetPendingState();
+        setViewState("create");
+      }
+    }, 50);
   };
 
   // Back navigation handlers - disable fullAutomation when manually navigating back
+  // Use setTimeout to ensure settings update is processed before viewState change
+  // This prevents race conditions where useEffect sees new viewState with old settings
   const disableAutoAndGoTo = (view: ViewState) => {
     setSettings(prev => ({ ...prev, fullAutomation: false }));
-    setViewState(view);
+    // Delay viewState change to ensure fullAutomation: false is processed first
+    setTimeout(() => setViewState(view), 50);
   };
 
   const handleBackToCreate = () => {
