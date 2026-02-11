@@ -18,7 +18,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { updateProject, getSupabaseClient, ProjectUpdate } from '../lib/supabase-project';
+import { createProject, updateProject, getSupabaseClient, ProjectUpdate } from '../lib/supabase-project';
 
 const router = Router();
 
@@ -205,6 +205,16 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
   let clips: any[] = [];
 
   try {
+    // =========================================================================
+    // STEP 0: Create project in database
+    // =========================================================================
+    console.log(`\n📦 [Pipeline ${projectId}] Creating project in database...`);
+    const createResult = await createProject(projectId, youtubeUrl, title);
+    if (!createResult.success) {
+      throw new Error(createResult.error || 'Failed to create project');
+    }
+    console.log(`   ✓ Project created`);
+
     // =========================================================================
     // STEP 1: Get YouTube Transcript
     // =========================================================================

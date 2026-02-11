@@ -44,6 +44,48 @@ export interface ProjectUpdate {
 }
 
 /**
+ * Create a new project record in Supabase
+ * Call this when starting a new pipeline
+ */
+export async function createProject(
+  projectId: string,
+  sourceUrl: string,
+  title?: string
+): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { success: false, error: 'Supabase not configured' };
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('generation_projects')
+      .insert({
+        id: projectId,
+        source_url: sourceUrl,
+        source_type: 'youtube',
+        video_title: title || 'Untitled',
+        status: 'running',
+        current_step: 'transcript',
+        created_at: now,
+        updated_at: now,
+      });
+
+    if (error) {
+      console.error(`[SupabaseProject] Failed to create project ${projectId}:`, error);
+      return { success: false, error: error.message };
+    }
+
+    console.log(`[SupabaseProject] Created project ${projectId}`);
+    return { success: true };
+  } catch (err) {
+    console.error(`[SupabaseProject] Exception creating project ${projectId}:`, err);
+    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/**
  * Update a project record in Supabase
  * Call this from backend endpoints to save progress directly to database
  */
