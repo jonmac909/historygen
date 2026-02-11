@@ -16,7 +16,7 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { createAnthropicClient } from './anthropic-client';
+import { createAnthropicClient, formatSystemPrompt } from './anthropic-client';
 import { fetch, ProxyAgent } from 'undici';
 import { randomUUID } from 'crypto';
 import { internalApiKey } from './runtime-config';
@@ -223,6 +223,7 @@ async function gradeScript(
   const response = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 800,
+    system: formatSystemPrompt('You are a script grading assistant.'),
     messages: [{
       role: 'user',
       content: `Grade this script for a history documentary video.
