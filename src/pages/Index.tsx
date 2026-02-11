@@ -43,6 +43,7 @@ import {
   generateVideoClipsStreaming,
   saveScriptToStorage,
   startFullPipeline,
+  stopPipeline,
   type ImagePromptWithTiming,
   type AudioSegment,
   type ClipPrompt,
@@ -234,6 +235,8 @@ const Index = () => {
   const [confirmedScript, setConfirmedScript] = useState("");
   const [scriptRegenProgress, setScriptRegenProgress] = useState<number | null>(null);
   const [projectId, setProjectId] = useState("");
+  const [projectStatus, setProjectStatus] = useState<'in_progress' | 'completed' | 'archived' | 'running' | 'cancelled' | 'failed'>('in_progress');
+  const [pipelineCurrentStep, setPipelineCurrentStep] = useState<string | undefined>();
   const [videoTitle, setVideoTitle] = useState("History Documentary");
   const [pendingAudioUrl, setPendingAudioUrl] = useState("");
   const [pendingAudioDuration, setPendingAudioDuration] = useState<number>(0);
@@ -299,6 +302,56 @@ const Index = () => {
     migrateFromLocalStorage();
   }, []);
 
+  // Poll project status when running on server
+  useEffect(() => {
+    if (projectStatus !== 'running' || !projectId) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('generation_projects')
+          .select('status, current_step')
+          .eq('id', projectId)
+          .single();
+
+        if (data) {
+          if (data.status !== 'running') {
+            // Pipeline finished
+            setProjectStatus(data.status as typeof projectStatus);
+            setPipelineCurrentStep(undefined);
+            clearInterval(pollInterval);
+
+            // Show toast based on status
+            if (data.status === 'completed') {
+              toast({
+                title: "Pipeline Complete",
+                description: "Server-side generation finished successfully",
+              });
+            } else if (data.status === 'failed') {
+              toast({
+                title: "Pipeline Failed",
+                description: "Server-side generation encountered an error",
+                variant: "destructive",
+              });
+            } else if (data.status === 'cancelled') {
+              toast({
+                title: "Pipeline Cancelled",
+                description: "Server-side generation was stopped",
+              });
+            }
+          } else {
+            // Update current step
+            setPipelineCurrentStep(data.current_step ?? undefined);
+          }
+        }
+      } catch (err) {
+        console.error('[Index] Failed to poll project status:', err);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(pollInterval);
+  }, [projectStatus, projectId]);
+
   // Load project from ?project= query parameter (e.g., from Auto Poster "View Project" link)
   useEffect(() => {
     const projectIdParam = searchParams.get('project');
@@ -329,6 +382,13 @@ const Index = () => {
       setProjectId(project.id);
       setSourceUrl(project.sourceUrl);
       setVideoTitle(project.videoTitle);
+      // Restore pipeline status
+      if (project.status) {
+        setProjectStatus(project.status as typeof projectStatus);
+      }
+      if (project.currentStep) {
+        setPipelineCurrentStep(project.currentStep);
+      }
 
       if (project.script) {
         setPendingScript(project.script);
@@ -2882,6 +2942,13 @@ const Index = () => {
     setProjectId(project.id);
     setVideoTitle(project.videoTitle);
     setSourceUrl(project.sourceUrl || "");
+    // Restore pipeline status
+    if (project.status) {
+      setProjectStatus(project.status as typeof projectStatus);
+    }
+    if (project.currentStep) {
+      setPipelineCurrentStep(project.currentStep);
+    }
 
     // Set asset state for ALL views (so back navigation works)
     if (project.script) {
@@ -3264,6 +3331,35 @@ const Index = () => {
             // Save tags to project
             autoSave("complete", { tags: newTags });
           }}
+          projectStatus={projectStatus}
+          currentStep={pipelineCurrentStep}
+          onStopPipeline={async () => {
+            try {
+              const result = await stopPipeline(projectId);
+              if (result.success) {
+                toast({
+                  title: "Pipeline Stopping",
+                  description: result.message,
+                });
+                // Update local status
+                setProjectStatus('cancelled');
+                setPipelineCurrentStep(undefined);
+              } else {
+                toast({
+                  title: "Failed to Stop",
+                  description: result.error || "Could not stop pipeline",
+                  variant: "destructive",
+                });
+              }
+            } catch (err) {
+              console.error('[Index] Failed to stop pipeline:', err);
+              toast({
+                title: "Error",
+                description: "Failed to stop pipeline",
+                variant: "destructive",
+              });
+            }
+          }}
         />
       ) : (
         <main className="flex flex-col items-center justify-center px-4 py-32">
@@ -3560,7 +3656,12 @@ const Index = () => {
                           title: "Pipeline Started!",
                           description: "Your video is being generated on the server. Check the Projects page for progress.",
                         });
-                        // Navigate to projects page
+                        // Set project state to track running pipeline
+                        setProjectId(newProjectId);
+                        setProjectStatus('running');
+                        setPipelineCurrentStep('transcript');
+                        setVideoTitle(settings.projectTitle || "History Documentary");
+                        // Navigate to results page to show progress
                         setViewState("results");
                       } else {
                         toast({

@@ -100,6 +100,16 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
     setDeletingId(project.id);
 
     try {
+      // If project is running on server, stop the pipeline first
+      if (project.status === 'running') {
+        console.log('[ProjectsDrawer] Stopping running pipeline before delete:', project.id);
+        try {
+          await stopPipeline(project.id);
+        } catch (stopErr) {
+          console.warn('[ProjectsDrawer] Failed to stop pipeline (may already be stopped):', stopErr);
+        }
+      }
+
       // Delete all files in the project folder from Supabase storage
       const { data: files, error: listError } = await supabase.storage
         .from("generated-assets")

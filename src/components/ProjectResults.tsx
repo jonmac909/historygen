@@ -99,6 +99,10 @@ interface ProjectResultsProps {
   // Tags
   tags?: string[];
   onTagsChange?: (tags: string[]) => void;
+  // Server-side pipeline status
+  projectStatus?: 'in_progress' | 'completed' | 'archived' | 'running' | 'cancelled' | 'failed';
+  currentStep?: string;
+  onStopPipeline?: () => void;
 }
 
 // Parse SRT to get timing info
@@ -232,6 +236,9 @@ export function ProjectResults({
   onVideoUpload,
   tags = [],
   onTagsChange,
+  projectStatus,
+  currentStep,
+  onStopPipeline,
 }: ProjectResultsProps) {
   // Helper to toggle step approval
   const toggleApproval = (step: PipelineStep, e: React.MouseEvent) => {
@@ -1448,8 +1455,54 @@ export function ProjectResults({
         )}
       </div>
 
+      {/* Running on Server Banner */}
+      {projectStatus === 'running' && (
+        <div className="mb-6 p-4 rounded-lg border border-amber-500/30 bg-amber-500/10 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-2">
+                <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                <span className="font-medium text-amber-700 dark:text-amber-400">Running on Server</span>
+              </span>
+              {currentStep && (
+                <span className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {PIPELINE_STEPS[currentStep]?.label || currentStep}
+                  </span>
+                </span>
+              )}
+            </div>
+            {onStopPipeline && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onStopPipeline}
+                className="gap-1 text-muted-foreground hover:text-destructive"
+              >
+                <Square className="w-3 h-3 fill-current" />
+                Stop
+              </Button>
+            )}
+          </div>
+          {currentStep && (
+            <div className="space-y-1">
+              <div className="w-full bg-muted rounded-full h-2 overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 rounded-full transition-all duration-1000 ease-out"
+                  style={{ width: `${PIPELINE_STEPS[currentStep]?.percent || 0}%` }}
+                />
+              </div>
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>{PIPELINE_STEPS[currentStep]?.label || currentStep}</span>
+                <span>{PIPELINE_STEPS[currentStep]?.percent || 0}%</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Resume Full Auto Banner */}
-      {(getResumeStep() || isResuming) && (
+      {projectStatus !== 'running' && (getResumeStep() || isResuming) && (
         <div className="mb-6 p-4 rounded-lg border border-primary/20 bg-primary/5 space-y-3">
           <div className="flex items-center gap-3">
             <Button
