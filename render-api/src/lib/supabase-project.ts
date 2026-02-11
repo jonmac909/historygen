@@ -21,9 +21,9 @@ export function getSupabaseClient(): SupabaseClient | null {
   return createClient(supabaseUrl, supabaseKey);
 }
 
-// Project update fields (partial)
+// Project update fields - these MUST match exact database column names
 export interface ProjectUpdate {
-  script?: string;
+  script_content?: string;  // NOT "script" - database column is script_content
   audio_url?: string;
   audio_duration?: number;
   audio_segments?: any[];
@@ -41,6 +41,7 @@ export interface ProjectUpdate {
   current_step?: string;
   status?: string;
   updated_at?: string;
+  video_title?: string;
 }
 
 /**
@@ -181,7 +182,7 @@ export async function saveScriptToProject(
   script: string
 ): Promise<{ success: boolean; error?: string }> {
   return updateProject(projectId, {
-    script,
+    script_content: script,  // Database column is script_content, not script
     current_step: 'audio',
   });
 }

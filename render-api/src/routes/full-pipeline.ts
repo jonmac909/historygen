@@ -256,6 +256,9 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
 
     console.log(`   ✓ Got transcript: ${transcript.length} chars, title: "${videoTitle}"`);
 
+    // Update video title in database
+    await updateProject(projectId, { video_title: videoTitle });
+
     // =========================================================================
     // STEP 2: Rewrite Script
     // =========================================================================
@@ -287,8 +290,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     script = scriptResult.script;
     console.log(`   ✓ Generated script: ${scriptResult.wordCount || script.split(/\s+/).length} words`);
 
-    // Save script to project
-    await updateProject(projectId, { script });
+    // Save script to project (database column is script_content, not script)
+    await updateProject(projectId, { script_content: script });
 
     // =========================================================================
     // STEP 3: Generate Audio
@@ -522,7 +525,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     const finalUpdates: ProjectUpdate = {
       video_url: renderResult.videoUrl,
       current_step: 'complete',
-      status: 'complete',
+      status: 'completed',  // Must be 'completed' not 'complete' to match frontend
     };
     if (renderResult.smokeEmbersVideoUrl) {
       finalUpdates.smoke_embers_video_url = renderResult.smokeEmbersVideoUrl;
