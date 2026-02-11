@@ -301,6 +301,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     await updatePipelineStatus(projectId, 'audio', 'running');
 
     console.log(`\n🔊 [Pipeline ${projectId}] Step 3: Generating audio...`);
+    console.log(`   Script to send: ${script?.length || 0} chars, ${script?.split(/\s+/).length || 0} words`);
     const audioResult = await callStreamingApi<{
       success?: boolean;
       type?: string;
@@ -310,7 +311,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       totalDuration?: number;
       error?: string;
     }>('/generate-audio', {
-      text: script,
+      script,  // FIXED: audio endpoint expects 'script', not 'text'
       projectId,
     }, 1200000); // 20 min for audio
 
