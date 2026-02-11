@@ -2585,3 +2585,107 @@ export async function reconnectOrphanedImages(projectId: string): Promise<{ succ
     };
   }
 }
+
+// ============================================================================
+// Full Pipeline (Server-Side Automation)
+// ============================================================================
+
+export interface FullPipelineConfig {
+  projectId: string;
+  youtubeUrl: string;
+  title?: string;
+  topic?: string;
+  template?: string;
+  wordCount?: number;
+  imageCount?: number;
+  generateClips?: boolean;
+  clipCount?: number;
+  clipDuration?: number;
+  effects?: {
+    embers?: boolean;
+    smoke_embers?: boolean;
+  };
+}
+
+export interface FullPipelineResult {
+  success: boolean;
+  message?: string;
+  projectId?: string;
+  error?: string;
+}
+
+export interface PipelineStatusResult {
+  projectId: string;
+  currentStep: string;
+  status: string;
+  videoUrl?: string;
+  smokeEmbersVideoUrl?: string;
+}
+
+/**
+ * Start a full pipeline run on the server.
+ * Returns immediately - pipeline runs in background.
+ * User can close browser and come back to finished project.
+ */
+export async function startFullPipeline(config: FullPipelineConfig): Promise<FullPipelineResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/full-pipeline`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Full pipeline error:', response.status, errorText);
+      return { success: false, error: `Failed to start pipeline: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Full pipeline error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to start pipeline'
+    };
+  }
+}
+
+/**
+ * Check the status of a running pipeline.
+ */
+export async function getPipelineStatus(projectId: string): Promise<PipelineStatusResult | null> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/full-pipeline/status/${projectId}`, {
+      method: 'GET',
+      headers: withRenderAuth({}),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Pipeline status error:', error);
+    return null;
+  }
+}

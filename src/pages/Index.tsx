@@ -42,6 +42,7 @@ import {
   generateClipPrompts,
   generateVideoClipsStreaming,
   saveScriptToStorage,
+  startFullPipeline,
   type ImagePromptWithTiming,
   type AudioSegment,
   type ClipPrompt,
@@ -3528,6 +3529,53 @@ const Index = () => {
                   >
                     <Zap className="w-5 h-5 mr-2" />
                     Full Auto Generate
+                  </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!inputValue.trim()) return;
+
+                      // Create a new project ID
+                      const newProjectId = crypto.randomUUID();
+
+                      toast({
+                        title: "Starting Server Pipeline",
+                        description: "Pipeline will run on server. You can close your browser and come back later.",
+                      });
+
+                      const result = await startFullPipeline({
+                        projectId: newProjectId,
+                        youtubeUrl: inputValue.trim(),
+                        title: settings.projectTitle,
+                        topic: settings.topic,
+                        wordCount: settings.wordCount,
+                        imageCount: settings.imageCount,
+                        generateClips: true,
+                        clipCount: 12,
+                        clipDuration: 5,
+                        effects: { smoke_embers: true },
+                      });
+
+                      if (result.success) {
+                        toast({
+                          title: "Pipeline Started!",
+                          description: "Your video is being generated on the server. Check the Projects page for progress.",
+                        });
+                        // Navigate to projects page
+                        setViewState("results");
+                      } else {
+                        toast({
+                          title: "Failed to Start Pipeline",
+                          description: result.error || "Unknown error",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={viewState !== "create" || !inputValue.trim()}
+                    variant="outline"
+                    className="w-full rounded-xl py-6 text-base border-green-500/30 hover:bg-green-500/10 text-green-400"
+                  >
+                    <Video className="w-5 h-5 mr-2" />
+                    Run on Server (Fire & Forget)
                   </Button>
                   <Button
                     onClick={() => setShowAutoPosterModal(true)}
