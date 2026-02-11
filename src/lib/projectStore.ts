@@ -30,7 +30,9 @@ export interface Project {
   settings: GenerationSettings;
 
   // Status replaces the old dual-storage system
-  status: 'in_progress' | 'completed' | 'archived';
+  // 'running' = server-side pipeline in progress
+  // 'cancelled' = pipeline was stopped by user
+  status: 'in_progress' | 'completed' | 'archived' | 'running' | 'cancelled' | 'failed';
   currentStep: 'script' | 'audio' | 'captions' | 'prompts' | 'images' | 'complete';
 
   // Version tracking (max 3 versions per project)

@@ -22,6 +22,9 @@ import { createProject, updateProject, getSupabaseClient, ProjectUpdate } from '
 
 const router = Router();
 
+// Track running pipelines for cancellation
+const runningPipelines = new Map<string, { aborted: boolean; currentStep: string }>();
+
 // Pipeline configuration
 const DEFAULT_IMAGE_COUNT = 200;
 const DEFAULT_WORD_COUNT = 3000;
@@ -150,6 +153,14 @@ async function callStreamingApi<T>(
 }
 
 /**
+ * Check if pipeline should abort
+ */
+function shouldAbort(projectId: string): boolean {
+  const state = runningPipelines.get(projectId);
+  return state?.aborted === true;
+}
+
+/**
  * Update project status in Supabase
  */
 async function updatePipelineStatus(
@@ -192,6 +203,9 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
   console.log(`   Image count: ${imageCount}`);
   console.log(`   Generate clips: ${generateClips}`);
 
+  // Register this pipeline as running
+  runningPipelines.set(projectId, { aborted: false, currentStep: 'init' });
+
   let transcript = '';
   let videoTitle = title || '';
   let script = '';
@@ -208,6 +222,9 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // =========================================================================
     // STEP 0: Create project in database
     // =========================================================================
+    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'creating' });
+
     console.log(`\n📦 [Pipeline ${projectId}] Creating project in database...`);
     const createResult = await createProject(projectId, youtubeUrl, title);
     if (!createResult.success) {
@@ -218,6 +235,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // =========================================================================
     // STEP 1: Get YouTube Transcript
     // =========================================================================
+    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'transcript' });
     await updatePipelineStatus(projectId, 'transcript', 'running');
 
     console.log(`\n📝 [Pipeline ${projectId}] Step 1: Getting YouTube transcript...`);
@@ -240,6 +259,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // =========================================================================
     // STEP 2: Rewrite Script
     // =========================================================================
+    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'script' });
     await updatePipelineStatus(projectId, 'script', 'running');
 
     console.log(`\n✍️  [Pipeline ${projectId}] Step 2: Rewriting script (${wordCount} words)...`);
@@ -272,6 +293,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // =========================================================================
     // STEP 3: Generate Audio
     // =========================================================================
+    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'audio' });
     await updatePipelineStatus(projectId, 'audio', 'running');
 
     console.log(`\n🔊 [Pipeline ${projectId}] Step 3: Generating audio...`);
@@ -307,6 +330,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // =========================================================================
     // STEP 4: Generate Captions
     // =========================================================================
+    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'captions' });
     await updatePipelineStatus(projectId, 'captions', 'running');
 
     console.log(`\n📄 [Pipeline ${projectId}] Step 4: Generating captions...`);
@@ -332,6 +357,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // =========================================================================
     // STEP 5: Generate Image Prompts
     // =========================================================================
+    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'prompts' });
     await updatePipelineStatus(projectId, 'prompts', 'running');
 
     console.log(`\n🎨 [Pipeline ${projectId}] Step 5: Generating ${imageCount} image prompts...`);
@@ -361,6 +388,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // =========================================================================
     // STEP 6: Generate Images
     // =========================================================================
+    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'images' });
     await updatePipelineStatus(projectId, 'images', 'running');
 
     console.log(`\n🖼️  [Pipeline ${projectId}] Step 6: Generating ${imagePrompts.length} images...`);
@@ -388,6 +417,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // STEP 7 (Optional): Generate Clip Prompts
     // =========================================================================
     if (generateClips) {
+      if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+      runningPipelines.set(projectId, { aborted: false, currentStep: 'clip_prompts' });
       await updatePipelineStatus(projectId, 'clip_prompts', 'running');
 
       console.log(`\n🎬 [Pipeline ${projectId}] Step 7: Generating ${clipCount} clip prompts...`);
@@ -416,6 +447,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       // STEP 8 (Optional): Generate Video Clips
       // =========================================================================
       if (clipPrompts.length > 0) {
+        if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+        runningPipelines.set(projectId, { aborted: false, currentStep: 'clips' });
         await updatePipelineStatus(projectId, 'clips', 'running');
 
         console.log(`\n🎥 [Pipeline ${projectId}] Step 8: Generating ${clipPrompts.length} video clips...`);
@@ -443,6 +476,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     // =========================================================================
     // STEP 9: Render Final Video
     // =========================================================================
+    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'render' });
     await updatePipelineStatus(projectId, 'render', 'running');
 
     console.log(`\n🎬 [Pipeline ${projectId}] Step 9: Rendering final video...`);
@@ -496,13 +531,21 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
 
     console.log(`\n✅ [Pipeline ${projectId}] Pipeline complete!`);
 
+    // Clean up tracking
+    runningPipelines.delete(projectId);
+
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error(`\n❌ [Pipeline ${projectId}] Pipeline failed:`, errorMessage);
+    const wasCancelled = errorMessage.includes('cancelled by user');
+
+    console.error(`\n❌ [Pipeline ${projectId}] Pipeline ${wasCancelled ? 'cancelled' : 'failed'}:`, errorMessage);
 
     await updateProject(projectId, {
-      status: 'failed',
+      status: wasCancelled ? 'cancelled' : 'failed',
     });
+
+    // Clean up tracking
+    runningPipelines.delete(projectId);
 
     throw error;
   }
@@ -580,6 +623,70 @@ router.get('/status/:projectId', async (req: Request, res: Response) => {
   } catch (error) {
     res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to get status' });
   }
+});
+
+/**
+ * DELETE /full-pipeline/:projectId
+ *
+ * Stop a running pipeline. The pipeline will stop at the next step boundary.
+ */
+router.delete('/:projectId', async (req: Request, res: Response) => {
+  const { projectId } = req.params;
+
+  const pipelineState = runningPipelines.get(projectId);
+
+  if (!pipelineState) {
+    // Check if project exists in database
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      const { data: project } = await supabase
+        .from('generation_projects')
+        .select('status')
+        .eq('id', projectId)
+        .single();
+
+      if (project) {
+        return res.json({
+          success: true,
+          message: 'Pipeline is not currently running',
+          projectId,
+          status: project.status,
+        });
+      }
+    }
+    return res.status(404).json({ error: 'Pipeline not found' });
+  }
+
+  // Mark for cancellation
+  console.log(`\n🛑 [Pipeline ${projectId}] Stopping at step: ${pipelineState.currentStep}`);
+  runningPipelines.set(projectId, { ...pipelineState, aborted: true });
+
+  res.json({
+    success: true,
+    message: `Pipeline will stop after current step (${pipelineState.currentStep})`,
+    projectId,
+    currentStep: pipelineState.currentStep,
+  });
+});
+
+/**
+ * GET /full-pipeline/running
+ *
+ * List all currently running pipelines.
+ */
+router.get('/running', async (req: Request, res: Response) => {
+  const running: { projectId: string; currentStep: string }[] = [];
+
+  runningPipelines.forEach((state, projectId) => {
+    if (!state.aborted) {
+      running.push({ projectId, currentStep: state.currentStep });
+    }
+  });
+
+  res.json({
+    count: running.length,
+    pipelines: running,
+  });
 });
 
 export default router;

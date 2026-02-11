@@ -51,15 +51,18 @@ export function AllProjectsView({
     return project.videoTitle || "Untitled Project";
   };
 
-  // Get status badge text
-  const getStatusBadge = (project: Project): string => {
-    if (project.status === 'completed') return 'Complete';
-    if (project.smokeEmbersVideoUrl || project.embersVideoUrl || project.videoUrl) return 'Rendered';
-    if (project.imageUrls && project.imageUrls.length > 0) return 'Images Ready';
-    if (project.srtContent) return 'Captions Ready';
-    if (project.audioUrl) return 'Audio Ready';
-    if (project.script) return 'Script Ready';
-    return 'In Progress';
+  // Get status badge text and style info
+  const getStatusBadge = (project: Project): { text: string; isRunning: boolean } => {
+    if (project.status === 'running') return { text: 'Running on Server', isRunning: true };
+    if (project.status === 'failed') return { text: 'Failed', isRunning: false };
+    if (project.status === 'cancelled') return { text: 'Cancelled', isRunning: false };
+    if (project.status === 'completed') return { text: 'Complete', isRunning: false };
+    if (project.smokeEmbersVideoUrl || project.embersVideoUrl || project.videoUrl) return { text: 'Rendered', isRunning: false };
+    if (project.imageUrls && project.imageUrls.length > 0) return { text: 'Images Ready', isRunning: false };
+    if (project.srtContent) return { text: 'Captions Ready', isRunning: false };
+    if (project.audioUrl) return { text: 'Audio Ready', isRunning: false };
+    if (project.script) return { text: 'Script Ready', isRunning: false };
+    return { text: 'In Progress', isRunning: false };
   };
 
   return (
@@ -99,7 +102,7 @@ export function AllProjectsView({
           {projects.map((project) => {
             const thumbnail = getProjectThumbnail(project);
             const title = getProjectTitle(project);
-            const statusBadge = getStatusBadge(project);
+            const { text: statusText, isRunning } = getStatusBadge(project);
             const isCurrent = project.id === currentProjectId;
 
             return (
@@ -127,14 +130,21 @@ export function AllProjectsView({
                   )}
                   {/* Status badge */}
                   <div className="absolute top-2 right-2">
-                    <span className={`text-xs px-2 py-1 rounded-full ${
-                      statusBadge === 'Complete'
+                    <span className={`text-xs px-2 py-1 rounded-full flex items-center gap-1.5 ${
+                      isRunning
+                        ? 'bg-amber-500/90 text-white'
+                        : statusText === 'Complete'
                         ? 'bg-green-500/90 text-white'
-                        : statusBadge === 'Rendered'
+                        : statusText === 'Rendered'
                         ? 'bg-blue-500/90 text-white'
+                        : statusText === 'Failed' || statusText === 'Cancelled'
+                        ? 'bg-red-500/90 text-white'
                         : 'bg-black/70 text-white'
                     }`}>
-                      {statusBadge}
+                      {isRunning && (
+                        <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
+                      )}
+                      {statusText}
                     </span>
                   </div>
                   {/* Current indicator */}

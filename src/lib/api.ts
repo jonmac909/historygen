@@ -2689,3 +2689,47 @@ export async function getPipelineStatus(projectId: string): Promise<PipelineStat
     return null;
   }
 }
+
+export interface StopPipelineResult {
+  success: boolean;
+  message?: string;
+  projectId?: string;
+  currentStep?: string;
+  error?: string;
+}
+
+/**
+ * Stop a running pipeline.
+ * The pipeline will stop at the next step boundary.
+ */
+export async function stopPipeline(projectId: string): Promise<StopPipelineResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/full-pipeline/${projectId}`, {
+      method: 'DELETE',
+      headers: withRenderAuth({}),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Stop pipeline error:', response.status, errorText);
+      return { success: false, error: `Failed to stop pipeline: ${response.status}` };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Stop pipeline error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to stop pipeline'
+    };
+  }
+}

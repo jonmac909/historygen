@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, Trash2, ChevronRight, ChevronDown, Loader2, Heart, Globe, Clock, Archive } from "lucide-react";
+import { FolderOpen, Trash2, ChevronRight, ChevronDown, Loader2, Heart, Globe, Clock, Archive, Square, ServerCog } from "lucide-react";
+import { stopPipeline } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -44,7 +45,7 @@ interface ProjectsDrawerProps {
 }
 
 // Status options for projects
-type ProjectStatus = 'in_progress' | 'live' | 'archived';
+type ProjectStatus = 'in_progress' | 'live' | 'archived' | 'running';
 
 const STATUS_OPTIONS: { value: ProjectStatus; label: string; icon: typeof Clock }[] = [
   { value: 'in_progress', label: 'In Progress', icon: Clock },
@@ -52,7 +53,10 @@ const STATUS_OPTIONS: { value: ProjectStatus; label: string; icon: typeof Clock 
   { value: 'archived', label: 'Archived', icon: Archive },
 ];
 
-// Filter options including 'all'
+// Running status is shown separately, not in the dropdown
+const RUNNING_STATUS = { value: 'running' as const, label: 'Running on Server', icon: ServerCog };
+
+// Filter options including 'all' and 'running'
 type FilterOption = 'all' | ProjectStatus;
 
 export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawerProps) {
@@ -194,6 +198,21 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
     }
   };
 
+  const handleStopPipeline = (project: Project) => {
+    // Update local state to show cancelled status
+    const now = Date.now();
+    setAllProjects(prev => {
+      const updated = prev.map(p =>
+        p.id === project.id ? { ...p, status: 'cancelled' as const, updatedAt: now } : p
+      );
+      return updated.sort((a, b) => b.updatedAt - a.updatedAt);
+    });
+    toast({
+      title: "Pipeline Stopped",
+      description: `"${project.videoTitle}" will stop after current step.`,
+    });
+  };
+
   // Filter projects based on current filter
   const filteredProjects = statusFilter === 'all'
     ? allProjects
@@ -250,6 +269,14 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
                   <SelectItem value="all" className="text-xs">
                     All ({allProjects.length})
                   </SelectItem>
+                  {allProjects.filter(p => p.status === 'running').length > 0 && (
+                    <SelectItem value="running" className="text-xs">
+                      <span className="flex items-center gap-1.5">
+                        <ServerCog className="w-3 h-3 shrink-0 text-amber-500" />
+                        <span className="whitespace-nowrap">Running ({allProjects.filter(p => p.status === 'running').length})</span>
+                      </span>
+                    </SelectItem>
+                  )}
                   <SelectItem value="in_progress" className="text-xs">
                     <span className="flex items-center gap-1.5">
                       <Clock className="w-3 h-3 shrink-0" />
@@ -299,6 +326,7 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
                   onDelete={() => setConfirmDelete(project)}
                   onStatusChange={(status) => handleStatusChange(project, status)}
                   onToggleFavorite={(e) => handleToggleFavorite(project, e)}
+                  onStopPipeline={handleStopPipeline}
                   deletingId={deletingId}
                   setIsOpen={setIsOpen}
                 />
@@ -339,6 +367,7 @@ function ProjectCard({
   onDelete,
   onStatusChange,
   onToggleFavorite,
+  onStopPipeline,
   deletingId,
   setIsOpen,
 }: {
@@ -347,12 +376,14 @@ function ProjectCard({
   onDelete: () => void;
   onStatusChange: (status: ProjectStatus) => void;
   onToggleFavorite?: (e: React.MouseEvent) => void;
+  onStopPipeline?: (project: Project) => void;
   deletingId: string | null;
   setIsOpen: (open: boolean) => void;
 }) {
   const [versions, setVersions] = useState<Project[]>([]);
   const [isVersionsOpen, setIsVersionsOpen] = useState(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
+  const [isStopping, setIsStopping] = useState(false);
 
   // Load versions when dropdown is opened
   const handleVersionToggle = async (e: React.MouseEvent) => {
@@ -374,6 +405,24 @@ function ProjectCard({
 
   // Get current status (map 'completed' to 'live' for display)
   const displayStatus = project.status === 'completed' ? 'live' : (project.status as ProjectStatus);
+  const isRunning = project.status === 'running';
+
+  const handleStopPipeline = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isStopping) return;
+
+    setIsStopping(true);
+    try {
+      const result = await stopPipeline(project.id);
+      if (result.success) {
+        onStopPipeline?.(project);
+      }
+    } catch (error) {
+      console.error('Failed to stop pipeline:', error);
+    } finally {
+      setIsStopping(false);
+    }
+  };
 
   return (
     <div className="space-y-1">
@@ -395,28 +444,52 @@ function ProjectCard({
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {/* Status selector */}
-          <Select
-            value={displayStatus}
-            onValueChange={(value) => onStatusChange(value as ProjectStatus)}
-          >
-            <SelectTrigger
-              className="h-7 w-auto text-xs"
-              onClick={(e) => e.stopPropagation()}
+          {/* Running indicator with stop button */}
+          {isRunning ? (
+            <div className="flex items-center gap-1">
+              <span className="flex items-center gap-1.5 text-xs px-2 py-1 bg-amber-500/20 text-amber-600 rounded-md">
+                <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
+                Running
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                onClick={handleStopPipeline}
+                disabled={isStopping}
+                title="Stop pipeline"
+              >
+                {isStopping ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Square className="w-3.5 h-3.5 fill-current" />
+                )}
+              </Button>
+            </div>
+          ) : (
+            /* Status selector */
+            <Select
+              value={displayStatus}
+              onValueChange={(value) => onStatusChange(value as ProjectStatus)}
             >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value} className="text-xs">
-                  <span className="flex items-center gap-1.5 whitespace-nowrap">
-                    <option.icon className="w-3 h-3 shrink-0" />
-                    {option.label}
-                  </span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+              <SelectTrigger
+                className="h-7 w-auto text-xs"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value} className="text-xs">
+                    <span className="flex items-center gap-1.5 whitespace-nowrap">
+                      <option.icon className="w-3 h-3 shrink-0" />
+                      {option.label}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
           {/* Version dropdown toggle */}
           <Button
             variant="ghost"
