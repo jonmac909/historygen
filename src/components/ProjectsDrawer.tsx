@@ -615,28 +615,36 @@ function ProjectCard({
               </Button>
             </div>
           ) : (
-            /* Status selector */
-            <Select
-              value={displayStatus}
-              onValueChange={(value) => onStatusChange(value as ProjectStatus)}
-            >
-              <SelectTrigger
-                className="h-7 w-auto text-xs"
-                onClick={(e) => e.stopPropagation()}
+            /* Status selector with current step indicator */
+            <div className="flex items-center gap-1">
+              {/* Show current step for in_progress projects */}
+              {displayStatus === 'in_progress' && project.currentStep && project.currentStep !== 'complete' && (
+                <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-600 rounded-md">
+                  {getRunningStepLabel(project.currentStep)}
+                </span>
+              )}
+              <Select
+                value={displayStatus}
+                onValueChange={(value) => onStatusChange(value as ProjectStatus)}
               >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUS_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value} className="text-xs">
-                    <span className="flex items-center gap-1.5 whitespace-nowrap">
-                      <option.icon className="w-3 h-3 shrink-0" />
-                      {option.label}
-                    </span>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                <SelectTrigger
+                  className="h-7 w-auto text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {STATUS_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value} className="text-xs">
+                      <span className="flex items-center gap-1.5 whitespace-nowrap">
+                        <option.icon className="w-3 h-3 shrink-0" />
+                        {option.label}
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           )}
           {/* Version dropdown toggle */}
           <Button

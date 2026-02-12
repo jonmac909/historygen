@@ -18,7 +18,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { createProject, updateProject, getSupabaseClient, ProjectUpdate } from '../lib/supabase-project';
+import { createProject, updateProject, getSupabaseClient, getProjectData, ProjectUpdate } from '../lib/supabase-project';
 
 const router = Router();
 
@@ -220,202 +220,252 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
 
   try {
     // =========================================================================
-    // STEP 0: Create project in database
+    // STEP 0: Check existing data for checkpoint/resume
     // =========================================================================
     if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+    runningPipelines.set(projectId, { aborted: false, currentStep: 'checkpoint' });
+
+    console.log(`\n🔍 [Pipeline ${projectId}] Checking for existing data (checkpoint)...`);
+    const existingData = await getProjectData(projectId);
+
+    if (existingData.exists) {
+      console.log(`   Found existing project:`);
+      console.log(`   - Script: ${existingData.script ? `${existingData.script.length} chars` : 'none'}`);
+      console.log(`   - Audio: ${existingData.audioUrl || 'none'}`);
+      console.log(`   - Captions: ${existingData.srtContent ? `${existingData.srtContent.length} chars` : 'none'}`);
+      console.log(`   - Images: ${existingData.imageUrls?.length || 0}`);
+
+      // Use existing data
+      if (existingData.script) script = existingData.script;
+      if (existingData.videoTitle) videoTitle = existingData.videoTitle;
+      if (existingData.audioUrl) audioUrl = existingData.audioUrl;
+      if (existingData.audioDuration) audioDuration = existingData.audioDuration;
+      if (existingData.audioSegments) audioSegments = existingData.audioSegments;
+      if (existingData.srtContent) srtContent = existingData.srtContent;
+      if (existingData.imagePrompts) imagePrompts = existingData.imagePrompts;
+      if (existingData.imageUrls) imageUrls = existingData.imageUrls;
+    }
+
+    // =========================================================================
+    // STEP 0b: Create/update project in database
+    // =========================================================================
     runningPipelines.set(projectId, { aborted: false, currentStep: 'creating' });
 
-    console.log(`\n📦 [Pipeline ${projectId}] Creating project in database...`);
+    console.log(`\n📦 [Pipeline ${projectId}] Creating/updating project in database...`);
     const createResult = await createProject(projectId, youtubeUrl, title);
     if (!createResult.success) {
       throw new Error(createResult.error || 'Failed to create project');
     }
-    console.log(`   ✓ Project created`);
+    console.log(`   ✓ Project ready`);
 
     // =========================================================================
-    // STEP 1: Get YouTube Transcript
+    // STEP 1: Get YouTube Transcript (skip if we have script)
     // =========================================================================
-    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
-    runningPipelines.set(projectId, { aborted: false, currentStep: 'transcript' });
-    await updatePipelineStatus(projectId, 'transcript', 'running');
+    if (!script) {
+      if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+      runningPipelines.set(projectId, { aborted: false, currentStep: 'transcript' });
+      await updatePipelineStatus(projectId, 'transcript', 'running');
 
-    console.log(`\n📝 [Pipeline ${projectId}] Step 1: Getting YouTube transcript...`);
-    const transcriptResult = await callInternalApi<{
-      success: boolean;
-      transcript?: string;
-      title?: string;
-      error?: string;
-    }>('/get-youtube-transcript', { url: youtubeUrl }, 120000);
+      console.log(`\n📝 [Pipeline ${projectId}] Step 1: Getting YouTube transcript...`);
+      const transcriptResult = await callInternalApi<{
+        success: boolean;
+        transcript?: string;
+        title?: string;
+        error?: string;
+      }>('/get-youtube-transcript', { url: youtubeUrl }, 120000);
 
-    if (!transcriptResult.success || !transcriptResult.transcript) {
-      throw new Error(transcriptResult.error || 'Failed to get transcript');
+      if (!transcriptResult.success || !transcriptResult.transcript) {
+        throw new Error(transcriptResult.error || 'Failed to get transcript');
+      }
+
+      transcript = transcriptResult.transcript;
+      videoTitle = transcriptResult.title || title || 'Untitled';
+
+      console.log(`   ✓ Got transcript: ${transcript.length} chars, title: "${videoTitle}"`);
+
+      // Update video title in database
+      await updateProject(projectId, { video_title: videoTitle });
+    } else {
+      console.log(`\n⏭️  [Pipeline ${projectId}] Skipping transcript (have script)`);
     }
 
-    transcript = transcriptResult.transcript;
-    videoTitle = transcriptResult.title || title || 'Untitled';
-
-    console.log(`   ✓ Got transcript: ${transcript.length} chars, title: "${videoTitle}"`);
-
-    // Update video title in database
-    await updateProject(projectId, { video_title: videoTitle });
-
     // =========================================================================
-    // STEP 2: Rewrite Script
+    // STEP 2: Rewrite Script (skip if already exists)
     // =========================================================================
-    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
-    runningPipelines.set(projectId, { aborted: false, currentStep: 'script' });
-    await updatePipelineStatus(projectId, 'script', 'running');
+    if (!script) {
+      if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+      runningPipelines.set(projectId, { aborted: false, currentStep: 'script' });
+      await updatePipelineStatus(projectId, 'script', 'running');
 
-    console.log(`\n✍️  [Pipeline ${projectId}] Step 2: Rewriting script (${wordCount} words)...`);
-    const scriptResult = await callStreamingApi<{
-      success?: boolean;
-      type?: string;
-      script?: string;
-      wordCount?: number;
-      error?: string;
-    }>('/rewrite-script', {
-      transcript,
-      template: template || '',
-      title: videoTitle,
-      topic: topic || videoTitle,
-      wordCount,
-      model: 'claude-sonnet-4-5',
-      projectId,
-    }, 1800000); // 30 min for long scripts
+      console.log(`\n✍️  [Pipeline ${projectId}] Step 2: Rewriting script (${wordCount} words)...`);
+      const scriptResult = await callStreamingApi<{
+        success?: boolean;
+        type?: string;
+        script?: string;
+        wordCount?: number;
+        error?: string;
+      }>('/rewrite-script', {
+        transcript,
+        template: template || '',
+        title: videoTitle,
+        topic: topic || videoTitle,
+        wordCount,
+        model: 'claude-sonnet-4-5',
+        projectId,
+      }, 1800000); // 30 min for long scripts
 
-    if (!scriptResult.script) {
-      throw new Error(scriptResult.error || 'Failed to generate script');
+      if (!scriptResult.script) {
+        throw new Error(scriptResult.error || 'Failed to generate script');
+      }
+
+      script = scriptResult.script;
+      console.log(`   ✓ Generated script: ${scriptResult.wordCount || script.split(/\s+/).length} words`);
+
+      // Save script to project (database column is script_content, not script)
+      await updateProject(projectId, { script_content: script });
+    } else {
+      console.log(`\n⏭️  [Pipeline ${projectId}] Skipping script generation (${script.length} chars already saved)`);
     }
 
-    script = scriptResult.script;
-    console.log(`   ✓ Generated script: ${scriptResult.wordCount || script.split(/\s+/).length} words`);
-
-    // Save script to project (database column is script_content, not script)
-    await updateProject(projectId, { script_content: script });
-
     // =========================================================================
-    // STEP 3: Generate Audio
+    // STEP 3: Generate Audio (skip if already exists)
     // =========================================================================
-    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
-    runningPipelines.set(projectId, { aborted: false, currentStep: 'audio' });
-    await updatePipelineStatus(projectId, 'audio', 'running');
+    if (!audioUrl) {
+      if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+      runningPipelines.set(projectId, { aborted: false, currentStep: 'audio' });
+      await updatePipelineStatus(projectId, 'audio', 'running');
 
-    console.log(`\n🔊 [Pipeline ${projectId}] Step 3: Generating audio...`);
-    console.log(`   Script to send: ${script?.length || 0} chars, ${script?.split(/\s+/).length || 0} words`);
-    const audioResult = await callStreamingApi<{
-      success?: boolean;
-      type?: string;
-      audioUrl?: string;
-      duration?: number;
-      segments?: any[];
-      totalDuration?: number;
-      error?: string;
-    }>('/generate-audio', {
-      script,  // FIXED: audio endpoint expects 'script', not 'text'
-      projectId,
-    }, 1200000); // 20 min for audio
+      console.log(`\n🔊 [Pipeline ${projectId}] Step 3: Generating audio...`);
+      console.log(`   Script to send: ${script?.length || 0} chars, ${script?.split(/\s+/).length || 0} words`);
+      const audioResult = await callStreamingApi<{
+        success?: boolean;
+        type?: string;
+        audioUrl?: string;
+        duration?: number;
+        segments?: any[];
+        totalDuration?: number;
+        error?: string;
+      }>('/generate-audio', {
+        script,  // FIXED: audio endpoint expects 'script', not 'text'
+        projectId,
+      }, 1200000); // 20 min for audio
 
-    if (!audioResult.audioUrl) {
-      throw new Error(audioResult.error || 'Failed to generate audio');
+      if (!audioResult.audioUrl) {
+        throw new Error(audioResult.error || 'Failed to generate audio');
+      }
+
+      audioUrl = audioResult.audioUrl;
+      audioDuration = audioResult.totalDuration || audioResult.duration || 0;
+      audioSegments = audioResult.segments || [];
+      console.log(`   ✓ Generated audio: ${audioDuration.toFixed(1)}s, ${audioSegments.length} segments`);
+
+      // Save audio to project
+      await updateProject(projectId, {
+        audio_url: audioUrl,
+        audio_duration: audioDuration,
+        audio_segments: audioSegments,
+      });
+    } else {
+      console.log(`\n⏭️  [Pipeline ${projectId}] Skipping audio generation (${audioDuration.toFixed(1)}s already saved)`);
     }
 
-    audioUrl = audioResult.audioUrl;
-    audioDuration = audioResult.totalDuration || audioResult.duration || 0;
-    audioSegments = audioResult.segments || [];
-    console.log(`   ✓ Generated audio: ${audioDuration.toFixed(1)}s, ${audioSegments.length} segments`);
-
-    // Save audio to project
-    await updateProject(projectId, {
-      audio_url: audioUrl,
-      audio_duration: audioDuration,
-      audio_segments: audioSegments,
-    });
-
     // =========================================================================
-    // STEP 4: Generate Captions
+    // STEP 4: Generate Captions (skip if already exists)
     // =========================================================================
-    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
-    runningPipelines.set(projectId, { aborted: false, currentStep: 'captions' });
-    await updatePipelineStatus(projectId, 'captions', 'running');
+    if (!srtContent) {
+      if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+      runningPipelines.set(projectId, { aborted: false, currentStep: 'captions' });
+      await updatePipelineStatus(projectId, 'captions', 'running');
 
-    console.log(`\n📄 [Pipeline ${projectId}] Step 4: Generating captions...`);
-    const captionsResult = await callInternalApi<{
-      success: boolean;
-      srtContent?: string;
-      error?: string;
-    }>('/generate-captions', {
-      segments: audioSegments,
-      projectId,
-    }, 60000);
+      console.log(`\n📄 [Pipeline ${projectId}] Step 4: Generating captions...`);
+      const captionsResult = await callInternalApi<{
+        success: boolean;
+        srtContent?: string;
+        error?: string;
+      }>('/generate-captions', {
+        segments: audioSegments,
+        projectId,
+      }, 60000);
 
-    if (!captionsResult.success || !captionsResult.srtContent) {
-      throw new Error(captionsResult.error || 'Failed to generate captions');
+      if (!captionsResult.success || !captionsResult.srtContent) {
+        throw new Error(captionsResult.error || 'Failed to generate captions');
+      }
+
+      srtContent = captionsResult.srtContent;
+      console.log(`   ✓ Generated captions: ${srtContent.length} chars`);
+
+      // Save captions to project
+      await updateProject(projectId, { srt_content: srtContent });
+    } else {
+      console.log(`\n⏭️  [Pipeline ${projectId}] Skipping captions (${srtContent.length} chars already saved)`);
     }
 
-    srtContent = captionsResult.srtContent;
-    console.log(`   ✓ Generated captions: ${srtContent.length} chars`);
-
-    // Save captions to project
-    await updateProject(projectId, { srt_content: srtContent });
-
     // =========================================================================
-    // STEP 5: Generate Image Prompts
+    // STEP 5: Generate Image Prompts (skip if already exists)
     // =========================================================================
-    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
-    runningPipelines.set(projectId, { aborted: false, currentStep: 'prompts' });
-    await updatePipelineStatus(projectId, 'prompts', 'running');
+    if (!imagePrompts || imagePrompts.length === 0) {
+      if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+      runningPipelines.set(projectId, { aborted: false, currentStep: 'prompts' });
+      await updatePipelineStatus(projectId, 'prompts', 'running');
 
-    console.log(`\n🎨 [Pipeline ${projectId}] Step 5: Generating ${imageCount} image prompts...`);
-    const promptsResult = await callStreamingApi<{
-      success?: boolean;
-      type?: string;
-      prompts?: any[];
-      error?: string;
-    }>('/generate-image-prompts', {
-      script,
-      srtContent,
-      audioDuration,
-      imageCount,
-      projectId,
-    }, 600000); // 10 min for prompts
+      console.log(`\n🎨 [Pipeline ${projectId}] Step 5: Generating ${imageCount} image prompts...`);
+      const promptsResult = await callStreamingApi<{
+        success?: boolean;
+        type?: string;
+        prompts?: any[];
+        error?: string;
+      }>('/generate-image-prompts', {
+        script,
+        srtContent,
+        audioDuration,
+        imageCount,
+        projectId,
+      }, 600000); // 10 min for prompts
 
-    if (!promptsResult.prompts || promptsResult.prompts.length === 0) {
-      throw new Error(promptsResult.error || 'Failed to generate image prompts');
+      if (!promptsResult.prompts || promptsResult.prompts.length === 0) {
+        throw new Error(promptsResult.error || 'Failed to generate image prompts');
+      }
+
+      imagePrompts = promptsResult.prompts;
+      console.log(`   ✓ Generated ${imagePrompts.length} image prompts`);
+
+      // Save prompts to project
+      await updateProject(projectId, { image_prompts: imagePrompts });
+    } else {
+      console.log(`\n⏭️  [Pipeline ${projectId}] Skipping prompts (${imagePrompts.length} prompts already saved)`);
     }
 
-    imagePrompts = promptsResult.prompts;
-    console.log(`   ✓ Generated ${imagePrompts.length} image prompts`);
-
-    // Save prompts to project
-    await updateProject(projectId, { image_prompts: imagePrompts });
-
     // =========================================================================
-    // STEP 6: Generate Images
+    // STEP 6: Generate Images (skip if already exists)
     // =========================================================================
-    if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
-    runningPipelines.set(projectId, { aborted: false, currentStep: 'images' });
-    await updatePipelineStatus(projectId, 'images', 'running');
+    if (!imageUrls || imageUrls.length === 0) {
+      if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
+      runningPipelines.set(projectId, { aborted: false, currentStep: 'images' });
+      await updatePipelineStatus(projectId, 'images', 'running');
 
-    console.log(`\n🖼️  [Pipeline ${projectId}] Step 6: Generating ${imagePrompts.length} images...`);
-    const imagesResult = await callStreamingApi<{
-      success?: boolean;
-      type?: string;
-      images?: string[];
-      error?: string;
-    }>('/generate-images', {
-      prompts: imagePrompts.map(p => p.sceneDescription || p.prompt),
-      projectId,
-    }, 3600000); // 60 min for images
+      console.log(`\n🖼️  [Pipeline ${projectId}] Step 6: Generating ${imagePrompts.length} images...`);
+      const imagesResult = await callStreamingApi<{
+        success?: boolean;
+        type?: string;
+        images?: string[];
+        error?: string;
+      }>('/generate-images', {
+        prompts: imagePrompts.map(p => p.sceneDescription || p.prompt),
+        projectId,
+      }, 3600000); // 60 min for images
 
-    if (!imagesResult.images || imagesResult.images.length === 0) {
-      throw new Error(imagesResult.error || 'Failed to generate images');
+      if (!imagesResult.images || imagesResult.images.length === 0) {
+        throw new Error(imagesResult.error || 'Failed to generate images');
+      }
+
+      imageUrls = imagesResult.images;
+      console.log(`   ✓ Generated ${imageUrls.length} images`);
+
+      // Save images to project
+      await updateProject(projectId, { image_urls: imageUrls });
+    } else {
+      console.log(`\n⏭️  [Pipeline ${projectId}] Skipping images (${imageUrls.length} images already saved)`);
     }
-
-    imageUrls = imagesResult.images;
-    console.log(`   ✓ Generated ${imageUrls.length} images`);
-
-    // Save images to project
-    await updateProject(projectId, { image_urls: imageUrls });
 
     // =========================================================================
     // STEP 7 (Optional): Generate Clip Prompts

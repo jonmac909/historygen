@@ -45,8 +45,63 @@ export interface ProjectUpdate {
 }
 
 /**
- * Create a new project record in Supabase
- * Call this when starting a new pipeline
+ * Get existing project data for checkpoint/resume logic
+ */
+export async function getProjectData(projectId: string): Promise<{
+  exists: boolean;
+  script?: string;
+  audioUrl?: string;
+  audioDuration?: number;
+  audioSegments?: any[];
+  srtContent?: string;
+  imagePrompts?: any[];
+  imageUrls?: string[];
+  videoUrl?: string;
+  videoTitle?: string;
+  error?: string;
+}> {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { exists: false, error: 'Supabase not configured' };
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('generation_projects')
+      .select('script_content, audio_url, audio_duration, audio_segments, srt_content, image_prompts, image_urls, video_url, video_title')
+      .eq('id', projectId)
+      .single();
+
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Project doesn't exist
+        return { exists: false };
+      }
+      console.error(`[SupabaseProject] Failed to get project ${projectId}:`, error);
+      return { exists: false, error: error.message };
+    }
+
+    return {
+      exists: true,
+      script: data.script_content || undefined,
+      audioUrl: data.audio_url || undefined,
+      audioDuration: data.audio_duration || undefined,
+      audioSegments: data.audio_segments || undefined,
+      srtContent: data.srt_content || undefined,
+      imagePrompts: data.image_prompts || undefined,
+      imageUrls: data.image_urls || undefined,
+      videoUrl: data.video_url || undefined,
+      videoTitle: data.video_title || undefined,
+    };
+  } catch (err) {
+    console.error(`[SupabaseProject] Exception getting project ${projectId}:`, err);
+    return { exists: false, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+/**
+ * Create or update project record in Supabase
+ * Uses upsert to handle both new and existing projects
  */
 export async function createProject(
   projectId: string,
@@ -60,25 +115,24 @@ export async function createProject(
 
   try {
     const now = new Date().toISOString();
+    // Use upsert to handle both new and existing projects
     const { error } = await supabase
       .from('generation_projects')
-      .insert({
+      .upsert({
         id: projectId,
         source_url: sourceUrl,
         source_type: 'youtube',
         video_title: title || 'Untitled',
         status: 'running',
-        current_step: 'transcript',
-        created_at: now,
         updated_at: now,
-      });
+      }, { onConflict: 'id' });
 
     if (error) {
-      console.error(`[SupabaseProject] Failed to create project ${projectId}:`, error);
+      console.error(`[SupabaseProject] Failed to create/update project ${projectId}:`, error);
       return { success: false, error: error.message };
     }
 
-    console.log(`[SupabaseProject] Created project ${projectId}`);
+    console.log(`[SupabaseProject] Created/updated project ${projectId}`);
     return { success: true };
   } catch (err) {
     console.error(`[SupabaseProject] Exception creating project ${projectId}:`, err);
