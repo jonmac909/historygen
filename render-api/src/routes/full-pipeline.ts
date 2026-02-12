@@ -578,6 +578,19 @@ router.post('/', async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Supabase not configured' });
   }
 
+  // Check if pipeline is already running for this project (prevent duplicates)
+  const existingPipeline = runningPipelines.get(config.projectId);
+  if (existingPipeline && !existingPipeline.aborted) {
+    console.log(`⚠️ Pipeline already running for project ${config.projectId} (step: ${existingPipeline.currentStep})`);
+    return res.json({
+      success: true,
+      message: 'Pipeline already running for this project.',
+      projectId: config.projectId,
+      alreadyRunning: true,
+      currentStep: existingPipeline.currentStep,
+    });
+  }
+
   console.log(`\n🚀 Starting full pipeline for project ${config.projectId}...`);
 
   // Start pipeline in background (fire and forget)

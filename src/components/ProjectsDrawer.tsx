@@ -496,6 +496,7 @@ function ProjectCard({
   const [isVersionsOpen, setIsVersionsOpen] = useState(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [isStopping, setIsStopping] = useState(false);
+  const [isResuming, setIsResuming] = useState(false);
 
   // Load versions when dropdown is opened
   const handleVersionToggle = async (e: React.MouseEvent) => {
@@ -533,6 +534,19 @@ function ProjectCard({
       console.error('Failed to stop pipeline:', error);
     } finally {
       setIsStopping(false);
+    }
+  };
+
+  const handleResumePipeline = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isResuming || !onResumePipeline) return;
+
+    setIsResuming(true);
+    try {
+      await onResumePipeline(project);
+    } finally {
+      // Keep loading for a bit to prevent spam (parent will update status)
+      setTimeout(() => setIsResuming(false), 3000);
     }
   };
 
@@ -589,10 +603,15 @@ function ProjectCard({
                 variant="ghost"
                 size="icon"
                 className="shrink-0 h-7 w-7 text-green-500 hover:text-green-600 hover:bg-green-500/10"
-                onClick={onResumePipeline ? (e) => { e.stopPropagation(); onResumePipeline(project); } : undefined}
+                onClick={handleResumePipeline}
+                disabled={isResuming}
                 title="Resume pipeline"
               >
-                <Play className="w-3.5 h-3.5 fill-current" />
+                {isResuming ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                )}
               </Button>
             </div>
           ) : (
