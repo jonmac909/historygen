@@ -97,56 +97,48 @@ async function callInternalApi<T>(
 }
 
 /**
- * Make a streaming internal API call and collect the full response
+ * Make an internal API call for long-running operations
+ * Uses non-streaming mode - the endpoint will return JSON when complete
+ *
+ * NOTE: Previously this used streaming mode (SSE) but response.text() blocks
+ * until the entire stream ends, causing timeouts for long operations.
+ * Non-streaming mode is simpler and more reliable for internal calls.
  */
-async function callStreamingApi<T>(
+async function callLongRunningApi<T>(
   endpoint: string,
   body: Record<string, unknown>,
-  timeout: number = 1800000 // 30 min default for streaming
+  timeout: number = 1800000 // 30 min default
 ): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
+    console.log(`[Pipeline] Calling ${endpoint} (timeout: ${timeout / 1000}s)...`);
+
     const response = await fetch(`${getInternalApiUrl()}${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Internal-Api-Key': getInternalApiKey(),
       },
-      body: JSON.stringify({ ...body, stream: true }),
+      // Don't pass stream: true - use non-streaming JSON response
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`Streaming API call to ${endpoint} failed: ${response.status} - ${errorText}`);
+      throw new Error(`API call to ${endpoint} failed: ${response.status} - ${errorText}`);
     }
 
-    // Parse SSE stream to get final result
-    const text = await response.text();
-    const lines = text.split('\n');
-    let lastData: T | null = null;
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(line.slice(6));
-          // Look for complete/done events
-          if (data.type === 'complete' || data.type === 'done' || data.success !== undefined) {
-            lastData = data;
-          }
-        } catch {
-          // Ignore parse errors for partial data
-        }
-      }
+    const result = await response.json() as T;
+    console.log(`[Pipeline] ${endpoint} completed successfully`);
+    return result;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`API call to ${endpoint} timed out after ${timeout / 1000}s`);
     }
-
-    if (!lastData) {
-      throw new Error(`No complete response from streaming endpoint ${endpoint}`);
-    }
-
-    return lastData;
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }
@@ -298,7 +290,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'script', 'running');
 
       console.log(`\n✍️  [Pipeline ${projectId}] Step 2: Rewriting script (${wordCount} words)...`);
-      const scriptResult = await callStreamingApi<{
+      const scriptResult = await callLongRunningApi<{
         success?: boolean;
         type?: string;
         script?: string;
@@ -312,7 +304,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         wordCount,
         model: 'claude-sonnet-4-5',
         projectId,
-      }, 1800000); // 30 min for long scripts
+      }, 3600000); // 60 min for 20k+ word scripts
 
       if (!scriptResult.script) {
         throw new Error(scriptResult.error || 'Failed to generate script');
@@ -337,7 +329,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
 
       console.log(`\n🔊 [Pipeline ${projectId}] Step 3: Generating audio...`);
       console.log(`   Script to send: ${script?.length || 0} chars, ${script?.split(/\s+/).length || 0} words`);
-      const audioResult = await callStreamingApi<{
+      const audioResult = await callLongRunningApi<{
         success?: boolean;
         type?: string;
         audioUrl?: string;
@@ -348,7 +340,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       }>('/generate-audio', {
         script,  // FIXED: audio endpoint expects 'script', not 'text'
         projectId,
-      }, 1200000); // 20 min for audio
+      }, 7200000); // 2 hours for long audio (20k+ words)
 
       if (!audioResult.audioUrl) {
         throw new Error(audioResult.error || 'Failed to generate audio');
@@ -383,9 +375,9 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         srtContent?: string;
         error?: string;
       }>('/generate-captions', {
-        segments: audioSegments,
+        audioUrl,  // Captions endpoint needs audioUrl, not segments
         projectId,
-      }, 60000);
+      }, 300000); // 5 min for transcription
 
       if (!captionsResult.success || !captionsResult.srtContent) {
         throw new Error(captionsResult.error || 'Failed to generate captions');
@@ -409,7 +401,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'prompts', 'running');
 
       console.log(`\n🎨 [Pipeline ${projectId}] Step 5: Generating ${imageCount} image prompts...`);
-      const promptsResult = await callStreamingApi<{
+      const promptsResult = await callLongRunningApi<{
         success?: boolean;
         type?: string;
         prompts?: any[];
@@ -420,7 +412,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         audioDuration,
         imageCount,
         projectId,
-      }, 600000); // 10 min for prompts
+      }, 1800000); // 30 min for 200+ prompts
 
       if (!promptsResult.prompts || promptsResult.prompts.length === 0) {
         throw new Error(promptsResult.error || 'Failed to generate image prompts');
@@ -444,7 +436,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'images', 'running');
 
       console.log(`\n🖼️  [Pipeline ${projectId}] Step 6: Generating ${imagePrompts.length} images...`);
-      const imagesResult = await callStreamingApi<{
+      const imagesResult = await callLongRunningApi<{
         success?: boolean;
         type?: string;
         images?: string[];
@@ -452,7 +444,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       }>('/generate-images', {
         prompts: imagePrompts.map(p => p.sceneDescription || p.prompt),
         projectId,
-      }, 3600000); // 60 min for images
+      }, 10800000); // 3 hours for 200+ images
 
       if (!imagesResult.images || imagesResult.images.length === 0) {
         throw new Error(imagesResult.error || 'Failed to generate images');
@@ -476,7 +468,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'clip_prompts', 'running');
 
       console.log(`\n🎬 [Pipeline ${projectId}] Step 7: Generating ${clipCount} clip prompts...`);
-      const clipPromptsResult = await callStreamingApi<{
+      const clipPromptsResult = await callLongRunningApi<{
         success?: boolean;
         type?: string;
         prompts?: any[];
@@ -489,7 +481,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         clipDuration,
         imageUrls: imageUrls.slice(0, clipCount), // Use first N images as sources
         projectId,
-      }, 300000);
+      }, 600000); // 10 min for clip prompts
 
       if (clipPromptsResult.prompts && clipPromptsResult.prompts.length > 0) {
         clipPrompts = clipPromptsResult.prompts;
@@ -506,7 +498,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         await updatePipelineStatus(projectId, 'clips', 'running');
 
         console.log(`\n🎥 [Pipeline ${projectId}] Step 8: Generating ${clipPrompts.length} video clips...`);
-        const clipsResult = await callStreamingApi<{
+        const clipsResult = await callLongRunningApi<{
           success?: boolean;
           type?: string;
           clips?: any[];
@@ -517,7 +509,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
             imageUrl: imageUrls[i] || imageUrls[0],
           })),
           projectId,
-        }, 3600000); // 60 min for clips
+        }, 7200000); // 2 hours for video clips
 
         if (clipsResult.clips && clipsResult.clips.length > 0) {
           clips = clipsResult.clips;
@@ -549,7 +541,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       endSeconds: c.endSeconds,
     })) : undefined;
 
-    const renderResult = await callStreamingApi<{
+    const renderResult = await callLongRunningApi<{
       success?: boolean;
       type?: string;
       videoUrl?: string;
@@ -564,7 +556,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       projectTitle: videoTitle,
       effects: effects || { smoke_embers: true },
       introClips,
-    }, 7200000); // 2 hours for render
+    }, 14400000); // 4 hours for 2+ hour video render
 
     if (!renderResult.videoUrl) {
       throw new Error(renderResult.error || 'Failed to render video');
