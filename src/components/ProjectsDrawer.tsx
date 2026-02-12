@@ -312,6 +312,9 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
   // Count non-archived projects for badge
   const activeProjectCount = allProjects.filter(p => p.status !== 'archived').length;
 
+  // Count running pipelines (important for token usage awareness)
+  const runningCount = allProjects.filter(p => p.status === 'running').length;
+
   return (
     <>
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
@@ -319,7 +322,12 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
           <Button variant="ghost" size="sm" className="gap-2 text-muted-foreground hover:text-foreground">
             <FolderOpen className="w-4 h-4" />
             <span className="hidden sm:inline">Projects</span>
-            {activeProjectCount > 0 && (
+            {runningCount > 0 ? (
+              <span className="flex items-center gap-1 bg-amber-500/20 text-amber-500 text-xs px-1.5 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+                {runningCount} running
+              </span>
+            ) : activeProjectCount > 0 && (
               <span className="bg-primary/20 text-primary text-xs px-1.5 py-0.5 rounded-full">
                 {activeProjectCount}
               </span>
@@ -348,6 +356,16 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
                 </Button>
               )}
             </SheetTitle>
+
+            {/* Running count banner - always visible if pipelines are running */}
+            {runningCount > 0 && (
+              <div className="flex items-center gap-2 mt-3 p-2 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                <ServerCog className="w-4 h-4 text-amber-500 animate-spin" />
+                <span className="text-sm text-amber-500 font-medium">
+                  {runningCount} pipeline{runningCount > 1 ? 's' : ''} running on server
+                </span>
+              </div>
+            )}
 
             {/* Status Filter Dropdown */}
             <div className="flex items-center gap-2 mt-3">
