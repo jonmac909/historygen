@@ -97,14 +97,10 @@ async function callInternalApi<T>(
 }
 
 /**
- * Make an internal API call for long-running operations
- * Uses non-streaming mode - the endpoint will return JSON when complete
- *
- * NOTE: Previously this used streaming mode (SSE) but response.text() blocks
- * until the entire stream ends, causing timeouts for long operations.
- * Non-streaming mode is simpler and more reliable for internal calls.
+ * Make an internal API call using SSE streaming mode
+ * Properly reads the SSE stream and extracts the final result
  */
-async function callLongRunningApi<T>(
+async function callStreamingApi<T>(
   endpoint: string,
   body: Record<string, unknown>,
   timeout: number = 1800000 // 30 min default
@@ -113,7 +109,7 @@ async function callLongRunningApi<T>(
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
   try {
-    console.log(`[Pipeline] Calling ${endpoint} (timeout: ${timeout / 1000}s)...`);
+    console.log(`[Pipeline] Calling ${endpoint} with streaming (timeout: ${timeout / 1000}s)...`);
 
     const response = await fetch(`${getInternalApiUrl()}${endpoint}`, {
       method: 'POST',
@@ -121,7 +117,102 @@ async function callLongRunningApi<T>(
         'Content-Type': 'application/json',
         'X-Internal-Api-Key': getInternalApiKey(),
       },
-      // Don't pass stream: true - use non-streaming JSON response
+      body: JSON.stringify({ ...body, stream: true }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API call to ${endpoint} failed: ${response.status} - ${errorText}`);
+    }
+
+    // Read SSE stream and find the final complete event
+    const reader = response.body?.getReader();
+    if (!reader) {
+      throw new Error('No response body reader available');
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let lastResult: T | null = null;
+    let lastProgress = 0;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Parse SSE events from buffer
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+
+            // Log progress updates
+            if (data.progress && data.progress > lastProgress) {
+              lastProgress = data.progress;
+              console.log(`[Pipeline] ${endpoint} progress: ${data.progress}%`);
+            }
+
+            // Check for complete event
+            if (data.type === 'complete' || data.success === true) {
+              lastResult = data as T;
+            }
+
+            // Check for error
+            if (data.type === 'error' || data.error) {
+              throw new Error(data.error || 'Stream error');
+            }
+          } catch (parseErr) {
+            // Ignore JSON parse errors for incomplete data
+            if (parseErr instanceof SyntaxError) continue;
+            throw parseErr;
+          }
+        }
+      }
+    }
+
+    if (!lastResult) {
+      throw new Error(`No complete response received from ${endpoint}`);
+    }
+
+    console.log(`[Pipeline] ${endpoint} completed successfully`);
+    return lastResult;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`API call to ${endpoint} timed out after ${timeout / 1000}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Make an internal API call for operations that don't support streaming
+ * Uses non-streaming JSON response
+ */
+async function callNonStreamingApi<T>(
+  endpoint: string,
+  body: Record<string, unknown>,
+  timeout: number = 300000 // 5 min default
+): Promise<T> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    console.log(`[Pipeline] Calling ${endpoint} (non-streaming, timeout: ${timeout / 1000}s)...`);
+
+    const response = await fetch(`${getInternalApiUrl()}${endpoint}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Api-Key': getInternalApiKey(),
+      },
       body: JSON.stringify(body),
       signal: controller.signal,
     });
@@ -291,7 +382,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'script', 'running');
 
       console.log(`\n✍️  [Pipeline ${projectId}] Step 2: Rewriting script (${wordCount} words)...`);
-      const scriptResult = await callLongRunningApi<{
+      const scriptResult = await callStreamingApi<{
         success?: boolean;
         type?: string;
         script?: string;
@@ -330,7 +421,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
 
       console.log(`\n🔊 [Pipeline ${projectId}] Step 3: Generating audio...`);
       console.log(`   Script to send: ${script?.length || 0} chars, ${script?.split(/\s+/).length || 0} words`);
-      const audioResult = await callLongRunningApi<{
+      const audioResult = await callStreamingApi<{
         success?: boolean;
         type?: string;
         audioUrl?: string;
@@ -402,7 +493,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'prompts', 'running');
 
       console.log(`\n🎨 [Pipeline ${projectId}] Step 5: Generating ${imageCount} image prompts...`);
-      const promptsResult = await callLongRunningApi<{
+      const promptsResult = await callStreamingApi<{
         success?: boolean;
         type?: string;
         prompts?: any[];
@@ -437,7 +528,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'images', 'running');
 
       console.log(`\n🖼️  [Pipeline ${projectId}] Step 6: Generating ${imagePrompts.length} images...`);
-      const imagesResult = await callLongRunningApi<{
+      const imagesResult = await callStreamingApi<{
         success?: boolean;
         type?: string;
         images?: string[];
@@ -469,7 +560,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'clip_prompts', 'running');
 
       console.log(`\n🎬 [Pipeline ${projectId}] Step 7: Generating ${clipCount} clip prompts...`);
-      const clipPromptsResult = await callLongRunningApi<{
+      const clipPromptsResult = await callStreamingApi<{
         success?: boolean;
         type?: string;
         prompts?: any[];
@@ -499,7 +590,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         await updatePipelineStatus(projectId, 'clips', 'running');
 
         console.log(`\n🎥 [Pipeline ${projectId}] Step 8: Generating ${clipPrompts.length} video clips...`);
-        const clipsResult = await callLongRunningApi<{
+        const clipsResult = await callStreamingApi<{
           success?: boolean;
           type?: string;
           clips?: any[];
@@ -542,7 +633,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       endSeconds: c.endSeconds,
     })) : undefined;
 
-    const renderResult = await callLongRunningApi<{
+    const renderResult = await callStreamingApi<{
       success?: boolean;
       type?: string;
       videoUrl?: string;
