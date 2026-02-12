@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, Trash2, ChevronRight, ChevronDown, Loader2, Heart, Globe, Clock, Archive, Square, ServerCog, Play, AlertCircle } from "lucide-react";
+import { FolderOpen, Trash2, ChevronRight, ChevronDown, Loader2, Heart, Globe, Clock, Archive, Square, ServerCog, Play, AlertCircle, Search, X } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { stopPipeline, startFullPipeline } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,6 +83,7 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Project | null>(null);
   const [statusFilter, setStatusFilter] = useState<FilterOption>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Load all projects when drawer opens
   useEffect(() => {
@@ -304,10 +306,14 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
     }
   };
 
-  // Filter projects based on current filter
-  const filteredProjects = statusFilter === 'all'
-    ? allProjects
-    : allProjects.filter(p => p.status === statusFilter);
+  // Filter projects based on status filter and search query
+  const filteredProjects = allProjects.filter(p => {
+    // Status filter
+    if (statusFilter !== 'all' && p.status !== statusFilter) return false;
+    // Search filter (case-insensitive)
+    if (searchQuery && !p.videoTitle.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    return true;
+  });
 
   // Count non-archived projects for badge
   const activeProjectCount = allProjects.filter(p => p.status !== 'archived').length;
@@ -367,8 +373,27 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
               </div>
             )}
 
+            {/* Search Input */}
+            <div className="relative mt-3">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                placeholder="Search projects..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8 pr-8 h-8 text-sm"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
             {/* Status Filter Dropdown */}
-            <div className="flex items-center gap-2 mt-3">
+            <div className="flex items-center gap-2 mt-2">
               <span className="text-xs text-muted-foreground">Filter:</span>
               <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as FilterOption)}>
                 <SelectTrigger className="h-7 w-[170px] text-xs">
@@ -562,7 +587,7 @@ function ProjectCard({
         }}
       >
         <div className="flex-1 min-w-0 mr-2">
-          <p className="font-medium text-foreground truncate text-sm">
+          <p className="font-medium text-foreground truncate text-sm" title={project.videoTitle}>
             {project.videoTitle}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
@@ -615,14 +640,8 @@ function ProjectCard({
               </Button>
             </div>
           ) : (
-            /* Status selector with current step indicator */
+            /* Status selector for non-running projects */
             <div className="flex items-center gap-1">
-              {/* Show current step for in_progress projects */}
-              {displayStatus === 'in_progress' && project.currentStep && project.currentStep !== 'complete' && (
-                <span className="text-xs px-2 py-1 bg-blue-500/20 text-blue-600 rounded-md">
-                  {getRunningStepLabel(project.currentStep)}
-                </span>
-              )}
               <Select
                 value={displayStatus}
                 onValueChange={(value) => onStatusChange(value as ProjectStatus)}
