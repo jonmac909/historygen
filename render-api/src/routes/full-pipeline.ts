@@ -271,7 +271,8 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       }
 
       transcript = transcriptResult.transcript;
-      videoTitle = transcriptResult.title || title || 'Untitled';
+      // User-provided title takes precedence over YouTube-fetched title
+      videoTitle = title || transcriptResult.title || 'Untitled';
 
       console.log(`   ✓ Got transcript: ${transcript.length} chars, title: "${videoTitle}"`);
 
