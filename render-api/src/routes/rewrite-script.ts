@@ -71,6 +71,11 @@ async function generateScriptChunkStreaming(options: GenerateScriptChunkOptions)
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_CALL_TIMEOUT);
 
+  // Log that we're waiting for Claude (helps debug Railway timeouts)
+  const waitingInterval = setInterval(() => {
+    console.log(`[generateScriptChunkStreaming] Still waiting for Claude response...`);
+  }, 30000); // Log every 30 seconds
+
   try {
     // OPTIMIZATION: Use prompt caching to avoid re-sending transcript every iteration
     const systemConfig = usePromptCaching
@@ -121,6 +126,7 @@ async function generateScriptChunkStreaming(options: GenerateScriptChunkOptions)
     return { text: fullText, stopReason, inputTokens, outputTokens };
   } finally {
     clearTimeout(timeoutId);
+    clearInterval(waitingInterval);
   }
 }
 
@@ -187,13 +193,19 @@ When continuing a script, seamlessly continue from where you left off.`;
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no', // Disable nginx buffering
         'X-Timeout-Ms': API_CALL_TIMEOUT.toString(),
         'X-Max-Iterations': MAX_ITERATIONS.toString(),
         'X-Keepalive-Interval-Ms': KEEPALIVE_INTERVAL_MS.toString(),
       });
+      res.flushHeaders(); // Force headers to be sent immediately
 
       const sendEvent = (data: any) => {
         res.write(`data: ${JSON.stringify(data)}\n\n`);
+        // Flush to ensure data is sent immediately (not buffered)
+        if (typeof (res as any).flush === 'function') {
+          (res as any).flush();
+        }
       };
 
       try {
@@ -329,6 +341,10 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
             let lastProgressUpdate = Date.now();
             const PROGRESS_UPDATE_INTERVAL = 2000; // Update progress every 2 seconds
 
+            console.log(`[rewrite-script] 🔄 Calling Claude API for iteration ${iteration}... (this may take a while)`);
+            const claudeStartTime = Date.now();
+            let firstTokenReceived = false;
+
             // OPTIMIZATION: Use streaming with token callbacks + prompt caching
             result = await generateScriptChunkStreaming({
               apiKey: ANTHROPIC_API_KEY,
@@ -338,6 +354,11 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
               maxTokens: MAX_TOKENS,
               usePromptCaching: useCaching, // Cache transcript on subsequent iterations
               onToken: (text) => {
+                if (!firstTokenReceived) {
+                  firstTokenReceived = true;
+                  const waitTime = ((Date.now() - claudeStartTime) / 1000).toFixed(1);
+                  console.log(`[rewrite-script] ✨ First token received after ${waitTime}s`);
+                }
                 // Stream tokens to client in real-time for better UX
                 sendEvent({
                   type: 'token',

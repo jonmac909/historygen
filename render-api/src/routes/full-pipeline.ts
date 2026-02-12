@@ -108,6 +108,12 @@ async function callStreamingApi<T>(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
 
+  // Heartbeat interval to keep Railway alive during long waits
+  const HEARTBEAT_INTERVAL_MS = 30000; // Log every 30 seconds
+  let heartbeatInterval: NodeJS.Timeout | null = null;
+  let lastActivityTime = Date.now();
+  let eventCount = 0;
+
   try {
     console.log(`[Pipeline] Calling ${endpoint} with streaming (timeout: ${timeout / 1000}s)...`);
 
@@ -137,9 +143,18 @@ async function callStreamingApi<T>(
     let lastResult: T | null = null;
     let lastProgress = 0;
 
+    // Start heartbeat to keep Railway alive
+    heartbeatInterval = setInterval(() => {
+      const waitTime = Math.round((Date.now() - lastActivityTime) / 1000);
+      console.log(`[Pipeline] ${endpoint} still waiting... (${waitTime}s since last activity, ${eventCount} events received)`);
+    }, HEARTBEAT_INTERVAL_MS);
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+
+      // Update activity timestamp
+      lastActivityTime = Date.now();
 
       buffer += decoder.decode(value, { stream: true });
 
@@ -151,11 +166,17 @@ async function callStreamingApi<T>(
         if (line.startsWith('data: ')) {
           try {
             const data = JSON.parse(line.slice(6));
+            eventCount++;
 
             // Log progress updates
             if (data.progress && data.progress > lastProgress) {
               lastProgress = data.progress;
               console.log(`[Pipeline] ${endpoint} progress: ${data.progress}%`);
+            }
+
+            // Log keepalive events to show we're receiving data
+            if (data.type === 'keepalive') {
+              console.log(`[Pipeline] ${endpoint} keepalive received`);
             }
 
             // Check for complete event
@@ -180,7 +201,7 @@ async function callStreamingApi<T>(
       throw new Error(`No complete response received from ${endpoint}`);
     }
 
-    console.log(`[Pipeline] ${endpoint} completed successfully`);
+    console.log(`[Pipeline] ${endpoint} completed successfully (${eventCount} events)`);
     return lastResult;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
@@ -189,6 +210,9 @@ async function callStreamingApi<T>(
     throw error;
   } finally {
     clearTimeout(timeoutId);
+    if (heartbeatInterval) {
+      clearInterval(heartbeatInterval);
+    }
   }
 }
 
@@ -674,13 +698,24 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
 
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const errorStack = error instanceof Error ? error.stack : '';
     const wasCancelled = errorMessage.includes('cancelled by user');
+    const currentStep = runningPipelines.get(projectId)?.currentStep || 'unknown';
 
-    console.error(`\n❌ [Pipeline ${projectId}] Pipeline ${wasCancelled ? 'cancelled' : 'failed'}:`, errorMessage);
+    console.error(`\n❌ [Pipeline ${projectId}] Pipeline ${wasCancelled ? 'cancelled' : 'failed'} at step "${currentStep}":`);
+    console.error(`   Error: ${errorMessage}`);
+    if (errorStack) {
+      console.error(`   Stack: ${errorStack.split('\n').slice(0, 5).join('\n   ')}`);
+    }
 
-    await updateProject(projectId, {
-      status: wasCancelled ? 'cancelled' : 'failed',
-    });
+    try {
+      await updateProject(projectId, {
+        status: wasCancelled ? 'cancelled' : 'failed',
+        current_step: currentStep,
+      });
+    } catch (dbError) {
+      console.error(`[Pipeline ${projectId}] Failed to update status in database:`, dbError);
+    }
 
     // Clean up tracking
     runningPipelines.delete(projectId);
@@ -728,8 +763,18 @@ router.post('/', async (req: Request, res: Response) => {
   console.log(`\n🚀 Starting full pipeline for project ${config.projectId}...`);
 
   // Start pipeline in background (fire and forget)
-  runPipeline(config).catch(error => {
-    console.error(`[Pipeline ${config.projectId}] Background execution failed:`, error);
+  // IMPORTANT: Use setImmediate to truly detach from the request lifecycle
+  setImmediate(() => {
+    runPipeline(config).catch(error => {
+      console.error(`[Pipeline ${config.projectId}] Background execution failed:`, error);
+      // Make sure error is saved to database
+      updateProject(config.projectId, {
+        status: 'failed',
+        current_step: 'error',
+      }).catch(dbErr => {
+        console.error(`[Pipeline ${config.projectId}] Failed to save error status:`, dbErr);
+      });
+    });
   });
 
   // Return immediately
