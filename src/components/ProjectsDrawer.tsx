@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { FolderOpen, Trash2, ChevronRight, ChevronDown, Loader2, Heart, Globe, Clock, Archive, Square, ServerCog } from "lucide-react";
-import { stopPipeline } from "@/lib/api";
+import { FolderOpen, Trash2, ChevronRight, ChevronDown, Loader2, Heart, Globe, Clock, Archive, Square, ServerCog, Play, AlertCircle } from "lucide-react";
+import { stopPipeline, startFullPipeline } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -55,6 +55,22 @@ const STATUS_OPTIONS: { value: ProjectStatus; label: string; icon: typeof Clock 
 
 // Running status is shown separately, not in the dropdown
 const RUNNING_STATUS = { value: 'running' as const, label: 'Running on Server', icon: ServerCog };
+
+// Get a nice label for the current pipeline step
+function getRunningStepLabel(step: string | undefined): string {
+  switch (step) {
+    case 'transcript': return 'Transcript';
+    case 'script': return 'Script';
+    case 'audio': return 'Audio';
+    case 'captions': return 'Captions';
+    case 'prompts': return 'Prompts';
+    case 'images': return 'Images';
+    case 'clips': return 'Clips';
+    case 'render': return 'Render';
+    case 'complete': return 'Complete';
+    default: return 'Starting';
+  }
+}
 
 // Filter options including 'all' and 'running'
 type FilterOption = 'all' | ProjectStatus;
@@ -223,6 +239,71 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
     });
   };
 
+  const handleResumePipeline = async (project: Project) => {
+    // Update local state to show running status
+    const now = Date.now();
+    setAllProjects(prev => {
+      const updated = prev.map(p =>
+        p.id === project.id ? { ...p, status: 'running' as const, updatedAt: now } : p
+      );
+      return updated.sort((a, b) => b.updatedAt - a.updatedAt);
+    });
+
+    toast({
+      title: "Resuming Pipeline",
+      description: `Restarting "${project.videoTitle}" from the beginning...`,
+    });
+
+    try {
+      // Restart the pipeline with the same settings
+      const result = await startFullPipeline({
+        projectId: project.id,
+        youtubeUrl: project.sourceUrl,
+        title: project.videoTitle,
+        topic: project.settings?.topic,
+        wordCount: project.settings?.wordCount || 3000,
+        imageCount: project.settings?.imageCount || 100,
+        generateClips: true,
+        clipCount: 12,
+        clipDuration: 5,
+        effects: { smoke_embers: true },
+      });
+
+      if (result.success) {
+        toast({
+          title: "Pipeline Resumed!",
+          description: `"${project.videoTitle}" is now running on the server.`,
+        });
+      } else {
+        // Revert status on failure
+        setAllProjects(prev => {
+          const updated = prev.map(p =>
+            p.id === project.id ? { ...p, status: 'failed' as const, updatedAt: Date.now() } : p
+          );
+          return updated.sort((a, b) => b.updatedAt - a.updatedAt);
+        });
+        toast({
+          title: "Failed to Resume",
+          description: result.error || "Unknown error",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to resume pipeline:', error);
+      setAllProjects(prev => {
+        const updated = prev.map(p =>
+          p.id === project.id ? { ...p, status: 'failed' as const, updatedAt: Date.now() } : p
+        );
+        return updated.sort((a, b) => b.updatedAt - a.updatedAt);
+      });
+      toast({
+        title: "Error",
+        description: "Failed to resume pipeline",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Filter projects based on current filter
   const filteredProjects = statusFilter === 'all'
     ? allProjects
@@ -337,6 +418,7 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
                   onStatusChange={(status) => handleStatusChange(project, status)}
                   onToggleFavorite={(e) => handleToggleFavorite(project, e)}
                   onStopPipeline={handleStopPipeline}
+                  onResumePipeline={handleResumePipeline}
                   deletingId={deletingId}
                   setIsOpen={setIsOpen}
                 />
@@ -378,6 +460,7 @@ function ProjectCard({
   onStatusChange,
   onToggleFavorite,
   onStopPipeline,
+  onResumePipeline,
   deletingId,
   setIsOpen,
 }: {
@@ -387,6 +470,7 @@ function ProjectCard({
   onStatusChange: (status: ProjectStatus) => void;
   onToggleFavorite?: (e: React.MouseEvent) => void;
   onStopPipeline?: (project: Project) => void;
+  onResumePipeline?: (project: Project) => void;
   deletingId: string | null;
   setIsOpen: (open: boolean) => void;
 }) {
@@ -454,12 +538,12 @@ function ProjectCard({
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          {/* Running indicator with stop button */}
+          {/* Running indicator with current step and stop button */}
           {isRunning ? (
             <div className="flex items-center gap-1">
               <span className="flex items-center gap-1.5 text-xs px-2 py-1 bg-amber-500/20 text-amber-600 rounded-md">
                 <span className="w-2 h-2 bg-amber-500 rounded-full animate-pulse" />
-                Running
+                {getRunningStepLabel(project.currentStep)}
               </span>
               <Button
                 variant="ghost"
@@ -474,6 +558,23 @@ function ProjectCard({
                 ) : (
                   <Square className="w-3.5 h-3.5 fill-current" />
                 )}
+              </Button>
+            </div>
+          ) : project.status === 'failed' || project.status === 'cancelled' ? (
+            /* Failed/Cancelled status with resume button */
+            <div className="flex items-center gap-1">
+              <span className="flex items-center gap-1.5 text-xs px-2 py-1 bg-red-500/20 text-red-500 rounded-md">
+                <AlertCircle className="w-3 h-3" />
+                {project.status === 'failed' ? 'Failed' : 'Stopped'}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="shrink-0 h-7 w-7 text-green-500 hover:text-green-600 hover:bg-green-500/10"
+                onClick={onResumePipeline ? (e) => { e.stopPropagation(); onResumePipeline(project); } : undefined}
+                title="Resume pipeline"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
               </Button>
             </div>
           ) : (
