@@ -3635,7 +3635,7 @@ const Index = () => {
 
                       toast({
                         title: "Starting Server Pipeline",
-                        description: "Pipeline will run on server. You can close your browser and come back later.",
+                        description: `Project ID: ${newProjectId.slice(0, 8)} - Pipeline will run on server.`,
                       });
 
                       const result = await startFullPipeline({
@@ -3653,8 +3653,8 @@ const Index = () => {
 
                       if (result.success) {
                         toast({
-                          title: "Pipeline Started!",
-                          description: "Your video is being generated on the server. Check the Projects page for progress.",
+                          title: `Pipeline Started (${newProjectId.slice(0, 8)})`,
+                          description: `Title: "${settings.projectTitle || 'Untitled'}" - Check Projects page for progress.`,
                         });
                         // Set project state to track running pipeline
                         setProjectId(newProjectId);

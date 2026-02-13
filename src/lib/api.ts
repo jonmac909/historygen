@@ -2733,3 +2733,42 @@ export async function stopPipeline(projectId: string): Promise<StopPipelineResul
     };
   }
 }
+
+export interface RunningPipeline {
+  projectId: string;
+  currentStep: string;
+}
+
+export interface RunningPipelinesResult {
+  count: number;
+  pipelines: RunningPipeline[];
+}
+
+/**
+ * Get the list of currently running pipelines from the server.
+ * This is the authoritative source for what's actually running.
+ */
+export async function getRunningPipelines(): Promise<RunningPipelinesResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return { count: 0, pipelines: [] };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/full-pipeline/running`, {
+      method: 'GET',
+      headers: withRenderAuth({}),
+    });
+
+    if (!response.ok) {
+      console.error('Get running pipelines error:', response.status);
+      return { count: 0, pipelines: [] };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Get running pipelines error:', error);
+    return { count: 0, pipelines: [] };
+  }
+}

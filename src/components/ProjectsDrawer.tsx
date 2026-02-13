@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { FolderOpen, Trash2, ChevronRight, ChevronDown, Loader2, Heart, Globe, Clock, Archive, Square, ServerCog, Play, AlertCircle, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { stopPipeline, startFullPipeline } from "@/lib/api";
+import { stopPipeline, startFullPipeline, getRunningPipelines } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -84,34 +84,62 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
   const [confirmDelete, setConfirmDelete] = useState<Project | null>(null);
   const [statusFilter, setStatusFilter] = useState<FilterOption>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [serverRunningCount, setServerRunningCount] = useState(0);
+  const [serverRunningIds, setServerRunningIds] = useState<Set<string>>(new Set());
 
-  // Load all projects when drawer opens
-  useEffect(() => {
-    if (isOpen) {
-      setIsLoading(true);
-      console.log('[ProjectsDrawer] Loading projects at', new Date().toISOString());
-      Promise.all([getRootProjects(), getArchivedProjects()])
-        .then(([rootProjects, archived]) => {
-          console.log('[ProjectsDrawer] Loaded', rootProjects.length, 'root projects,', archived.length, 'archived');
-          // Log first 3 projects with their timestamps
-          rootProjects.slice(0, 3).forEach((p, i) => {
-            console.log(`[ProjectsDrawer] #${i + 1}: "${p.videoTitle}" updated_at:`, new Date(p.updatedAt).toISOString());
-          });
-          // Combine all projects, mapping 'completed' to 'live' for display
-          const allCombined = [
-            ...rootProjects.map(p => ({
-              ...p,
-              status: p.status === 'completed' ? 'live' as const : p.status
-            })),
-            ...archived
-          ];
-          // Sort by updatedAt descending
-          allCombined.sort((a, b) => b.updatedAt - a.updatedAt);
-          setAllProjects(allCombined);
-        })
-        .catch(err => console.error('[ProjectsDrawer] Failed to load projects:', err))
-        .finally(() => setIsLoading(false));
+  // Function to load projects from database
+  const loadProjects = async (showLoading = false) => {
+    if (showLoading) setIsLoading(true);
+    try {
+      const [rootProjects, archived] = await Promise.all([getRootProjects(), getArchivedProjects()]);
+      console.log('[ProjectsDrawer] Loaded', rootProjects.length, 'root projects,', archived.length, 'archived');
+
+      // Combine all projects, mapping 'completed' to 'live' for display
+      const allCombined = [
+        ...rootProjects.map(p => ({
+          ...p,
+          status: p.status === 'completed' ? 'live' as const : p.status
+        })),
+        ...archived
+      ];
+      // Sort by updatedAt descending
+      allCombined.sort((a, b) => b.updatedAt - a.updatedAt);
+      setAllProjects(allCombined);
+    } catch (err) {
+      console.error('[ProjectsDrawer] Failed to load projects:', err);
+    } finally {
+      if (showLoading) setIsLoading(false);
     }
+  };
+
+  // Function to fetch running pipelines from server (authoritative source)
+  const fetchRunningPipelines = async () => {
+    try {
+      const result = await getRunningPipelines();
+      setServerRunningCount(result.count);
+      setServerRunningIds(new Set(result.pipelines.map(p => p.projectId)));
+      console.log('[ProjectsDrawer] Server reports', result.count, 'running pipelines');
+    } catch (err) {
+      console.error('[ProjectsDrawer] Failed to fetch running pipelines:', err);
+    }
+  };
+
+  // Load projects and start polling when drawer opens
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Initial load
+    loadProjects(true);
+    fetchRunningPipelines();
+
+    // Poll every 5 seconds while drawer is open
+    const projectsInterval = setInterval(() => loadProjects(false), 5000);
+    const runningInterval = setInterval(fetchRunningPipelines, 5000);
+
+    return () => {
+      clearInterval(projectsInterval);
+      clearInterval(runningInterval);
+    };
   }, [isOpen]);
 
   const handleDelete = async (project: Project) => {
@@ -310,16 +338,16 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
   const filteredProjects = allProjects.filter(p => {
     // Status filter
     if (statusFilter !== 'all' && p.status !== statusFilter) return false;
-    // Search filter (case-insensitive)
-    if (searchQuery && !p.videoTitle.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    // Search filter (case-insensitive) - handle null/undefined titles
+    if (searchQuery && !(p.videoTitle || '').toLowerCase().includes(searchQuery.toLowerCase())) return false;
     return true;
   });
 
   // Count non-archived projects for badge
   const activeProjectCount = allProjects.filter(p => p.status !== 'archived').length;
 
-  // Count running pipelines (important for token usage awareness)
-  const runningCount = allProjects.filter(p => p.status === 'running').length;
+  // Use server running count (authoritative) instead of stale local state
+  const runningCount = serverRunningCount;
 
   return (
     <>
@@ -476,8 +504,12 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Project?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete "{confirmDelete?.videoTitle}" and all its generated files (audio, captions, images) from storage. This cannot be undone.
+            <AlertDialogDescription className="space-y-2">
+              <span>This will permanently delete "{confirmDelete?.videoTitle}" and all its generated files (audio, captions, images) from storage.</span>
+              <span className="block font-mono text-xs bg-muted px-2 py-1 rounded">
+                Project ID: {confirmDelete?.id}
+              </span>
+              <span className="block text-destructive font-medium">This cannot be undone.</span>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -591,7 +623,7 @@ function ProjectCard({
             {project.videoTitle}
           </p>
           <p className="text-xs text-muted-foreground mt-0.5">
-            {formatDate(project.updatedAt, true)} • <span className="font-mono">{project.id.slice(0, 8)}</span>
+            {formatDate(project.updatedAt, true)} • <span className="font-mono text-xs bg-muted/50 px-1.5 py-0.5 rounded text-foreground/70">{project.id.slice(0, 8)}</span>
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">

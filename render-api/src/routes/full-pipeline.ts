@@ -25,6 +25,64 @@ const router = Router();
 // Track running pipelines for cancellation
 const runningPipelines = new Map<string, { aborted: boolean; currentStep: string }>();
 
+/**
+ * Clean up stale "running" entries on server startup.
+ * When the server restarts, any previously "running" pipelines are no longer running.
+ * This prevents ghost entries showing "running" status when they're not.
+ */
+async function cleanupStaleRunningProjects() {
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    console.log('[Pipeline Cleanup] Supabase not configured, skipping cleanup');
+    return;
+  }
+
+  try {
+    // Find all projects with status 'running' that aren't tracked in memory
+    const { data: staleProjects, error: fetchError } = await supabase
+      .from('generation_projects')
+      .select('id, video_title, current_step')
+      .eq('status', 'running');
+
+    if (fetchError) {
+      console.error('[Pipeline Cleanup] Failed to fetch stale projects:', fetchError);
+      return;
+    }
+
+    if (!staleProjects || staleProjects.length === 0) {
+      console.log('[Pipeline Cleanup] No stale running projects found');
+      return;
+    }
+
+    console.log(`[Pipeline Cleanup] Found ${staleProjects.length} stale "running" projects from previous session:`);
+    staleProjects.forEach(p => {
+      console.log(`   - ${p.id.slice(0, 8)}: "${p.video_title}" (was at step: ${p.current_step})`);
+    });
+
+    // Mark them as 'cancelled' since they were interrupted by server restart
+    const { error: updateError } = await supabase
+      .from('generation_projects')
+      .update({
+        status: 'cancelled',
+        current_step: 'server_restart',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('status', 'running');
+
+    if (updateError) {
+      console.error('[Pipeline Cleanup] Failed to update stale projects:', updateError);
+      return;
+    }
+
+    console.log(`[Pipeline Cleanup] Marked ${staleProjects.length} stale projects as 'cancelled' (server_restart)`);
+  } catch (err) {
+    console.error('[Pipeline Cleanup] Unexpected error:', err);
+  }
+}
+
+// Run cleanup on module load (server startup)
+cleanupStaleRunningProjects();
+
 // Pipeline configuration
 const DEFAULT_IMAGE_COUNT = 200;
 const DEFAULT_WORD_COUNT = 3000;
