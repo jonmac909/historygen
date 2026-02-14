@@ -58,6 +58,7 @@ export async function getProjectData(projectId: string): Promise<{
   imageUrls?: string[];
   videoUrl?: string;
   videoTitle?: string;
+  settings?: Record<string, any>;
   error?: string;
 }> {
   const supabase = getSupabaseClient();
@@ -68,7 +69,7 @@ export async function getProjectData(projectId: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('generation_projects')
-      .select('script_content, audio_url, audio_duration, audio_segments, srt_content, image_prompts, image_urls, video_url, video_title')
+      .select('script_content, audio_url, audio_duration, audio_segments, srt_content, image_prompts, image_urls, video_url, video_title, settings')
       .eq('id', projectId)
       .single();
 
@@ -92,6 +93,7 @@ export async function getProjectData(projectId: string): Promise<{
       imageUrls: data.image_urls || undefined,
       videoUrl: data.video_url || undefined,
       videoTitle: data.video_title || undefined,
+      settings: data.settings || undefined,
     };
   } catch (err) {
     console.error(`[SupabaseProject] Exception getting project ${projectId}:`, err);

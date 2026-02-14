@@ -2928,7 +2928,7 @@ const Index = () => {
     setGeneratedThumbnails([]);
     setSelectedThumbnailIndex(undefined);
     setFavoriteThumbnails([]);
-    setApprovedSteps({});
+    setApprovedSteps([]);
     setYoutubeTitle("");
     setYoutubeDescription("");
     setYoutubeTags("");

@@ -703,16 +703,6 @@ export function YouTubeUploadModal({
   // Check if we can upload
   const canUpload = isConnected && hasVideo && title.trim().length > 0;
 
-  console.log('[YouTubeUploadModal] Render state:', {
-    isOpen,
-    hasVideo,
-    videoUrl: videoUrl?.substring(0, 50),
-    canUpload,
-    isConnected,
-    uploadedVideoId,
-    isUploading
-  });
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
@@ -966,16 +956,7 @@ export function YouTubeUploadModal({
           </div>
 
           {/* Thumbnail Preview */}
-          {(() => {
-            const shouldShow = !!(thumbnails && thumbnails.length > 0 && selectedThumbnailIndex !== undefined);
-            console.log('[YouTubeUploadModal] Thumbnail preview check:', {
-              thumbnails,
-              thumbnailsLength: thumbnails?.length,
-              selectedThumbnailIndex,
-              shouldShow,
-              thumbnailUrl: shouldShow ? thumbnails![selectedThumbnailIndex!] : null
-            });
-            return shouldShow ? (
+          {thumbnails && thumbnails.length > 0 && selectedThumbnailIndex !== undefined && (
               <div className="space-y-2">
                 <Label>Selected Thumbnail</Label>
                 <div className="border rounded-lg overflow-hidden">
@@ -986,8 +967,7 @@ export function YouTubeUploadModal({
                   />
                 </div>
               </div>
-            ) : null;
-          })()}
+          )}
 
           {/* Upload Progress */}
           {isUploading && (

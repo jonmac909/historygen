@@ -382,6 +382,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
   let imageUrls: string[] = [];
   let clipPrompts: any[] = [];
   let clips: any[] = [];
+  let customStylePrompt = '';  // Style prompt for image generation
 
   try {
     // =========================================================================
@@ -409,6 +410,11 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       if (existingData.srtContent) srtContent = existingData.srtContent;
       if (existingData.imagePrompts) imagePrompts = existingData.imagePrompts;
       if (existingData.imageUrls) imageUrls = existingData.imageUrls;
+      // Load customStylePrompt from settings
+      if (existingData.settings?.customStylePrompt) {
+        customStylePrompt = existingData.settings.customStylePrompt;
+        console.log(`   - Style prompt: ${customStylePrompt.substring(0, 50)}...`);
+      }
     }
 
     // =========================================================================
@@ -575,6 +581,9 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'prompts', 'running');
 
       console.log(`\n🎨 [Pipeline ${projectId}] Step 5: Generating ${imageCount} image prompts...`);
+      if (customStylePrompt) {
+        console.log(`   Using custom style prompt: ${customStylePrompt.substring(0, 80)}...`);
+      }
       const promptsResult = await callStreamingApi<{
         success?: boolean;
         type?: string;
@@ -586,6 +595,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         audioDuration,
         imageCount,
         projectId,
+        masterStylePrompt: customStylePrompt,  // Pass custom style prompt for image generation
       }, 1800000); // 30 min for 200+ prompts
 
       if (!promptsResult.prompts || promptsResult.prompts.length === 0) {
