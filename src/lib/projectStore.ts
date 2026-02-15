@@ -343,7 +343,7 @@ export async function getCompletedProjects(): Promise<Project[]> {
 export async function getArchivedProjects(): Promise<Project[]> {
   const { data, error } = await supabase
     .from('generation_projects')
-    .select('*')
+    .select(LISTING_FIELDS)
     .eq('status', 'archived')
     .order('updated_at', { ascending: false });
 
@@ -352,13 +352,13 @@ export async function getArchivedProjects(): Promise<Project[]> {
     return [];
   }
 
-  return (data || []).map(rowToProject);
+  return (data || []).map(rowToProjectListing);
 }
 
 export async function getFavoriteProjects(): Promise<Project[]> {
   const { data, error } = await supabase
     .from('generation_projects')
-    .select('*')
+    .select(LISTING_FIELDS)
     .eq('is_favorite', true)
     .neq('status', 'archived')
     .order('updated_at', { ascending: false });
@@ -368,7 +368,7 @@ export async function getFavoriteProjects(): Promise<Project[]> {
     return [];
   }
 
-  return (data || []).map(rowToProject);
+  return (data || []).map(rowToProjectListing);
 }
 
 export async function toggleFavorite(id: string): Promise<boolean> {
@@ -758,11 +758,57 @@ export async function createAutoBackup(projectId: string): Promise<string | null
   }
 }
 
+// Minimal fields needed for project listing (drawer, favorites, etc.)
+// Excludes large fields like image_prompts, image_urls, script_content, audio_segments, etc.
+const LISTING_FIELDS = `
+  id, source_url, source_type, status, video_title, current_step,
+  thumbnails, selected_thumbnail_index, is_favorite, tags,
+  parent_project_id, version_number, settings,
+  created_at, updated_at
+`;
+
+// Convert minimal listing row to Project (with undefined for large fields)
+function rowToProjectListing(row: {
+  id: string;
+  source_url: string;
+  source_type: string;
+  status: string;
+  video_title: string | null;
+  current_step: string | null;
+  thumbnails: unknown;
+  selected_thumbnail_index: number | null;
+  is_favorite: boolean | null;
+  tags: unknown;
+  parent_project_id: string | null;
+  version_number: number | null;
+  settings: unknown;
+  created_at: string;
+  updated_at: string;
+}): Project {
+  return {
+    id: row.id,
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+    videoTitle: row.video_title || 'Untitled',
+    sourceUrl: row.source_url,
+    settings: (row.settings as GenerationSettings) || {} as GenerationSettings,
+    status: (row.status as Project['status']) || 'in_progress',
+    currentStep: (row.current_step as Project['currentStep']) || 'script',
+    parentProjectId: row.parent_project_id || undefined,
+    versionNumber: row.version_number || 1,
+    thumbnails: (row.thumbnails as string[]) || undefined,
+    selectedThumbnailIndex: row.selected_thumbnail_index ?? undefined,
+    isFavorite: row.is_favorite || false,
+    tags: (row.tags as string[]) || undefined,
+    // Large fields intentionally omitted for performance
+  };
+}
+
 // Get root projects only (for Projects drawer - hides versions)
 export async function getRootProjects(): Promise<Project[]> {
   const { data, error } = await supabase
     .from('generation_projects')
-    .select('*')
+    .select(LISTING_FIELDS)
     .is('parent_project_id', null)
     .neq('status', 'archived')
     .order('updated_at', { ascending: false });
@@ -772,5 +818,5 @@ export async function getRootProjects(): Promise<Project[]> {
     return [];
   }
 
-  return (data || []).map(rowToProject);
+  return (data || []).map(rowToProjectListing);
 }
