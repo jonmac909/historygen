@@ -614,6 +614,13 @@ RULES:
 5. For medical topics: show period-appropriate healers, apothecaries, patients - NOT modern research
 6. For abstract concepts: show period-appropriate scenes with settings and people from that era
 
+VISUAL PACING (CRITICAL FOR DOCUMENTARY FLOW):
+- IMAGE 1-2: ALWAYS start with ESTABLISHING SHOTS - grand panoramic views of the era's most iconic architecture, palaces, or landscapes WITHOUT people in focus
+- Examples: "Aerial view of ancient Alexandria harbor at golden hour, the Great Lighthouse towering over merchant ships, Mediterranean sea stretching to horizon" or "Grand facade of Versailles palace at dawn, manicured gardens, fountains, morning mist"
+- Every 8-10 images: Include a SCENIC/ARCHITECTURAL shot (palace exterior, city panorama, landscape) to give visual breathing room
+- Vary shot types: alternate between WIDE establishing shots (landscapes, buildings), MEDIUM shots (groups of people in settings), and CLOSER shots (individuals in action)
+- DO NOT start with close-ups of people - always establish the world first
+
 CRITICAL PROMPT FORMAT (AI image models work best with short, focused prompts):
 7. Keep descriptions SHORT: 30-50 words maximum
 8. Start with the SPECIFIC ERA AND LOCATION (e.g., "Ptolemaic Alexandria", "Ancient Rome 44 BCE", "Medieval Paris 1347")
@@ -674,7 +681,8 @@ TIME-CODED SEGMENTS (use as INSPIRATION, but prioritize ERA ACCURACY):
 ${windowDescriptions}
 
 PRIORITY: Create images that are VISUALLY AUTHENTIC to ${timePeriod.era} in ${timePeriod.region}. The image doesn't need to literally match the narration - it should show scenes, architecture, clothing, and activities that ACTUALLY EXISTED during that era.
-
+${batchStart === 0 ? `
+CRITICAL FOR THIS BATCH: Images 1-2 MUST be ESTABLISHING SHOTS - grand panoramic views of palaces, cities, or landscapes that set the scene. NO close-ups of people in the first 2 images. Show the WORLD first before showing the people in it.` : ''}
 Remember: Output ONLY a JSON array with ${batchSize} items, starting with index ${batchStart + 1}. No explanations.`
             }
           ],
