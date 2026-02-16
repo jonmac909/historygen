@@ -2902,7 +2902,18 @@ const Index = () => {
     return segments;
   };
 
-  const handleOpenProject = async (project: Project) => {
+  const handleOpenProject = async (projectFromList: Project) => {
+    // Fetch full project data (drawer only has minimal fields for performance)
+    const project = await getProject(projectFromList.id);
+    if (!project) {
+      toast({
+        title: "Error",
+        description: "Failed to load project data",
+        variant: "destructive",
+      });
+      return;
+    }
+
     // Disable fullAutomation when manually opening a project
     // User wants to review/edit, not auto-skip steps
     setSettings(prev => ({ ...prev, fullAutomation: false }));
