@@ -3719,7 +3719,7 @@ const Index = () => {
                       if (settings.fullAutomation) {
                         toast({
                           title: "Full Auto Mode Active",
-                          description: "You're in Full Auto mode. Switch to Step-by-Step mode to use Generate Audio.",
+                          description: "You're in Full Auto mode. Use 'Full Auto Generate' below, or switch to Step-by-Step mode.",
                           variant: "destructive",
                         });
                         return;
@@ -3731,6 +3731,19 @@ const Index = () => {
                   >
                     <Mic className="w-5 h-5 mr-2" />
                     Generate Audio
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (!settings.customScript?.trim()) return;
+                      setSettings(prev => ({ ...prev, fullAutomation: true }));
+                      handleGenerate();
+                    }}
+                    disabled={viewState !== "create" || !settings.customScript?.trim()}
+                    variant="outline"
+                    className="w-full rounded-xl py-6 text-base border-primary/30 hover:bg-primary/10"
+                  >
+                    <Zap className="w-5 h-5 mr-2" />
+                    Full Auto Generate
                   </Button>
                   <Button
                     onClick={async () => {
@@ -3783,6 +3796,14 @@ const Index = () => {
                   >
                     <Video className="w-5 h-5 mr-2" />
                     Run on Server (Fire & Forget)
+                  </Button>
+                  <Button
+                    onClick={() => setShowAutoPosterModal(true)}
+                    variant="outline"
+                    className="w-full rounded-xl py-6 text-base border-orange-500/30 hover:bg-orange-500/10 text-orange-400"
+                  >
+                    <Bot className="w-5 h-5 mr-2" />
+                    Auto Poster
                   </Button>
                 </div>
               )}
