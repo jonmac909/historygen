@@ -614,19 +614,44 @@ RULES:
 5. For medical topics: show period-appropriate healers, apothecaries, patients - NOT modern research
 6. For abstract concepts: show period-appropriate scenes with settings and people from that era
 
-VISUAL PACING (CRITICAL FOR DOCUMENTARY FLOW):
-- IMAGE 1-2: ALWAYS start with ESTABLISHING SHOTS - grand panoramic views of the era's most iconic architecture, palaces, or landscapes WITHOUT people in focus
-- Examples: "Aerial view of ancient Alexandria harbor at golden hour, the Great Lighthouse towering over merchant ships, Mediterranean sea stretching to horizon" or "Grand facade of Versailles palace at dawn, manicured gardens, fountains, morning mist"
-- Every 8-10 images: Include a SCENIC/ARCHITECTURAL shot (palace exterior, city panorama, landscape) to give visual breathing room
-- Vary shot types: alternate between WIDE establishing shots (landscapes, buildings), MEDIUM shots (groups of people in settings), and CLOSER shots (individuals in action)
-- DO NOT start with close-ups of people - always establish the world first
+VISUAL VARIETY (CRITICAL - AVOID REPETITION):
+- NEVER generate 3+ consecutive images of "people sitting/standing in a room talking"
+- Alternate between these scene types to maintain visual interest:
+  * EXTERIOR LANDSCAPES: palaces, gardens, harbors, battlefields, countryside, city streets
+  * INTERIOR GRANDEUR: throne rooms, ballrooms, cathedrals, libraries, grand halls
+  * ATMOSPHERIC MOMENTS: candlelit scenes, storms, sunsets, moonlight, fog, rain
+  * ACTION/DRAMA: horses galloping, ships sailing, processions, ceremonies, hunts
+  * INTIMATE CLOSE-UPS: hands writing letters, objects on tables, details of clothing/jewelry
+  * NATURE/SEASONS: winter snow, autumn leaves, spring gardens, summer fields
+- If the narration is abstract (emotions, politics, relationships), show a VISUALLY STRIKING scene from the era rather than generic people talking
+- Each image should feel like a distinct painting, not a variation of the previous one
 
-CRITICAL PROMPT FORMAT (AI image models work best with short, focused prompts):
-7. Keep descriptions SHORT: 30-50 words maximum
-8. Start with the SPECIFIC ERA AND LOCATION (e.g., "Ptolemaic Alexandria", "Ancient Rome 44 BCE", "Medieval Paris 1347")
-9. Include SPECIFIC architectural and cultural details from that exact era
-10. Use comma-separated keywords rather than long sentences
-11. Example format: "Ptolemaic Alexandria palace, Queen Cleopatra in golden Egyptian headdress and linen robes, hieroglyphic walls, Greek marble columns, oil lamps, Mediterranean light"
+VISUAL PACING (DOCUMENTARY FLOW):
+- IMAGE 1-2: ALWAYS start with ESTABLISHING SHOTS - grand panoramic views WITHOUT people in focus
+- Every 8-10 images: Include a SCENIC/ARCHITECTURAL shot for visual breathing room
+- Vary shot types: WIDE (landscapes) → MEDIUM (groups) → CLOSE (details) → repeat
+- Include atmospheric variety: different times of day, weather, lighting moods
+
+ATMOSPHERIC QUALITY (MAKE EACH IMAGE A MASTERPIECE):
+- Every image should evoke EMOTION and ATMOSPHERE, not just show "people in a room"
+- Include LIGHTING and MOOD: "dramatic chiaroscuro", "soft golden hour", "moonlit", "candlelit intimacy", "stormy skies"
+- Include SENSORY DETAILS: "velvet curtains", "marble floors reflecting light", "mist rising from gardens"
+- Think like a master painter: What would Vermeer, Rembrandt, or Turner capture in this moment?
+
+FALLBACK RULE (for abstract/unclear narration):
+- If the narration discusses emotions, politics, or abstract concepts that are hard to visualize, DO NOT default to "people talking in a room"
+- Instead, show a VISUALLY STRIKING scene relevant to the era and topic:
+  * For love stories: gardens, moonlit balconies, intimate candlelit chambers
+  * For political intrigue: shadowy corridors, throne rooms, secret meetings
+  * For tragedy: stormy skies over palaces, lonely figures at windows, autumn landscapes
+  * For triumph: grand processions, sunlit celebrations, crowds cheering
+
+PROMPT FORMAT:
+7. Keep descriptions 40-60 words - enough for atmosphere but not overwhelming
+8. Start with the SPECIFIC ERA AND LOCATION (e.g., "Georgian England 1761", "Versailles 1789")
+9. Include ATMOSPHERIC elements: lighting, weather, time of day, mood
+10. Use comma-separated evocative keywords
+11. Example format: "Georgian England palace ballroom at night, candlelit chandeliers casting warm glow, couples in silk gowns and powdered wigs dancing, mirrors reflecting golden light, string quartet in corner, romantic atmosphere"
 12. Do NOT include any text, titles, or words in the image
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
