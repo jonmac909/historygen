@@ -3732,6 +3732,58 @@ const Index = () => {
                     <Mic className="w-5 h-5 mr-2" />
                     Generate Audio
                   </Button>
+                  <Button
+                    onClick={async () => {
+                      if (!settings.customScript?.trim()) return;
+
+                      // Create a new project ID
+                      const newProjectId = crypto.randomUUID();
+
+                      toast({
+                        title: "Starting Server Pipeline",
+                        description: `Project ID: ${newProjectId.slice(0, 8)} - Pipeline will run on server.`,
+                      });
+
+                      const result = await startFullPipeline({
+                        projectId: newProjectId,
+                        script: settings.customScript.trim(),  // Use script directly instead of YouTube URL
+                        title: settings.projectTitle || 'Untitled',
+                        topic: settings.topic,
+                        wordCount: settings.wordCount,
+                        imageCount: settings.imageCount,
+                        generateClips: true,
+                        clipCount: 12,
+                        clipDuration: 5,
+                        effects: { smoke_embers: true },
+                      });
+
+                      if (result.success) {
+                        toast({
+                          title: `Pipeline Started (${newProjectId.slice(0, 8)})`,
+                          description: `Title: "${settings.projectTitle || 'Untitled'}" - Check Projects page for progress.`,
+                        });
+                        // Set project state to track running pipeline
+                        setProjectId(newProjectId);
+                        setProjectStatus('running');
+                        setPipelineCurrentStep('audio');  // Script is already provided, start at audio
+                        setVideoTitle(settings.projectTitle || "History Documentary");
+                        // Navigate to results page to show progress
+                        setViewState("results");
+                      } else {
+                        toast({
+                          title: "Failed to Start Pipeline",
+                          description: result.error || "Unknown error",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={viewState !== "create" || !settings.customScript?.trim()}
+                    variant="outline"
+                    className="w-full rounded-xl py-6 text-base border-green-500/30 hover:bg-green-500/10 text-green-400"
+                  >
+                    <Video className="w-5 h-5 mr-2" />
+                    Run on Server (Fire & Forget)
+                  </Button>
                 </div>
               )}
             </div>

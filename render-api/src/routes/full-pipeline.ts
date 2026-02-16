@@ -91,7 +91,8 @@ const DEFAULT_CLIP_DURATION = 5;
 
 interface PipelineRequest {
   projectId: string;
-  youtubeUrl: string;
+  youtubeUrl?: string;  // Optional - either youtubeUrl or script must be provided
+  script?: string;      // Direct script input - skips transcript extraction and rewriting
   title?: string;
   topic?: string;
   template?: string;
@@ -350,6 +351,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
   const {
     projectId,
     youtubeUrl,
+    script: providedScript,  // Direct script input (skips transcript + rewrite)
     title,
     topic,
     template,
@@ -361,8 +363,12 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     effects,
   } = config;
 
+  const isDirectScript = !!providedScript && !youtubeUrl;
+
   console.log(`\n🚀 [Pipeline ${projectId}] Starting full pipeline...`);
-  console.log(`   YouTube URL: ${youtubeUrl}`);
+  console.log(`   Mode: ${isDirectScript ? 'Direct Script' : 'YouTube URL'}`);
+  if (youtubeUrl) console.log(`   YouTube URL: ${youtubeUrl}`);
+  if (providedScript) console.log(`   Script provided: ${providedScript.length} chars, ${providedScript.split(/\s+/).length} words`);
   console.log(`   Title: ${title || 'auto-detect'}`);
   console.log(`   Word count: ${wordCount}`);
   console.log(`   Image count: ${imageCount}`);
@@ -373,7 +379,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
 
   let transcript = '';
   let videoTitle = title || '';
-  let script = '';
+  let script = providedScript || '';  // Use provided script if available
   let audioUrl = '';
   let audioDuration = 0;
   let audioSegments: any[] = [];
@@ -423,16 +429,18 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     runningPipelines.set(projectId, { aborted: false, currentStep: 'creating' });
 
     console.log(`\n📦 [Pipeline ${projectId}] Creating/updating project in database...`);
-    const createResult = await createProject(projectId, youtubeUrl, title);
+    // Use 'direct_script' as source when no YouTube URL provided
+    const sourceUrl = youtubeUrl || 'direct_script';
+    const createResult = await createProject(projectId, sourceUrl, title);
     if (!createResult.success) {
       throw new Error(createResult.error || 'Failed to create project');
     }
     console.log(`   ✓ Project ready`);
 
     // =========================================================================
-    // STEP 1: Get YouTube Transcript (skip if we have script)
+    // STEP 1: Get YouTube Transcript (skip if we have script or no YouTube URL)
     // =========================================================================
-    if (!script) {
+    if (!script && youtubeUrl) {
       if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
       runningPipelines.set(projectId, { aborted: false, currentStep: 'transcript' });
       await updatePipelineStatus(projectId, 'transcript', 'running');
@@ -457,14 +465,20 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
 
       // Update video title in database
       await updateProject(projectId, { video_title: videoTitle });
+    } else if (script) {
+      console.log(`\n⏭️  [Pipeline ${projectId}] Skipping transcript (script provided directly)`);
+      // Make sure videoTitle is set when using direct script
+      if (!videoTitle) videoTitle = title || 'Untitled';
+      await updateProject(projectId, { video_title: videoTitle });
     } else {
-      console.log(`\n⏭️  [Pipeline ${projectId}] Skipping transcript (have script)`);
+      throw new Error('Either youtubeUrl or script must be provided');
     }
 
     // =========================================================================
-    // STEP 2: Rewrite Script (skip if already exists)
+    // STEP 2: Rewrite Script (skip if script provided directly or already exists)
     // =========================================================================
-    if (!script) {
+    if (!script && transcript) {
+      // Only rewrite if we have a transcript (from YouTube) but no script yet
       if (shouldAbort(projectId)) throw new Error('Pipeline cancelled by user');
       runningPipelines.set(projectId, { aborted: false, currentStep: 'script' });
       await updatePipelineStatus(projectId, 'script', 'running');
@@ -494,6 +508,10 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       console.log(`   ✓ Generated script: ${scriptResult.wordCount || script.split(/\s+/).length} words`);
 
       // Save script to project (database column is script_content, not script)
+      await updateProject(projectId, { script_content: script });
+    } else if (providedScript) {
+      // Script was provided directly - save it to database
+      console.log(`\n⏭️  [Pipeline ${projectId}] Using provided script (${script.length} chars, ${script.split(/\s+/).length} words)`);
       await updateProject(projectId, { script_content: script });
     } else {
       console.log(`\n⏭️  [Pipeline ${projectId}] Skipping script generation (${script.length} chars already saved)`);
@@ -805,8 +823,8 @@ router.post('/', async (req: Request, res: Response) => {
   if (!config.projectId) {
     return res.status(400).json({ error: 'projectId is required' });
   }
-  if (!config.youtubeUrl) {
-    return res.status(400).json({ error: 'youtubeUrl is required' });
+  if (!config.youtubeUrl && !config.script) {
+    return res.status(400).json({ error: 'Either youtubeUrl or script is required' });
   }
 
   // Validate Supabase is configured

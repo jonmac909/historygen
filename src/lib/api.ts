@@ -2592,7 +2592,8 @@ export async function reconnectOrphanedImages(projectId: string): Promise<{ succ
 
 export interface FullPipelineConfig {
   projectId: string;
-  youtubeUrl: string;
+  youtubeUrl?: string;  // Optional - either youtubeUrl or script must be provided
+  script?: string;      // Direct script input - skips transcript extraction and rewriting
   title?: string;
   topic?: string;
   template?: string;
