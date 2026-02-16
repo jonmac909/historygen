@@ -317,8 +317,10 @@ RULES:
 - No museums, researchers, maps, documents, artifacts on display
 - Photorealistic quality with cinematic lighting
 
+CLIP 1 MUST BE: Grand establishing shot of the subject's palace/castle/city - NO people, just the magnificent location.
+
 Output format - JSON array ONLY:
-[{"index": 1, "sceneDescription": "Ultra realistic..."}, {"index": 2, "sceneDescription": "Ultra realistic..."}]`;
+[{"index": 1, "sceneDescription": "Ultra realistic grand establishing shot, [subject's palace/city], dramatic slow dolly toward entrance, golden hour light, cinematic"}, {"index": 2, "sceneDescription": "Ultra realistic..."}]`;
 
     const systemConfig = [
       {
@@ -356,7 +358,10 @@ STYLE GUIDANCE: ${stylePrompt || 'Historically accurate, immersive first-person 
 CRITICAL - STORYTELLING FLOW:
 - The ${CLIP_COUNT} clips MUST flow together as one continuous visual narrative
 - Each clip should naturally lead into the next (establish → develop → transition)
-- Start wide/establishing, then move to medium shots, then close-ups for emotional moments
+
+CLIP 1 RULE (MANDATORY): The FIRST clip MUST be a grand ESTABLISHING SHOT of the subject's primary location - their palace, castle, kingdom, or city. For royalty: show THEIR palace exterior with dramatic camera movement. For empires: show THEIR capital city skyline. NO people as the main focus in clip 1 - just the magnificent setting that establishes WHERE this story takes place.
+
+- After the establishing shot, move to medium shots, then close-ups for emotional moments
 - Vary shot types: wide establishing → medium action → close-up detail → POV → sweeping panorama
 - Create visual momentum - each clip builds on the previous one
 - Think like a film editor: beginning hooks viewer, middle develops story, end creates anticipation
