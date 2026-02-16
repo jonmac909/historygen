@@ -631,10 +631,13 @@ CRITICAL PROMPT FORMAT (AI image models work best with short, focused prompts):
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
 
+IMAGE 1 RULE (MANDATORY): The FIRST image (index 1) MUST ALWAYS be a grand establishing shot of the VIDEO SUBJECT'S primary location - their palace, their city, their court, their kingdom. For royalty: show THEIR palace exterior. For empires: show THEIR capital city. For explorers: show the starting point of THEIR journey. NO people as the main focus - just the magnificent setting that establishes WHERE this story takes place.
+
 Output format:
 [
-  {"index": 1, "sceneDescription": "..."},
-  {"index": 2, "sceneDescription": "..."}
+  {"index": 1, "sceneDescription": "Grand panoramic view of [era-specific iconic location], [architectural details], [atmospheric lighting], [time of day] - ESTABLISHING SHOT, no people in focus"},
+  {"index": 2, "sceneDescription": "..."},
+  {"index": 3, "sceneDescription": "..."}
 ]`;
 
     // OPTIMIZATION: Enable prompt caching for system prompt (90% cost reduction on repeat calls)
