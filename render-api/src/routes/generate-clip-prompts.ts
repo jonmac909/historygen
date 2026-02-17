@@ -306,29 +306,20 @@ router.post('/', async (req: Request, res: Response) => {
       `CLIP ${i + 1} (${w.startSeconds}s - ${w.endSeconds}s):\nNarration: "${w.text}"`
     ).join('\n\n');
 
-    // System prompt optimized for video clip generation - DETAILED and HISTORICALLY RICH
-    const systemPrompt = `You create RICHLY DETAILED ultra-realistic video scene descriptions for AI video generation of historical documentaries.
+    // System prompt optimized for video clip generation - SIMPLE but historically accurate
+    const systemPrompt = `You create ultra-realistic video scene descriptions for AI video generation.
 
 RULES:
-- 40-70 words per description - DETAILED and SPECIFIC
+- 20-40 words per description
 - ALWAYS start with "Ultra realistic"
-- Include ONE specific camera movement (slow dolly forward, lateral tracking shot, crane descending, push-in to detail)
-- Show historical scenes AS THEY HAPPENED with PERIOD-ACCURATE DETAILS
-- NO modern framing (no museums, researchers, maps, artifacts on display)
-- Photorealistic quality with cinematic lighting appropriate to the era
+- Include ONE camera movement (dolly, pan, tracking)
+- Show the historical era authentically - NO modern settings
+- For INTERIORS: describe the room with furniture, decorations, and lighting (not empty walls)
 
-CRITICAL - DESCRIBE THE ENVIRONMENT IN DETAIL:
-For INTERIORS: Describe the room's architecture, furniture, decorations, lighting sources (candles, fireplaces, oil lamps, natural light through windows), wall treatments (tapestries, gilded moldings, frescoes), floor materials, ceiling details
-For EXTERIORS: Describe the building's architectural style, surrounding landscape, weather, time of day, atmospheric effects (mist, dust, smoke from chimneys), street activity or courtyard details
-
-CLIP 1 MUST BE: A breathtaking ESTABLISHING SHOT of the subject's primary location - their palace, castle, fortress, or capital city. Include specific architectural details (towers, spires, gates, gardens, fountains). Describe the atmosphere - misty morning, golden sunset, torchlit night. Make viewers feel transported to that exact place and time. NO people as main focus in clip 1.
-
-EXAMPLE QUALITY:
-BAD: "Ultra realistic Charlotte and George in a palace chamber, tracking shot"
-GOOD: "Ultra realistic lavish Georgian state chamber, ornate gilt-framed mirrors reflecting hundreds of candleflames, crimson damask walls beneath a painted ceiling of mythological scenes, slow dolly forward past mahogany furniture with ormolu mounts, dust motes dancing in shafts of afternoon light through tall sash windows"
+CLIP 1 MUST BE: An exterior establishing shot of the location (palace, castle, village, house) with NO people. Set the scene.
 
 Output format - JSON array ONLY:
-[{"index": 1, "sceneDescription": "Ultra realistic [detailed establishing shot with architectural and atmospheric specifics]..."}, {"index": 2, "sceneDescription": "Ultra realistic..."}]`;
+[{"index": 1, "sceneDescription": "Ultra realistic exterior shot of..."}, {"index": 2, "sceneDescription": "Ultra realistic..."}]`;
 
     const systemConfig = [
       {
@@ -353,48 +344,21 @@ Output format - JSON array ONLY:
       messages: [
         {
           role: 'user',
-          content: `Generate exactly ${CLIP_COUNT} RICHLY DETAILED cinematic video scene descriptions that form a COHESIVE VISUAL STORY for a historical documentary intro.
+          content: `Generate exactly ${CLIP_COUNT} video scene descriptions for a historical documentary intro.
 
-SCRIPT CONTEXT (first ~${TOTAL_CLIP_DURATION} seconds):
+SCRIPT CONTEXT:
 ${introScriptWords}
 
-TIME-CODED SEGMENTS FOR EACH ${CLIP_DURATION}-SECOND CLIP:
+TIME-CODED NARRATION:
 ${clipDescriptions}
 
-STYLE GUIDANCE: ${stylePrompt || 'Historically accurate, immersive first-person perspective'}
+STYLE: ${stylePrompt || 'Historically accurate'}
 
-=== CRITICAL REQUIREMENTS ===
-
-**DETAIL IS ESSENTIAL** - Generic descriptions like "Charlotte and George in a chamber" are UNACCEPTABLE.
-Instead, describe:
-- WHAT the chamber looks like (Rococo? Georgian? Medieval? What furniture? What on the walls?)
-- The LIGHTING (candlelight casting shadows? firelight flickering? grey daylight through leaded windows?)
-- The ATMOSPHERE (smoke from fires? dust motes? fog through open windows?)
-- TEXTURES and MATERIALS (velvet, silk, oak, marble, gilt, tapestry)
-
-**CLIP 1 - HOOK THE VIEWER (MANDATORY)**:
-The first clip MUST be a SPECTACULAR establishing shot that transports viewers INSTANTLY to this time and place.
-- For royalty: Their palace exterior - describe specific architectural features (baroque facades, crenellated towers, formal gardens with geometric hedges, fountains, the approach road)
-- For empires: Their capital city - spires, walls, markets, the skyline at dawn or dusk
-- Describe the ATMOSPHERE: morning mist rising from the moat? golden sunset illuminating marble? torches flickering along walls at twilight?
-- NO people as the main focus - let the location speak
-
-**STORYTELLING FLOW**:
-- Clip 1: Wide establishing shot - location only, maximum grandeur
-- Clips 2-4: Move inside or closer - introduce the setting's interior spaces with rich detail
-- Clips 5-8: Medium shots - people in context, show their world around them
-- Clips 9-12: Closer, more intimate - emotional moments, dramatic tension
-
-**FOR EVERY CLIP, DESCRIBE**:
-1. The ENVIRONMENT in specific detail (architecture, furnishings, decorations)
-2. The LIGHTING and ATMOSPHERE (time of day, weather, mood)
-3. The CAMERA MOVEMENT (one specific movement: slow dolly, lateral tracking, crane shot, push-in)
-4. Any MOTION in the scene (flames flickering, fabric moving, dust dancing, steam rising)
-
-REMEMBER:
-- 40-70 words per description - USE THE SPACE to paint a picture
-- Each ${CLIP_DURATION}-second clip needs ONE clear visual focus (don't overcrowd)
-- Period accuracy is essential - know the era's architecture, fashion, and daily life
+REQUIREMENTS:
+- CLIP 1: Exterior establishing shot of the location (palace, castle, village) - NO people
+- For interior scenes: describe the room with period-accurate furniture, decorations, and lighting
+- Include camera movement (dolly, pan, tracking shot)
+- Keep descriptions 20-40 words each
 - Output ONLY a JSON array with ${CLIP_COUNT} items`
         }
       ],

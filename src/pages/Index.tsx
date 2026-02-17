@@ -1766,7 +1766,7 @@ const Index = () => {
   };
 
   // Regenerate a single video clip (regenerates image first for a fresh video)
-  const handleRegenerateVideoClip = async (clipIndex: number) => {
+  const handleRegenerateVideoClip = async (clipIndex: number, editedPrompt?: string) => {
     setRegeneratingClipIndex(clipIndex);
     try {
       // Find the clip prompt for this index
@@ -1780,16 +1780,28 @@ const Index = () => {
         return;
       }
 
+      // Use edited prompt if provided, otherwise use original
+      const sceneDescription = editedPrompt || clipPrompt.sceneDescription;
+
+      // Update the clip prompt in state if edited
+      if (editedPrompt && editedPrompt !== clipPrompt.sceneDescription) {
+        const updatedPrompts = clipPrompts.map(p =>
+          p.index === clipIndex ? { ...p, sceneDescription: editedPrompt, prompt: editedPrompt } : p
+        );
+        setClipPrompts(updatedPrompts);
+        autoSave("prompts", { clipPrompts: updatedPrompts });
+      }
+
       // Step 1: Regenerate the source image first
-      console.log(`Regenerating image for clip ${clipIndex}...`);
+      console.log(`Regenerating image for clip ${clipIndex} with prompt: ${sceneDescription.substring(0, 50)}...`);
       const imagePrompt = {
         index: clipPrompt.index,
         startTime: formatSecondsToSrt(clipPrompt.startSeconds),
         endTime: formatSecondsToSrt(clipPrompt.endSeconds),
         startSeconds: clipPrompt.startSeconds,
         endSeconds: clipPrompt.endSeconds,
-        prompt: `${getSelectedImageStyle()}. ${clipPrompt.sceneDescription}`,
-        sceneDescription: clipPrompt.sceneDescription,
+        prompt: `${getSelectedImageStyle()}. ${sceneDescription}`,
+        sceneDescription: sceneDescription,
       };
 
       const imageResult = await generateImagesStreaming(

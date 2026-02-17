@@ -20,7 +20,7 @@ interface VideoClipsPreviewModalProps {
   onConfirm: () => void;
   onCancel: () => void;
   onBack?: () => void;
-  onRegenerate?: (clipIndex: number) => void;
+  onRegenerate?: (clipIndex: number, editedPrompt?: string) => void;
   isRegenerating?: boolean;
   regeneratingIndex?: number;
 }
@@ -34,7 +34,7 @@ function formatTime(seconds: number): string {
 interface ClipCardProps {
   clip: GeneratedClip;
   prompt?: ClipPrompt;
-  onRegenerate?: () => void;
+  onRegenerate?: (editedPrompt?: string) => void;
   isRegenerating?: boolean;
   onOpenFullscreen?: () => void;
 }
@@ -43,12 +43,19 @@ function ClipCard({ clip, prompt, onRegenerate, isRegenerating, onOpenFullscreen
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedPrompt, setEditedPrompt] = useState(prompt?.sceneDescription || '');
 
   // Reset error state when video URL changes (e.g., after regeneration)
   useEffect(() => {
     setHasError(false);
     setIsPlaying(false);
   }, [clip.videoUrl]);
+
+  // Update edited prompt when prompt changes
+  useEffect(() => {
+    setEditedPrompt(prompt?.sceneDescription || '');
+  }, [prompt?.sceneDescription]);
 
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -132,22 +139,74 @@ function ClipCard({ clip, prompt, onRegenerate, isRegenerating, onOpenFullscreen
         </div>
 
         {prompt && (
-          <p className="text-sm text-muted-foreground line-clamp-2">
-            {prompt.sceneDescription}
-          </p>
+          isEditing ? (
+            <div className="space-y-2">
+              <textarea
+                value={editedPrompt}
+                onChange={(e) => setEditedPrompt(e.target.value)}
+                className="w-full min-h-[80px] p-2 text-sm bg-background border rounded resize-y"
+                placeholder="Describe the scene..."
+              />
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditedPrompt(prompt.sceneDescription);
+                  }}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setIsEditing(false);
+                    if (onRegenerate && editedPrompt !== prompt.sceneDescription) {
+                      onRegenerate(editedPrompt);
+                    }
+                  }}
+                  disabled={isRegenerating}
+                  className="flex-1"
+                >
+                  <RefreshCw className={`w-3 h-3 mr-1 ${isRegenerating ? 'animate-spin' : ''}`} />
+                  Regen
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <p
+              className="text-sm text-muted-foreground line-clamp-2 cursor-pointer hover:text-foreground"
+              onClick={() => setIsEditing(true)}
+              title="Click to edit prompt"
+            >
+              {prompt.sceneDescription}
+            </p>
+          )
         )}
 
-        {onRegenerate && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={onRegenerate}
-            disabled={isRegenerating}
-            className="w-full"
-          >
-            <RefreshCw className={`w-4 h-4 mr-1 ${isRegenerating ? 'animate-spin' : ''}`} />
-            {isRegenerating ? 'Regenerating...' : 'Regenerate'}
-          </Button>
+        {onRegenerate && !isEditing && (
+          <div className="flex gap-1">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setIsEditing(true)}
+              className="flex-1"
+            >
+              Edit
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => onRegenerate()}
+              disabled={isRegenerating}
+              className="flex-1"
+            >
+              <RefreshCw className={`w-3 h-3 mr-1 ${isRegenerating ? 'animate-spin' : ''}`} />
+              {isRegenerating ? '...' : 'Regen'}
+            </Button>
+          </div>
         )}
       </div>
     </div>
@@ -371,7 +430,7 @@ export function VideoClipsPreviewModal({
                 key={clip.index}
                 clip={clip}
                 prompt={getPromptForClip(clip.index)}
-                onRegenerate={onRegenerate ? () => onRegenerate(clip.index) : undefined}
+                onRegenerate={onRegenerate ? (editedPrompt) => onRegenerate(clip.index, editedPrompt) : undefined}
                 isRegenerating={isRegenerating && regeneratingIndex === clip.index}
                 onOpenFullscreen={() => setFullscreenClip(clip)}
               />
