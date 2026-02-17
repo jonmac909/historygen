@@ -67,7 +67,7 @@ function ClipPromptCard({ prompt, onUpdate }: ClipPromptCardProps) {
             {formatTime(prompt.startSeconds)} - {formatTime(prompt.endSeconds)}
           </span>
           <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">
-            10s
+            {prompt.endSeconds - prompt.startSeconds}s
           </span>
         </div>
         <Button
@@ -166,7 +166,9 @@ export function VideoClipPromptsModal({
     URL.revokeObjectURL(url);
   };
 
-  const totalDuration = editedPrompts.length * 10; // 10 seconds per clip
+  // Calculate actual duration from clip data
+  const clipDuration = editedPrompts.length > 0 ? (editedPrompts[0].endSeconds - editedPrompts[0].startSeconds) : 5;
+  const totalDuration = editedPrompts.length * clipDuration;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
@@ -178,7 +180,7 @@ export function VideoClipPromptsModal({
           </DialogTitle>
           <DialogDescription>
             Review and edit the {editedPrompts.length} video clip descriptions for your intro sequence ({totalDuration} seconds total).
-            Each clip is 10 seconds long with cinematic camera movements.
+            Each clip is {clipDuration} seconds long with cinematic camera movements.
           </DialogDescription>
         </DialogHeader>
 
