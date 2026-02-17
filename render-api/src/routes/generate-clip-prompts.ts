@@ -487,8 +487,9 @@ RULES:
 - CLIP 1: Exterior establishing shot, NO PEOPLE (zero people, empty scene)
 - 20-30 words per prompt MAX
 - ONE shot, ONE camera angle, ONE action per prompt
-- Start each with "Ultra realistic"
+- Focus on the SCENE CONTENT (people, objects, setting, lighting)
 - Include ONE camera movement (dolly, pan, tracking)
+- Do NOT include style instructions (style is added separately)
 
 Output JSON array ONLY, no explanations.`
         }
@@ -571,15 +572,6 @@ Output JSON array ONLY, no explanations.`
       }
     }
 
-    // Helper to ensure "Ultra realistic" is always at the start
-    const ensureUltraRealistic = (desc: string): string => {
-      const normalized = desc.trim();
-      if (normalized.toLowerCase().startsWith('ultra realistic')) {
-        return normalized;
-      }
-      return `Ultra realistic ${normalized.charAt(0).toLowerCase()}${normalized.slice(1)}`;
-    };
-
     // Build final clip prompts
     const clipPrompts: ClipPrompt[] = [];
 
@@ -587,12 +579,9 @@ Output JSON array ONLY, no explanations.`
       const window = windows[i];
       const scene = sceneDescriptions.find(s => s.index === i + 1);
 
-      let sceneDesc = regeneratedDescriptions.get(i)
+      const sceneDesc = regeneratedDescriptions.get(i)
         || scene?.sceneDescription
         || `Historical scene: ${window.text.substring(0, 200)}`;
-
-      // Ensure ultra realistic prefix
-      sceneDesc = ensureUltraRealistic(sceneDesc);
 
       clipPrompts.push({
         index: i + 1,

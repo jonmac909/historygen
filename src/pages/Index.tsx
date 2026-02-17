@@ -1593,14 +1593,14 @@ const Index = () => {
       updateStep("images", "active", `0/${editedPrompts.length} (0%)`);
 
       // Convert clip prompts to image prompts format
-      // Combine scene description with style prompt for better image quality
+      // Scene description FIRST (most important), then style (Flux prioritizes early tokens)
       const imagePrompts = editedPrompts.map(p => ({
         index: p.index,
         startTime: formatSecondsToSrt(p.startSeconds),
         endTime: formatSecondsToSrt(p.endSeconds),
         startSeconds: p.startSeconds,
         endSeconds: p.endSeconds,
-        prompt: `${editedStylePrompt ? editedStylePrompt + '. ' : ''}${p.sceneDescription}`,
+        prompt: `${p.sceneDescription}${editedStylePrompt ? '. ' + editedStylePrompt : ''}`,
         sceneDescription: p.sceneDescription,
       }));
 
