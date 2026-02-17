@@ -25,7 +25,7 @@ interface ProcessingModalProps {
 
 export function ProcessingModal({ isOpen, onClose, steps, title = "Generating..." }: ProcessingModalProps) {
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={isOpen}>
       <DialogContent
         className="sm:max-w-md"
         onPointerDownOutside={(e) => e.preventDefault()}
