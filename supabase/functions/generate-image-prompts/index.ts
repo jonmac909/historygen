@@ -22,6 +22,7 @@ interface ImagePromptRequest {
   stylePrompt: string;
   modernKeywordFilter?: boolean; // Filter anachronistic keywords (default true)
   audioDuration?: number; // Optional audio duration in seconds
+  topic?: string; // User-specified era/topic to anchor images (e.g., "Regency England 1810s")
 }
 
 interface ImagePrompt {
@@ -286,9 +287,11 @@ serve(async (req) => {
   }
 
   try {
-    const { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration }: ImagePromptRequest = await req.json();
+    const { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic }: ImagePromptRequest = await req.json();
     // Default to true for backward compatibility (filter enabled by default)
     const shouldFilterKeywords = modernKeywordFilter !== false;
+    // Topic is used to anchor images to a specific historical era
+    const eraTopic = topic || '';
 
     if (!script || !srtContent) {
       return new Response(
@@ -347,7 +350,21 @@ ABSOLUTELY FORBIDDEN (these will cause the prompt to be rejected and regenerated
 - Anyone examining, studying, analyzing, or inspecting historical items
 
 REQUIRED: Every scene must show events AS THEY HAPPENED in the historical moment - people LIVING history, not studying it.
+${eraTopic ? `
+=== USER-SPECIFIED ERA/TOPIC (HIGHEST PRIORITY) ===
+TOPIC: ${eraTopic}
 
+ALL SCENES MUST BE ANCHORED TO THIS ERA. This is the authoritative source for:
+- CLOTHING: All garments, accessories, hairstyles must match ${eraTopic}
+- INTERIORS: Furniture, decor, lighting fixtures, room layouts must be period-accurate to ${eraTopic}
+- EXTERIORS: Architecture, streets, landscapes, vehicles must reflect ${eraTopic}
+- OBJECTS: Tools, documents, household items must be appropriate for ${eraTopic}
+
+DO NOT let the painting STYLE (Dutch Golden Age, Renaissance, etc.) influence the ERA CONTENT.
+Example: If topic is "Regency England 1810s" but style is "Dutch Golden Age":
+- CORRECT: Regency empire-waist dresses, tailcoats, Georgian architecture, PAINTED in warm Dutch oil style
+- WRONG: Dutch 1600s ruffs, doublets, or Amsterdam canals
+` : ''}
 YOUR TASK: Create visual scene descriptions based on the script and narration segments provided.
 
 CONTENT SAFETY:

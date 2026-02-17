@@ -1358,8 +1358,9 @@ const Index = () => {
         srt,
         settings.imageCount,
         getSelectedImageStyle(),
-        settings.modernKeywordFilter,
+        true, // Always filter modern keywords
         pendingAudioDuration,
+        settings.topic, // Era anchor for image generation
         (progress, message) => {
           updateStep("prompts", "active", message);
         }
@@ -1726,8 +1727,9 @@ const Index = () => {
         srt,
         settings.imageCount,
         getSelectedImageStyle(),
-        settings.modernKeywordFilter,
+        true, // Always filter modern keywords
         pendingAudioDuration,
+        settings.topic, // Era anchor for image generation
         (progress, message) => {
           updateStep("prompts", "active", message);
         }
@@ -1925,8 +1927,9 @@ const Index = () => {
         srt,
         promptCount,
         getSelectedImageStyle(),
-        modernKeywordFilter,
+        true, // Always filter modern keywords
         pendingAudioDuration,
+        settings.topic, // Era anchor for image generation
         (progress, message) => {
           console.log(`[RegeneratePrompts] ${progress}%: ${message}`);
         }
@@ -2836,8 +2839,9 @@ const Index = () => {
         captionsText,
         settings.imageCount,
         getSelectedImageStyle(),
-        settings.modernKeywordFilter,
-        audioDuration
+        true, // Always filter modern keywords
+        audioDuration,
+        settings.topic // Era anchor for image generation
       );
 
       if (!promptsResult.success) {
@@ -3446,13 +3450,27 @@ const Index = () => {
 
             {/* Inline settings on main page */}
             <div className="w-full max-w-2xl mx-auto bg-card rounded-xl border border-border p-4 space-y-4">
-              {/* Project Title/Topic - combined field */}
+              {/* Project Title */}
               <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-muted-foreground w-28 text-left shrink-0">Title / Topic</label>
+                <label className="text-sm font-medium text-muted-foreground w-28 text-left shrink-0">Title</label>
                 <Input
                   value={settings.projectTitle}
-                  onChange={(e) => setSettings(prev => ({ ...prev, projectTitle: e.target.value, topic: e.target.value }))}
-                  placeholder="e.g., Viking Winters, History of Bread, Medieval Taverns..."
+                  onChange={(e) => setSettings(prev => ({ ...prev, projectTitle: e.target.value }))}
+                  placeholder="e.g., Regency Courting, Viking Winters..."
+                  className="flex-1"
+                />
+              </div>
+
+              {/* Topic/Era - anchors image generation to specific period */}
+              <div className="flex items-center gap-3">
+                <div className="w-28 shrink-0">
+                  <label className="text-sm font-medium text-muted-foreground text-left block">Topic</label>
+                  <span className="text-xs text-muted-foreground/70">Era for images</span>
+                </div>
+                <Input
+                  value={settings.topic}
+                  onChange={(e) => setSettings(prev => ({ ...prev, topic: e.target.value }))}
+                  placeholder="e.g., Regency England 1810s, Ancient Rome..."
                   className="flex-1"
                 />
               </div>
@@ -3500,45 +3518,21 @@ const Index = () => {
                 </div>
               </div>
 
-              {/* Modern Keyword Filter toggle */}
-              <div className="flex items-center gap-3">
-                <label className="text-sm font-medium text-muted-foreground w-28 text-left shrink-0">Image Style</label>
-                <div className="flex bg-muted rounded-lg p-1 flex-1">
-                  <button
-                    onClick={() => setSettings(prev => ({ ...prev, modernKeywordFilter: false }))}
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                      !settings.modernKeywordFilter
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    Modern/Any
-                  </button>
-                  <button
-                    onClick={() => setSettings(prev => ({ ...prev, modernKeywordFilter: true }))}
-                    className={`flex-1 py-2 px-3 rounded-md text-sm font-medium transition-colors ${
-                      settings.modernKeywordFilter
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground"
-                    }`}
-                  >
-                    Historical Only
-                  </button>
-                </div>
-              </div>
-
               {/* Full Auto Settings - only visible when Full Auto mode is selected */}
               {settings.fullAutomation && (
                 <>
-                  {/* Image Style */}
+                  {/* Painting Style - visual aesthetic only, not era content */}
                   <div className="flex items-center gap-3">
-                    <label className="text-sm font-medium text-muted-foreground w-28 text-left shrink-0">Image Style</label>
+                    <div className="w-28 shrink-0">
+                      <label className="text-sm font-medium text-muted-foreground text-left block">Painting Style</label>
+                      <span className="text-xs text-muted-foreground/70">Visual only</span>
+                    </div>
                     <Select
                       value={settings.imageTemplate}
                       onValueChange={(value) => setSettings(prev => ({ ...prev, imageTemplate: value }))}
                     >
                       <SelectTrigger className="flex-1">
-                        <SelectValue placeholder="Select image style" />
+                        <SelectValue placeholder="Select painting style" />
                       </SelectTrigger>
                       <SelectContent>
                         {imageTemplates.map((template) => (
@@ -4038,12 +4032,11 @@ const Index = () => {
         prompts={imagePrompts}
         stylePrompt={settings.customStylePrompt?.trim() || getSelectedImageStyle()}
         imageTemplates={imageTemplates}
-        modernKeywordFilter={settings.modernKeywordFilter}
         onConfirm={handlePromptsConfirm}
         onCancel={handleCancelRequest}
         onBack={handleBackToCaptions}
         onForward={canGoForwardFromPrompts() ? handleForwardToImages : undefined}
-        onRegenerate={handleRegenerateImagePrompts}
+        onRegenerate={() => handleRegenerateImagePrompts(true)}
         isRegenerating={isRegeneratingPrompts}
       />
 

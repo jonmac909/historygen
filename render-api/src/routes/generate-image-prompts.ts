@@ -454,11 +454,13 @@ function groupSegmentsForImages(segments: SrtSegment[], imageCount: number, audi
 }
 
 router.post('/', async (req: Request, res: Response) => {
-  const { script, srtContent, imageCount, stylePrompt, masterStylePrompt, modernKeywordFilter, audioDuration, stream, projectId } = req.body;
+  const { script, srtContent, imageCount, stylePrompt, masterStylePrompt, modernKeywordFilter, audioDuration, stream, projectId, topic } = req.body;
   // Accept both stylePrompt (from frontend) and masterStylePrompt (from pipeline) for compatibility
   const effectiveStylePrompt = stylePrompt || masterStylePrompt || '';
   // Default to true for backward compatibility (filter enabled by default)
   const shouldFilterKeywords = modernKeywordFilter !== false;
+  // Topic is used to anchor images to a specific historical era
+  const eraTopic = topic || '';
 
   // Always use Sonnet for best quality scene descriptions
   const selectedModel = 'claude-sonnet-4-5-20250929';
@@ -567,7 +569,21 @@ router.post('/', async (req: Request, res: Response) => {
 === TIME PERIOD ===
 ERA: ${timePeriod.era}
 REGION: ${timePeriod.region}
+${eraTopic ? `
+=== USER-SPECIFIED ERA/TOPIC (HIGHEST PRIORITY) ===
+TOPIC: ${eraTopic}
 
+ALL SCENES MUST BE ANCHORED TO THIS ERA. This is the authoritative source for:
+- CLOTHING: All garments, accessories, hairstyles must match ${eraTopic}
+- INTERIORS: Furniture, decor, lighting fixtures, room layouts must be period-accurate to ${eraTopic}
+- EXTERIORS: Architecture, streets, landscapes, vehicles must reflect ${eraTopic}
+- OBJECTS: Tools, documents, household items must be appropriate for ${eraTopic}
+
+DO NOT let the painting STYLE (Dutch Golden Age, Renaissance, etc.) influence the ERA CONTENT.
+Example: If topic is "Regency England 1810s" but style is "Dutch Golden Age":
+- CORRECT: Regency empire-waist dresses, tailcoats, Georgian architecture, PAINTED in warm Dutch oil style
+- WRONG: Dutch 1600s ruffs, doublets, or Amsterdam canals
+` : ''}
 #1 PRIORITY: VISUAL BEAUTY & CINEMATIC IMPACT
 Create images that would hang in a museum or win cinematography awards. Each scene should:
 - HOOK the viewer with stunning composition and lighting

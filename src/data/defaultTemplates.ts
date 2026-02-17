@@ -272,14 +272,14 @@ const imageJapanese = `Traditional Japanese ukiyo-e woodblock print style, bold 
 const imageByzantine = `Byzantine mosaic and icon painting style, gold leaf backgrounds with sacred radiance, stylized frontal figures, rich jewel tones deep blues purples crimsons emerald greens, intricate geometric patterns, divine halos`;
 
 export const defaultImageTemplates: ImageTemplate[] = [
-  { id: "image-a", template: imageDutch, name: "Dutch Golden Age" },
-  { id: "image-b", template: imageItalianRenaissance, name: "Italian Renaissance" },
-  { id: "image-c", template: imageMedieval, name: "Medieval Style" },
-  { id: "image-d", template: imageVictorian, name: "Victorian" },
-  { id: "image-e", template: imageBaroque, name: "Baroque" },
-  { id: "image-f", template: imageRomantic, name: "Romantic Era" },
-  { id: "image-g", template: imageArtNouveau, name: "Art Nouveau" },
-  { id: "image-h", template: imagePreRaphaelite, name: "Pre-Raphaelite" },
-  { id: "image-i", template: imageJapanese, name: "Japanese Ukiyo-e" },
-  { id: "image-j", template: imageByzantine, name: "Byzantine" },
+  { id: "image-a", template: imageDutch, name: "Dutch Golden Age Style" },
+  { id: "image-b", template: imageItalianRenaissance, name: "Renaissance Style" },
+  { id: "image-c", template: imageMedieval, name: "Medieval Illuminated Style" },
+  { id: "image-d", template: imageVictorian, name: "Victorian Illustration Style" },
+  { id: "image-e", template: imageBaroque, name: "Baroque Painting Style" },
+  { id: "image-f", template: imageRomantic, name: "Romantic Painting Style" },
+  { id: "image-g", template: imageArtNouveau, name: "Art Nouveau Style" },
+  { id: "image-h", template: imagePreRaphaelite, name: "Pre-Raphaelite Style" },
+  { id: "image-i", template: imageJapanese, name: "Japanese Ukiyo-e Style" },
+  { id: "image-j", template: imageByzantine, name: "Byzantine Mosaic Style" },
 ];
