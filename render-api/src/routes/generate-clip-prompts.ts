@@ -306,21 +306,29 @@ router.post('/', async (req: Request, res: Response) => {
       `CLIP ${i + 1} (${w.startSeconds}s - ${w.endSeconds}s):\nNarration: "${w.text}"`
     ).join('\n\n');
 
-    // System prompt optimized for video clip generation - SHORT and SIMPLE
-    const systemPrompt = `You create SHORT ultra-realistic video scene descriptions for AI video generation.
+    // System prompt optimized for video clip generation - DETAILED and HISTORICALLY RICH
+    const systemPrompt = `You create RICHLY DETAILED ultra-realistic video scene descriptions for AI video generation of historical documentaries.
 
 RULES:
-- 15-30 words per description MAXIMUM
+- 40-70 words per description - DETAILED and SPECIFIC
 - ALWAYS start with "Ultra realistic"
-- Include ONE camera movement (pan, dolly, tracking)
-- Show historical scenes AS THEY HAPPENED - people living, not modern analysis
-- No museums, researchers, maps, documents, artifacts on display
-- Photorealistic quality with cinematic lighting
+- Include ONE specific camera movement (slow dolly forward, lateral tracking shot, crane descending, push-in to detail)
+- Show historical scenes AS THEY HAPPENED with PERIOD-ACCURATE DETAILS
+- NO modern framing (no museums, researchers, maps, artifacts on display)
+- Photorealistic quality with cinematic lighting appropriate to the era
 
-CLIP 1 MUST BE: Grand establishing shot of the subject's palace/castle/city - NO people, just the magnificent location.
+CRITICAL - DESCRIBE THE ENVIRONMENT IN DETAIL:
+For INTERIORS: Describe the room's architecture, furniture, decorations, lighting sources (candles, fireplaces, oil lamps, natural light through windows), wall treatments (tapestries, gilded moldings, frescoes), floor materials, ceiling details
+For EXTERIORS: Describe the building's architectural style, surrounding landscape, weather, time of day, atmospheric effects (mist, dust, smoke from chimneys), street activity or courtyard details
+
+CLIP 1 MUST BE: A breathtaking ESTABLISHING SHOT of the subject's primary location - their palace, castle, fortress, or capital city. Include specific architectural details (towers, spires, gates, gardens, fountains). Describe the atmosphere - misty morning, golden sunset, torchlit night. Make viewers feel transported to that exact place and time. NO people as main focus in clip 1.
+
+EXAMPLE QUALITY:
+BAD: "Ultra realistic Charlotte and George in a palace chamber, tracking shot"
+GOOD: "Ultra realistic lavish Georgian state chamber, ornate gilt-framed mirrors reflecting hundreds of candleflames, crimson damask walls beneath a painted ceiling of mythological scenes, slow dolly forward past mahogany furniture with ormolu mounts, dust motes dancing in shafts of afternoon light through tall sash windows"
 
 Output format - JSON array ONLY:
-[{"index": 1, "sceneDescription": "Ultra realistic grand establishing shot, [subject's palace/city], dramatic slow dolly toward entrance, golden hour light, cinematic"}, {"index": 2, "sceneDescription": "Ultra realistic..."}]`;
+[{"index": 1, "sceneDescription": "Ultra realistic [detailed establishing shot with architectural and atmospheric specifics]..."}, {"index": 2, "sceneDescription": "Ultra realistic..."}]`;
 
     const systemConfig = [
       {
@@ -345,7 +353,7 @@ Output format - JSON array ONLY:
       messages: [
         {
           role: 'user',
-          content: `Generate exactly ${CLIP_COUNT} cinematic video scene descriptions that form a COHESIVE VISUAL STORY for a historical documentary intro.
+          content: `Generate exactly ${CLIP_COUNT} RICHLY DETAILED cinematic video scene descriptions that form a COHESIVE VISUAL STORY for a historical documentary intro.
 
 SCRIPT CONTEXT (first ~${TOTAL_CLIP_DURATION} seconds):
 ${introScriptWords}
@@ -355,22 +363,38 @@ ${clipDescriptions}
 
 STYLE GUIDANCE: ${stylePrompt || 'Historically accurate, immersive first-person perspective'}
 
-CRITICAL - STORYTELLING FLOW:
-- The ${CLIP_COUNT} clips MUST flow together as one continuous visual narrative
-- Each clip should naturally lead into the next (establish → develop → transition)
+=== CRITICAL REQUIREMENTS ===
 
-CLIP 1 RULE (MANDATORY): The FIRST clip MUST be a grand ESTABLISHING SHOT of the subject's primary location - their palace, castle, kingdom, or city. For royalty: show THEIR palace exterior with dramatic camera movement. For empires: show THEIR capital city skyline. NO people as the main focus in clip 1 - just the magnificent setting that establishes WHERE this story takes place.
+**DETAIL IS ESSENTIAL** - Generic descriptions like "Charlotte and George in a chamber" are UNACCEPTABLE.
+Instead, describe:
+- WHAT the chamber looks like (Rococo? Georgian? Medieval? What furniture? What on the walls?)
+- The LIGHTING (candlelight casting shadows? firelight flickering? grey daylight through leaded windows?)
+- The ATMOSPHERE (smoke from fires? dust motes? fog through open windows?)
+- TEXTURES and MATERIALS (velvet, silk, oak, marble, gilt, tapestry)
 
-- After the establishing shot, move to medium shots, then close-ups for emotional moments
-- Vary shot types: wide establishing → medium action → close-up detail → POV → sweeping panorama
-- Create visual momentum - each clip builds on the previous one
-- Think like a film editor: beginning hooks viewer, middle develops story, end creates anticipation
+**CLIP 1 - HOOK THE VIEWER (MANDATORY)**:
+The first clip MUST be a SPECTACULAR establishing shot that transports viewers INSTANTLY to this time and place.
+- For royalty: Their palace exterior - describe specific architectural features (baroque facades, crenellated towers, formal gardens with geometric hedges, fountains, the approach road)
+- For empires: Their capital city - spires, walls, markets, the skyline at dawn or dusk
+- Describe the ATMOSPHERE: morning mist rising from the moat? golden sunset illuminating marble? torches flickering along walls at twilight?
+- NO people as the main focus - let the location speak
 
-Remember:
-- Each clip is only ${CLIP_DURATION} seconds long - keep actions SIMPLE and focused
-- One clear visual concept per clip (don't overcrowd short clips)
-- Include camera movements appropriate for ${CLIP_DURATION}s (subtle pans, slow zooms)
-- Show the era authentically with dynamic but achievable scenes
+**STORYTELLING FLOW**:
+- Clip 1: Wide establishing shot - location only, maximum grandeur
+- Clips 2-4: Move inside or closer - introduce the setting's interior spaces with rich detail
+- Clips 5-8: Medium shots - people in context, show their world around them
+- Clips 9-12: Closer, more intimate - emotional moments, dramatic tension
+
+**FOR EVERY CLIP, DESCRIBE**:
+1. The ENVIRONMENT in specific detail (architecture, furnishings, decorations)
+2. The LIGHTING and ATMOSPHERE (time of day, weather, mood)
+3. The CAMERA MOVEMENT (one specific movement: slow dolly, lateral tracking, crane shot, push-in)
+4. Any MOTION in the scene (flames flickering, fabric moving, dust dancing, steam rising)
+
+REMEMBER:
+- 40-70 words per description - USE THE SPACE to paint a picture
+- Each ${CLIP_DURATION}-second clip needs ONE clear visual focus (don't overcrowd)
+- Period accuracy is essential - know the era's architecture, fashion, and daily life
 - Output ONLY a JSON array with ${CLIP_COUNT} items`
         }
       ],
