@@ -53,7 +53,7 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
 // Safety terms - kept minimal so scene content isn't drowned out (negative prompt handles restrictions)
 const SAFETY_PREFIX = "";  // Removed: was overwhelming scene descriptions with 133 chars of generic terms
 const SAFETY_SUFFIX = ", fully clothed figures, modest historical attire";
-const NEGATIVE_PROMPT = "nudity, nude, naked, bare chest, bare skin, exposed skin, topless, shirtless, revealing clothing, classical nude, artistic nude, partial nudity, undressed, unclothed, nsfw, adult content, violence, gore, blood, horror, scary, fear";
+const NEGATIVE_PROMPT = "nudity, nude, naked, bare chest, bare skin, exposed skin, topless, shirtless, revealing clothing, classical nude, artistic nude, partial nudity, undressed, unclothed, nsfw, adult content, violence, gore, blood, horror, scary, fear, kissing, romantic embrace, men in dresses, crossdressing, gender swap";
 
 // Start a RunPod job for Z-Image generation
 async function startImageJob(apiKey: string, prompt: string, quality: string, aspectRatio: string): Promise<string> {

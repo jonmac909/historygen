@@ -447,9 +447,13 @@ FORBIDDEN:
 - Violence, gore, blood, weapons being used
 - Anything sexual or suggestive
 - Disturbing or shocking imagery
+- Kissing or romantic physical contact
+- Men wearing dresses or feminine clothing
 
 CONTENT SAFETY (MANDATORY):
 - All people must be FULLY CLOTHED in modest period attire
+- Men wear masculine clothing (suits, robes, tunics), women wear feminine clothing (dresses, gowns)
+- No kissing, no romantic embraces
 - No battles, fights, or violent confrontations
 - Family-friendly content only
 
