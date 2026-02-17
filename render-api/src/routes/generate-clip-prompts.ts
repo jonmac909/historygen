@@ -36,6 +36,28 @@ interface TimePeriodContext {
   anachronisms: string[];   // Things to avoid for this era
 }
 
+// Truncate prompts that are too long (max 30 words) and remove sequence words
+function truncateAndCleanPrompt(prompt: string, maxWords: number = 30): string {
+  // Remove sequence words that indicate multiple shots
+  const sequenceWords = /\b(then|next|afterwards|subsequently|enters frame|exits frame|begins to|starts to|continues to)\b/gi;
+  let cleaned = prompt.replace(sequenceWords, '');
+
+  // Split into sentences, take only the first one if multiple
+  const sentences = cleaned.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  if (sentences.length > 1) {
+    cleaned = sentences[0].trim();
+  }
+
+  // Truncate to max words
+  const words = cleaned.split(/\s+/);
+  if (words.length > maxWords) {
+    console.log(`[Prompt Truncation] Truncating from ${words.length} to ${maxWords} words`);
+    cleaned = words.slice(0, maxWords).join(' ');
+  }
+
+  return cleaned.trim();
+}
+
 // Extract time period and visual constraints from script
 async function extractTimePeriod(
   anthropic: Anthropic,
@@ -411,12 +433,15 @@ REGION: ${timePeriod.region}
 EVERY SINGLE CLIP (1-12) MUST BE SET IN ${timePeriod.era.toUpperCase()}, ${timePeriod.region.toUpperCase()}
 DO NOT drift to other eras. NO Roman, Greek, Medieval, Victorian unless that IS the era above.${eraAnachronisms}
 
-CRITICAL - READ CAREFULLY:
+CRITICAL - HARD WORD LIMIT:
 
-1. ONE SHOT PER PROMPT (20-30 words MAX)
-   - Describe ONE camera angle, ONE moment, ONE action
-   - DO NOT list multiple things happening
-   - DO NOT describe a sequence of events
+⚠️ MAXIMUM 25 WORDS PER PROMPT - COUNT YOUR WORDS ⚠️
+Any prompt over 25 words will be REJECTED. This is a STRICT limit.
+
+1. ONE SHOT PER PROMPT (15-25 words)
+   - Describe ONE camera angle, ONE frozen moment
+   - NO sequences: no "then", "next", "enters", "exits", "begins", "starts"
+   - NO multiple actions: describe a STILL FRAME that can have subtle motion
    - SHORTER IS BETTER - the AI will add detail
 
 2. CLIP 1 = ESTABLISHING SHOT, NO PEOPLE
@@ -436,9 +461,11 @@ GOOD EXAMPLES (notice how short and focused on content):
 - "King seated in throne room, candlelit, velvet robes, slow dolly in"
 - "Courtyard fountain, nobles walking past, afternoon sun, tracking shot"
 
-BAD EXAMPLES (too long, multiple shots):
-- "Palace exterior at dawn with mist rising, then cut to interior throne room where the king sits, servants attending" ❌ (multiple scenes)
-- "Battle scene showing cavalry charging across field while archers fire arrows and infantry clashes" ❌ (too many actions)
+BAD EXAMPLES (REJECTED - too long, sequences):
+- "Palace exterior at dawn with mist rising, then cut to interior throne room where the king sits, servants attending" ❌ (sequence with "then")
+- "Servant's hand enters frame, lifts the letter, then exits" ❌ (sequence: "enters", "exits")
+- "Camera pushes in as candle flickers and shadows dance across the seal" ❌ (too many elements, 14+ words)
+- Any prompt over 25 words ❌ (HARD LIMIT)
 
 FORBIDDEN:
 - Multiple shots/scenes in one prompt
@@ -589,9 +616,12 @@ Output JSON array ONLY, no explanations.`
       const window = windows[i];
       const scene = sceneDescriptions.find(s => s.index === i + 1);
 
-      const sceneDesc = regeneratedDescriptions.get(i)
+      const rawSceneDesc = regeneratedDescriptions.get(i)
         || scene?.sceneDescription
         || `Historical scene: ${window.text.substring(0, 200)}`;
+
+      // Truncate and clean prompts that are too long or have sequence words
+      const sceneDesc = truncateAndCleanPrompt(rawSceneDesc, 30);
 
       clipPrompts.push({
         index: i + 1,
