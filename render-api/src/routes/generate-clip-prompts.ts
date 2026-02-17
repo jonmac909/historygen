@@ -28,6 +28,85 @@ interface SrtSegment {
   text: string;
 }
 
+// Time period context extracted from script
+interface TimePeriodContext {
+  era: string;              // e.g., "10,000 BCE - Mesolithic Period"
+  region: string;           // e.g., "Ancient Near East"
+  visualConstraints: string; // e.g., "Stone tools only, animal hide clothing"
+  anachronisms: string[];   // Things to avoid for this era
+}
+
+// Extract time period and visual constraints from script
+async function extractTimePeriod(
+  anthropic: Anthropic,
+  script: string
+): Promise<{ context: TimePeriodContext; inputTokens: number; outputTokens: number }> {
+  const response = await anthropic.messages.create({
+    model: 'claude-sonnet-4-5-20250929',
+    max_tokens: 500,
+    system: formatSystemPrompt('You are a helpful assistant that analyzes historical scripts.') as Anthropic.MessageCreateParams['system'],
+    messages: [{
+      role: 'user',
+      content: `Analyze this historical documentary script and extract the PRIMARY time period being depicted.
+
+SCRIPT (first 4000 chars):
+${script.substring(0, 4000)}
+
+Return ONLY valid JSON with these fields:
+{
+  "era": "The specific time period, e.g., '10,000 BCE - Mesolithic Period' or '1347 CE - Medieval Europe'",
+  "region": "Geographic region, e.g., 'Ancient Near East' or 'Western Europe'",
+  "visualConstraints": "Brief description of period-accurate visual elements (clothing, tools, architecture)",
+  "anachronisms": ["list", "of", "things", "that", "would", "be", "anachronistic", "for", "this", "era"]
+}
+
+IMPORTANT:
+- For prehistoric periods (before 3000 BCE), anachronisms should include: metal tools, woven textiles, brick buildings, written documents, formal clothing, agriculture (if pre-agricultural)
+- For ancient periods (3000 BCE - 500 CE), anachronisms might include: gunpowder, printing, certain fabrics, architectural styles from later eras
+- For medieval periods, anachronisms might include: modern uniforms, electricity, photography
+
+Return ONLY the JSON object, no explanations.`
+    }],
+  });
+
+  const inputTokens = response.usage?.input_tokens || 0;
+  const outputTokens = response.usage?.output_tokens || 0;
+
+  try {
+    const text = response.content[0].type === 'text' ? response.content[0].text : '';
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      console.log(`[Time Period] Extracted: ${parsed.era} in ${parsed.region}`);
+      console.log(`[Time Period] Anachronisms to avoid: ${parsed.anachronisms?.join(', ')}`);
+      return {
+        context: {
+          era: parsed.era || 'Historical Period',
+          region: parsed.region || 'Unknown Region',
+          visualConstraints: parsed.visualConstraints || '',
+          anachronisms: parsed.anachronisms || [],
+        },
+        inputTokens,
+        outputTokens,
+      };
+    }
+  } catch (e) {
+    console.error('[Time Period] Failed to parse response:', e);
+  }
+
+  // Default fallback
+  return {
+    context: {
+      era: 'Historical Period',
+      region: 'Unknown Region',
+      visualConstraints: '',
+      anachronisms: [],
+    },
+    inputTokens,
+    outputTokens,
+  };
+}
+
 // Modern/anachronistic keywords to filter from scene descriptions
 // Reused from generate-image-prompts.ts
 const MODERN_KEYWORDS_TO_REMOVE = [
@@ -292,10 +371,25 @@ router.post('/', async (req: Request, res: Response) => {
     console.log(`Parsed ${allSegments.length} SRT segments, using ${introSegments.length} for intro clips`);
 
     // Send initial progress
-    sendEvent({ type: 'progress', progress: 5, message: 'Preparing clip prompts...' });
+    sendEvent({ type: 'progress', progress: 3, message: 'Analyzing time period...' });
 
     // Initialize Anthropic client
     const anthropic = createAnthropicClient(anthropicApiKey);
+
+    // Track token usage for cost tracking
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+
+    // PHASE 0: Extract time period from script to ensure accurate imagery
+    const timePeriodResult = await extractTimePeriod(anthropic, script);
+    const timePeriod = timePeriodResult.context;
+    totalInputTokens += timePeriodResult.inputTokens;
+    totalOutputTokens += timePeriodResult.outputTokens;
+
+    // Build anachronism list for this specific era
+    const eraAnachronisms = timePeriod.anachronisms.length > 0
+      ? `\n\nANACHRONISMS TO AVOID FOR ${timePeriod.era.toUpperCase()}:\n- ${timePeriod.anachronisms.join('\n- ')}`
+      : '';
 
     // Get the intro portion of the script (approximately first 100 seconds worth)
     // Assuming ~150 words per minute = ~250 words for 100 seconds
@@ -306,20 +400,60 @@ router.post('/', async (req: Request, res: Response) => {
       `CLIP ${i + 1} (${w.startSeconds}s - ${w.endSeconds}s):\nNarration: "${w.text}"`
     ).join('\n\n');
 
-    // System prompt optimized for video clip generation - SIMPLE but historically accurate
-    const systemPrompt = `You create ultra-realistic video scene descriptions for AI video generation.
+    sendEvent({ type: 'progress', progress: 10, message: 'Generating video prompts...' });
 
-RULES:
-- 20-40 words per description
-- ALWAYS start with "Ultra realistic"
-- Include ONE camera movement (dolly, pan, tracking)
-- Show the historical era authentically - NO modern settings
-- For INTERIORS: describe the room with furniture, decorations, and lighting (not empty walls)
+    // System prompt optimized for video clip generation - SHORT prompts to avoid multiple shots
+    const systemPrompt = `You create SHORT video scene descriptions for AI video generation. Each prompt must describe ONE SINGLE SHOT - not multiple shots or scenes.
 
-CLIP 1 MUST BE: An exterior establishing shot of the location (palace, castle, village, house) with NO people. Set the scene.
+=== TIME PERIOD ===
+ERA: ${timePeriod.era}
+REGION: ${timePeriod.region}${eraAnachronisms}
 
-Output format - JSON array ONLY:
-[{"index": 1, "sceneDescription": "Ultra realistic exterior shot of..."}, {"index": 2, "sceneDescription": "Ultra realistic..."}]`;
+CRITICAL - READ CAREFULLY:
+
+1. ONE SHOT PER PROMPT (20-30 words MAX)
+   - Describe ONE camera angle, ONE moment, ONE action
+   - DO NOT list multiple things happening
+   - DO NOT describe a sequence of events
+   - SHORTER IS BETTER - the AI will add detail
+
+2. CLIP 1 = ESTABLISHING SHOT, NO PEOPLE
+   - Exterior of the location (palace, castle, city)
+   - NO PEOPLE. Zero people. Empty scene.
+   - Example: "Ultra realistic exterior Versailles palace golden hour, French Baroque architecture, manicured gardens, slow dolly forward"
+
+3. FORMAT (20-30 words):
+   - Start with "Ultra realistic"
+   - ONE subject/focus
+   - ONE camera movement
+   - ONE lighting condition
+
+GOOD EXAMPLES (notice how short):
+- "Ultra realistic exterior Windsor Castle dawn, morning mist, stone towers, slow pan right"
+- "Ultra realistic king in throne room, candlelit, velvet robes, slow dolly in"
+- "Ultra realistic courtyard fountain, nobles walking, afternoon sun, tracking shot"
+
+BAD EXAMPLES (too long, multiple shots):
+- "Ultra realistic palace exterior at dawn with mist rising, then cut to interior throne room where the king sits, servants attending" ❌ (multiple scenes)
+- "Ultra realistic battle scene showing cavalry charging across field while archers fire arrows and infantry clashes" ❌ (too many actions)
+
+FORBIDDEN:
+- Multiple shots/scenes in one prompt
+- Sequences of events
+- Museums, exhibits, modern settings
+- People in clip 1
+- Nudity, partial nudity, revealing clothing
+- Violence, gore, blood, weapons being used
+- Anything sexual or suggestive
+- Disturbing or shocking imagery
+
+CONTENT SAFETY (MANDATORY):
+- All people must be FULLY CLOTHED in modest period attire
+- No battles, fights, or violent confrontations
+- Family-friendly content only
+
+Output JSON array ONLY:
+[{"index": 1, "sceneDescription": "Ultra realistic..."}, ...]`;
 
     const systemConfig = [
       {
@@ -328,12 +462,6 @@ Output format - JSON array ONLY:
         cache_control: { type: 'ephemeral' as const }
       }
     ];
-
-    sendEvent({ type: 'progress', progress: 15, message: 'Generating video prompts...' });
-
-    // Track token usage for cost tracking
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
 
     let fullResponse = '';
 
@@ -344,22 +472,25 @@ Output format - JSON array ONLY:
       messages: [
         {
           role: 'user',
-          content: `Generate exactly ${CLIP_COUNT} video scene descriptions for a historical documentary intro.
+          content: `Generate ${CLIP_COUNT} SHORT video prompts (20-30 words each). Each prompt = ONE SINGLE SHOT. No cut scenes, no sequences.
+
+ERA: ${timePeriod.era}, ${timePeriod.region}
+STYLE: ${stylePrompt || 'Historically accurate'}
 
 SCRIPT CONTEXT:
 ${introScriptWords}
 
-TIME-CODED NARRATION:
+NARRATION TIMING:
 ${clipDescriptions}
 
-STYLE: ${stylePrompt || 'Historically accurate'}
+RULES:
+- CLIP 1: Exterior establishing shot, NO PEOPLE (zero people, empty scene)
+- 20-30 words per prompt MAX
+- ONE shot, ONE camera angle, ONE action per prompt
+- Start each with "Ultra realistic"
+- Include ONE camera movement (dolly, pan, tracking)
 
-REQUIREMENTS:
-- CLIP 1: Exterior establishing shot of the location (palace, castle, village) - NO people
-- For interior scenes: describe the room with period-accurate furniture, decorations, and lighting
-- Include camera movement (dolly, pan, tracking shot)
-- Keep descriptions 20-40 words each
-- Output ONLY a JSON array with ${CLIP_COUNT} items`
+Output JSON array ONLY, no explanations.`
         }
       ],
     });
