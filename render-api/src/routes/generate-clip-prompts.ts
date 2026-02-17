@@ -405,9 +405,11 @@ router.post('/', async (req: Request, res: Response) => {
     // System prompt optimized for video clip generation - SHORT prompts to avoid multiple shots
     const systemPrompt = `You create SHORT video scene descriptions for AI video generation. Each prompt must describe ONE SINGLE SHOT - not multiple shots or scenes.
 
-=== TIME PERIOD ===
+=== TIME PERIOD - ALL CLIPS MUST BE THIS ERA ===
 ERA: ${timePeriod.era}
-REGION: ${timePeriod.region}${eraAnachronisms}
+REGION: ${timePeriod.region}
+EVERY SINGLE CLIP (1-12) MUST BE SET IN ${timePeriod.era.toUpperCase()}, ${timePeriod.region.toUpperCase()}
+DO NOT drift to other eras. NO Roman, Greek, Medieval, Victorian unless that IS the era above.${eraAnachronisms}
 
 CRITICAL - READ CAREFULLY:
 
@@ -479,7 +481,8 @@ Output JSON array ONLY:
           role: 'user',
           content: `Generate ${CLIP_COUNT} SHORT video prompts (20-30 words each). Each prompt = ONE SINGLE SHOT. No cut scenes, no sequences.
 
-ERA: ${timePeriod.era}, ${timePeriod.region}
+MANDATORY ERA FOR ALL 12 CLIPS: ${timePeriod.era}, ${timePeriod.region}
+⚠️ EVERY clip must be set in ${timePeriod.era}. Do NOT use any other historical era.
 STYLE: ${stylePrompt || 'Historically accurate'}
 
 SCRIPT CONTEXT:
@@ -489,12 +492,14 @@ NARRATION TIMING:
 ${clipDescriptions}
 
 RULES:
+- ALL 12 CLIPS must be ${timePeriod.era} - no other era allowed
 - CLIP 1: Exterior establishing shot, NO PEOPLE (zero people, empty scene)
 - 20-30 words per prompt MAX
 - ONE shot, ONE camera angle, ONE action per prompt
 - Focus on the SCENE CONTENT (people, objects, setting, lighting)
 - Include ONE camera movement (dolly, pan, tracking)
 - Do NOT include style instructions (style is added separately)
+- Do NOT drift to Roman, Greek, Medieval, Renaissance or any era except ${timePeriod.era}
 
 Output JSON array ONLY, no explanations.`
         }
