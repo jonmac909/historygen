@@ -1552,6 +1552,9 @@ const Index = () => {
       setClipPrompts(clipResult.prompts);
       updateStep("clip-prompts", "completed", `${clipResult.prompts.length} clips`);
 
+      // Save clip prompts to database immediately
+      autoSave("prompts", { clipPrompts: clipResult.prompts });
+
       await new Promise(resolve => setTimeout(resolve, 300));
       setViewState("review-clip-prompts");
 
@@ -1562,7 +1565,13 @@ const Index = () => {
         description: error instanceof Error ? error.message : "An error occurred.",
         variant: "destructive",
       });
-      setViewState("review-captions");
+      // If we already have clip prompts (regenerating), stay on that view
+      // Otherwise go back to captions
+      if (clipPrompts.length > 0) {
+        setViewState("review-clip-prompts");
+      } else {
+        setViewState("review-captions");
+      }
     }
   };
 
