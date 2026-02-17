@@ -420,22 +420,23 @@ CRITICAL - READ CAREFULLY:
 2. CLIP 1 = ESTABLISHING SHOT, NO PEOPLE
    - Exterior of the location (palace, castle, city)
    - NO PEOPLE. Zero people. Empty scene.
-   - Example: "Ultra realistic exterior Versailles palace golden hour, French Baroque architecture, manicured gardens, slow dolly forward"
+   - Example: "Exterior Versailles palace golden hour, French Baroque architecture, manicured gardens, slow dolly forward"
 
 3. FORMAT (20-30 words):
-   - Start with "Ultra realistic"
+   - Describe the SCENE CONTENT (what/who is visible, setting, lighting)
    - ONE subject/focus
    - ONE camera movement
    - ONE lighting condition
+   - Do NOT include style instructions (style is added separately)
 
-GOOD EXAMPLES (notice how short):
-- "Ultra realistic exterior Windsor Castle dawn, morning mist, stone towers, slow pan right"
-- "Ultra realistic king in throne room, candlelit, velvet robes, slow dolly in"
-- "Ultra realistic courtyard fountain, nobles walking, afternoon sun, tracking shot"
+GOOD EXAMPLES (notice how short and focused on content):
+- "Exterior Windsor Castle dawn, morning mist, stone towers, slow pan right"
+- "King seated in throne room, candlelit, velvet robes, slow dolly in"
+- "Courtyard fountain, nobles walking past, afternoon sun, tracking shot"
 
 BAD EXAMPLES (too long, multiple shots):
-- "Ultra realistic palace exterior at dawn with mist rising, then cut to interior throne room where the king sits, servants attending" ❌ (multiple scenes)
-- "Ultra realistic battle scene showing cavalry charging across field while archers fire arrows and infantry clashes" ❌ (too many actions)
+- "Palace exterior at dawn with mist rising, then cut to interior throne room where the king sits, servants attending" ❌ (multiple scenes)
+- "Battle scene showing cavalry charging across field while archers fire arrows and infantry clashes" ❌ (too many actions)
 
 FORBIDDEN:
 - Multiple shots/scenes in one prompt
@@ -453,7 +454,7 @@ CONTENT SAFETY (MANDATORY):
 - Family-friendly content only
 
 Output JSON array ONLY:
-[{"index": 1, "sceneDescription": "Ultra realistic..."}, ...]`;
+[{"index": 1, "sceneDescription": "Exterior palace at dawn..."}, ...]`;
 
     const systemConfig = [
       {
