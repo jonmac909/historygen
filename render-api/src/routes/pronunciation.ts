@@ -22,6 +22,12 @@ const DEFAULT_FIXES: PronunciationFix[] = [
   { word: 'Nicaea', phonetic: 'Nye-see-ah' },
   { word: 'Dorylaeum', phonetic: 'Dor-ee-lay-um' },
   { word: 'Anatolia', phonetic: 'An-ah-toe-lee-ah' },
+  { word: 'Kew', phonetic: 'Kyoo' },
+  { word: 'Versailles', phonetic: 'Vair-sigh' },
+  { word: 'Buckingham', phonetic: 'Buck-ing-um' },
+  { word: 'Windsor', phonetic: 'Wind-zer' },
+  { word: 'Mecklenburg', phonetic: 'Meck-len-berg' },
+  { word: 'Strelitz', phonetic: 'Strell-its' },
   // Historical terms
   { word: 'Byzantine', phonetic: 'Biz-an-tine' },
   { word: 'Papal', phonetic: 'Pay-pal' },
@@ -33,13 +39,21 @@ const DEFAULT_FIXES: PronunciationFix[] = [
   // Titles and royalty
   { word: 'archduchess', phonetic: 'arch-duch-ess' },
   { word: 'archduke', phonetic: 'arch-duke' },
-  // Common words that get garbled
+  // Common words that get garbled by Fish Speech TTS
+  { word: 'palace', phonetic: 'PAL-iss' },
+  { word: 'palaces', phonetic: 'PAL-iss-ez' },
   { word: 'courts', phonetic: 'korts' },
   { word: 'preachers', phonetic: 'pree-chers' },
   { word: 'Jewish', phonetic: 'Jew-ish' },
   { word: 'Armenian', phonetic: 'Ar-mee-nee-an' },
   { word: 'dream', phonetic: 'dreem' },
   { word: 'dreams', phonetic: 'dreems' },
+  { word: 'Charlotte', phonetic: 'SHAR-lot' },
+  { word: 'George', phonetic: 'Jorj' },
+  { word: 'Georgian', phonetic: 'JOR-jun' },
+  { word: 'porphyria', phonetic: 'por-FEAR-ee-ah' },
+  { word: 'malady', phonetic: 'MAL-ah-dee' },
+  { word: 'regency', phonetic: 'REE-jen-see' },
 ];
 
 // Load fixes from file, falling back to defaults
