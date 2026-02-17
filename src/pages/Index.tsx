@@ -1844,16 +1844,19 @@ const Index = () => {
         const newClip = clipsResult.clips[0];
         console.log(`[Regenerate] Clip ${clipIndex} new URL:`, newClip.videoUrl);
 
-        // Update the clip in our array
-        setGeneratedClips(prev => {
-          const updated = [...prev];
-          const existingIndex = updated.findIndex(c => c.index === clipIndex);
-          if (existingIndex >= 0) {
-            console.log(`[Regenerate] Replacing clip at index ${existingIndex}, old URL:`, updated[existingIndex].videoUrl);
-            updated[existingIndex] = newClip;
-          }
-          return updated;
-        });
+        // Update the clip in our array and persist to database
+        const updatedClips = generatedClips.map(c => c.index === clipIndex ? newClip : c);
+        setGeneratedClips(updatedClips);
+
+        // Also update clipPrompts state with the new image URL
+        const updatedClipPrompts = clipPrompts.map(p =>
+          p.index === clipIndex ? { ...p, imageUrl: newImageUrl } : p
+        );
+        setClipPrompts(updatedClipPrompts);
+
+        // CRITICAL: Persist to database so regenerated clip survives page refresh
+        console.log(`[Regenerate] Saving clip ${clipIndex} to database`);
+        autoSave("prompts", { clips: updatedClips, clipPrompts: updatedClipPrompts });
 
         toast({
           title: "Clip Regenerated",
