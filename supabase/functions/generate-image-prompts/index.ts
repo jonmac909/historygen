@@ -364,8 +364,22 @@ DO NOT let the painting STYLE (Dutch Golden Age, Renaissance, etc.) influence th
 Example: If topic is "Regency England 1810s" but style is "Dutch Golden Age":
 - CORRECT: Regency empire-waist dresses, tailcoats, Georgian architecture, PAINTED in warm Dutch oil style
 - WRONG: Dutch 1600s ruffs, doublets, or Amsterdam canals
+
+IMPORTANT: Generate scenes INSPIRED BY THE TOPIC more than the literal narration.
+For example, if the topic is "Regency Debutante Season", focus on TYPICAL DEBUTANTE SCENES:
+- Grand balls with dancing (being asked to dance, waltzing couples, dance cards)
+- Morning calls in elegant drawing rooms
+- Promenading in Hyde Park
+- Tea parties and card games
+- Grand Georgian townhouses and country estates
+- Ladies being presented at court
+- Intimate parlor conversations about suitors
+- Garden parties and picnics
+
+The narration provides MOOD and TIMING, but the TOPIC provides the VISUAL CONTENT.
+Do NOT try to literally visualize abstract script passages - show BEAUTIFUL SCENES from the topic's world instead.
 ` : ''}
-YOUR TASK: Create visual scene descriptions based on the script and narration segments provided.
+YOUR TASK: Create visual scene descriptions inspired by the topic and mood of the narration.
 
 CONTENT SAFETY:
 - NO nudity, partial nudity, or sexually suggestive content

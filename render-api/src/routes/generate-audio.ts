@@ -191,8 +191,22 @@ function normalizeText(text: string): string {
   // Also handle paragraph breaks without ending punctuation (add period + ellipsis)
   result = result.replace(/([^.!?\n])\s*\n\s*\n+\s*/g, '$1....\n\n');
 
-  // Apply pronunciation fixes for difficult words (case-insensitive)
-  // Loads dynamically from pronunciation-fixes.json file
+  // NOTE: Pronunciation fixes are NOT applied here - they're applied in applyPronunciationFixes()
+  // This keeps the display text readable ("Regency" not "REE-jen-see")
+
+  // Convert numbers to words for better TTS pronunciation
+  result = convertNumbersToWords(result);
+
+  return result
+    .replace(/[^\x00-\x7F]/g, "") // Remove remaining non-ASCII AFTER conversions
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Apply pronunciation fixes for TTS - converts words to phonetic spellings
+// This should be called ONLY when passing text to TTS, not for display
+function applyPronunciationFixes(text: string): string {
+  let result = text;
   const pronunciationFixes = getPronunciationFixesRecord();
   for (const [word, phonetic] of Object.entries(pronunciationFixes)) {
     const regex = new RegExp(`\\b${word}\\b`, 'gi');
@@ -202,14 +216,7 @@ function normalizeText(text: string): string {
       console.log(`[PRONUNCIATION FIX] "${word}" → "${phonetic}"`);
     }
   }
-
-  // Convert numbers to words for better TTS pronunciation
-  result = convertNumbersToWords(result);
-
-  return result
-    .replace(/[^\x00-\x7F]/g, "") // Remove remaining non-ASCII AFTER conversions
-    .replace(/\s+/g, " ")
-    .trim();
+  return result;
 }
 
 // ============================================================
@@ -1493,6 +1500,9 @@ async function generateTTSChunkWithRetry(
 ): Promise<Buffer> {
   let lastError: Error | null = null;
 
+  // Apply pronunciation fixes RIGHT before TTS (not stored in display text)
+  const ttsText = applyPronunciationFixes(chunkText);
+
   for (let attempt = 0; attempt < RETRY_MAX_ATTEMPTS; attempt++) {
     try {
       if (attempt > 0) {
@@ -1505,7 +1515,7 @@ async function generateTTSChunkWithRetry(
       }
 
       logger.debug(`Starting TTS job for chunk ${chunkIndex + 1}/${totalChunks} (attempt ${attempt + 1}/${RETRY_MAX_ATTEMPTS})`);
-      const jobId = await startTTSJob(chunkText, apiKey, referenceAudioBase64, ttsSettings);
+      const jobId = await startTTSJob(ttsText, apiKey, referenceAudioBase64, ttsSettings);
       const output = await pollJobStatus(jobId, apiKey);
       const audioData = base64ToBuffer(output.audio_base64);
 

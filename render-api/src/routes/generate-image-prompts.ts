@@ -615,7 +615,19 @@ YOUR TASK: Create VISUALLY STUNNING scene descriptions that showcase the BEAUTY 
 - VARIED: Mix exteriors (palaces, gardens, countryside) with interiors (ballrooms, chambers, throne rooms)
 - DYNAMIC: Some wide establishing shots, some intimate moments, some action
 
-The scene should be INSPIRED BY the narration - capture its MOOD and EMOTION through visuals rather than literal depiction.
+IMPORTANT: Generate scenes that are INSPIRED BY THE TOPIC more than the literal narration.
+For example, if the topic is "Regency Debutante Season", focus on TYPICAL DEBUTANTE SCENES:
+- Grand balls with dancing (being asked to dance, waltzing couples, dance cards)
+- Morning calls in elegant drawing rooms
+- Promenading in Hyde Park
+- Tea parties and card games
+- Grand Georgian townhouses and country estates
+- Ladies being presented at court
+- Intimate parlor conversations about suitors
+- Garden parties and picnics
+
+The narration provides MOOD and TIMING, but the TOPIC provides the VISUAL CONTENT.
+Do NOT try to literally visualize abstract script passages - show BEAUTIFUL SCENES from the topic's world instead.
 
 EXAMPLE - Ptolemaic Egypt (Cleopatra's era, 69-30 BCE):
 - GOOD: "Ptolemaic Alexandria harbor, merchant ships with square sails, Greek and Egyptian traders, limestone lighthouse, Mediterranean sea, golden sunset"

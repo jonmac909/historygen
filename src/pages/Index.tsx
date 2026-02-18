@@ -1308,23 +1308,21 @@ const Index = () => {
     }
   };
 
-  // Step 4: After captions confirmed, generate clip prompts (Full Auto) or image prompts
+  // Step 4: After captions confirmed, generate image prompts
+  // NEW FLOW: Generate ALL images first, then animate first 12 as video clips
   const handleCaptionsConfirm = async (srt: string) => {
     setPendingSrtContent(srt);
 
     // Auto-save captions immediately
     autoSave("captions", { srtContent: srt });
 
-    // In Full Auto mode, generate video clip prompts first (12 × 5s intro)
+    // Both Full Auto and Step-by-step now go directly to image prompts
+    // Video clips are generated AFTER images, using first 12 images
     if (settings.fullAutomation) {
-      console.log("[Full Automation] Generating video clip prompts before images...");
-      // handleGenerateClipPrompts will set view to review-clip-prompts
-      // Then Full Auto hooks will auto-confirm and continue the pipeline
-      await handleGenerateClipPrompts();
-      return;
+      console.log("[Full Automation] Generating image prompts first (videos will use first 12 images)...");
     }
 
-    // Non-Full Auto: generate image prompts directly
+    // Generate image prompts (same flow for Full Auto and Step-by-step)
     const steps: GenerationStep[] = [
       { id: "prompts", label: "Generating Scene Descriptions", status: "pending" },
     ];
@@ -2204,9 +2202,101 @@ const Index = () => {
     });
   };
 
-  const handleImagesConfirm = () => {
-    // Go to video render step (ensures audio is recombined if needed)
-    handleGoToRender();
+  const handleImagesConfirm = async () => {
+    // NEW WORKFLOW: After images confirmed, generate video clips from first 12 images
+    // Full Auto: auto-generate clips and continue to render
+    // Step-by-step: generate clips and show review
+
+    if (pendingImages.length === 0) {
+      console.warn("No images to generate videos from");
+      handleGoToRender();
+      return;
+    }
+
+    // Take first 12 images for video clips (60 seconds at 5s per clip)
+    const VIDEO_CLIP_COUNT = 12;
+    const CLIP_DURATION = 5; // seconds per clip
+    const imagesToAnimate = pendingImages.slice(0, VIDEO_CLIP_COUNT);
+    const promptsForClips = imagePrompts.slice(0, VIDEO_CLIP_COUNT);
+
+    if (imagesToAnimate.length === 0) {
+      console.warn("No images available for video clips");
+      handleGoToRender();
+      return;
+    }
+
+    console.log(`[Video Generation] Animating first ${imagesToAnimate.length} images as video clips`);
+
+    const steps: GenerationStep[] = [
+      { id: "clips", label: "Generating Video Clips from Images", status: "pending" },
+    ];
+
+    setProcessingSteps(steps);
+    setProcessingTitle("Creating Video Intro Clips...");
+    setViewState("processing");
+
+    try {
+      updateStep("clips", "active", `0/${imagesToAnimate.length} (0%)`);
+
+      // Create clip prompts from image prompts + image URLs
+      const clipPromptsForVideo: ClipPrompt[] = promptsForClips.map((p, i) => ({
+        index: i + 1,
+        startSeconds: i * CLIP_DURATION,
+        endSeconds: (i + 1) * CLIP_DURATION,
+        prompt: p.prompt,
+        sceneDescription: p.prompt, // Use image prompt as scene description
+        imageUrl: imagesToAnimate[i],
+      }));
+
+      // Generate video clips
+      const clipsResult = await generateVideoClipsStreaming(
+        projectId,
+        clipPromptsForVideo,
+        (completed, total) => {
+          const percent = Math.round((completed / total) * 100);
+          updateStep("clips", "active", `${completed}/${total} clips (${percent}%)`);
+        }
+      );
+
+      if (!clipsResult.success) {
+        console.error('Video clip generation failed:', clipsResult.error);
+        toast({
+          title: "Clip Generation Issue",
+          description: clipsResult.error || "Some clips may not have generated",
+          variant: "destructive",
+        });
+      }
+
+      updateStep("clips", "completed", "Done");
+      setClipPrompts(clipPromptsForVideo);
+      setGeneratedClips(clipsResult.clips || []);
+
+      // Save clips to project
+      autoSave("prompts", {
+        clipPrompts: clipPromptsForVideo,
+        clips: clipsResult.clips || []
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Full Auto: continue to render; Step-by-step: show clips review
+      if (settings.fullAutomation) {
+        console.log("[Full Automation] Video clips done, proceeding to render...");
+        handleGoToRender();
+      } else {
+        setViewState("review-clips");
+      }
+
+    } catch (error) {
+      console.error("Video clip generation error:", error);
+      toast({
+        title: "Video Generation Failed",
+        description: error instanceof Error ? error.message : "An error occurred.",
+        variant: "destructive",
+      });
+      // On error, skip videos and go to render
+      handleGoToRender();
+    }
   };
 
   // Thumbnail handlers

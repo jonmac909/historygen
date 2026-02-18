@@ -48,12 +48,12 @@ const DEFAULT_FIXES: PronunciationFix[] = [
   { word: 'Armenian', phonetic: 'Ar-mee-nee-an' },
   { word: 'dream', phonetic: 'dreem' },
   { word: 'dreams', phonetic: 'dreems' },
-  { word: 'Charlotte', phonetic: 'SHAR-lot' },
+  { word: 'Charlotte', phonetic: 'Sharlot' },
   { word: 'George', phonetic: 'Jorj' },
-  { word: 'Georgian', phonetic: 'JOR-jun' },
-  { word: 'porphyria', phonetic: 'por-FEAR-ee-ah' },
-  { word: 'malady', phonetic: 'MAL-ah-dee' },
-  { word: 'regency', phonetic: 'REE-jen-see' },
+  { word: 'Georgian', phonetic: 'Jorjun' },
+  { word: 'porphyria', phonetic: 'porfeereeah' },
+  { word: 'malady', phonetic: 'maladee' },
+  // 'regency' removed - TTS handles it naturally, phonetic was worse
 ];
 
 // Load fixes from file, falling back to defaults
