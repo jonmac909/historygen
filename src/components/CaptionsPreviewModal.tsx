@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, Volume2, Loader2, RefreshCw, Play, Pause } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -12,8 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { toast } from "@/hooks/use-toast";
-import { regenerateAudioSegment, recombineAudioSegments, lookupPhonetic } from "@/lib/api";
 
 interface ParsedSegment {
   index: number;
@@ -32,11 +30,6 @@ interface CaptionsPreviewModalProps {
   forwardLabel?: string;  // Label for forward button (e.g., "Video Prompts" or "Image Prompts")
   imageCount?: number;
   onImageCountChange?: (count: number) => void;
-  // Pronunciation fix props
-  audioUrl?: string;
-  projectId?: string;
-  voiceSampleUrl?: string;
-  onAudioUpdated?: (newAudioUrl: string) => void;
 }
 
 // Parse SRT content into individual segments
@@ -78,25 +71,10 @@ export function CaptionsPreviewModal({
   forwardLabel = "Video Prompts",
   imageCount,
   onImageCountChange,
-  audioUrl,
-  projectId,
-  voiceSampleUrl,
-  onAudioUpdated,
 }: CaptionsPreviewModalProps) {
   const [editedSrt, setEditedSrt] = useState(srtContent);
   const [isEditing, setIsEditing] = useState(false);
   const [segments, setSegments] = useState<ParsedSegment[]>([]);
-
-  // Pronunciation fix state - separate word and phonetic inputs
-  const [wordInputs, setWordInputs] = useState<Record<number, string>>({});
-  const [phoneticInputs, setPhoneticInputs] = useState<Record<number, string>>({});
-  const [lookingUpPhonetic, setLookingUpPhonetic] = useState<number | null>(null);
-  const [regeneratingSegment, setRegeneratingSegment] = useState<number | null>(null);
-  const [previewAudioUrls, setPreviewAudioUrls] = useState<Record<number, string>>({});
-  const [playingSegment, setPlayingSegment] = useState<number | null>(null);
-  const [applyingFix, setApplyingFix] = useState<number | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const lookupTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
 
   // Sync state when srtContent prop changes
   useEffect(() => {
@@ -108,9 +86,6 @@ export function CaptionsPreviewModal({
 
   // Count caption entries
   const captionCount = segments.length;
-
-  // Check if pronunciation fix feature is available
-  const canFixPronunciation = !!(projectId && voiceSampleUrl);
 
   const handleConfirm = () => {
     onConfirm(editedSrt);
@@ -128,173 +103,6 @@ export function CaptionsPreviewModal({
     URL.revokeObjectURL(url);
   };
 
-  // Handle word input change with auto-fill phonetic
-  const handleWordInputChange = async (segmentIndex: number, value: string) => {
-    setWordInputs(prev => ({ ...prev, [segmentIndex]: value }));
-
-    // Clear any pending lookup timeout
-    if (lookupTimeoutRef.current[segmentIndex]) {
-      clearTimeout(lookupTimeoutRef.current[segmentIndex]);
-    }
-
-    // If empty, clear phonetic too
-    if (!value.trim()) {
-      setPhoneticInputs(prev => ({ ...prev, [segmentIndex]: '' }));
-      return;
-    }
-
-    // Debounce the phonetic lookup (300ms)
-    lookupTimeoutRef.current[segmentIndex] = setTimeout(async () => {
-      setLookingUpPhonetic(segmentIndex);
-      try {
-        const result = await lookupPhonetic(value.trim());
-        // Only update if the word hasn't changed
-        if (wordInputs[segmentIndex] === value || !wordInputs[segmentIndex]) {
-          setPhoneticInputs(prev => ({ ...prev, [segmentIndex]: result.phonetic }));
-        }
-      } catch (e) {
-        // If lookup fails, just use the word itself
-        setPhoneticInputs(prev => ({ ...prev, [segmentIndex]: value.trim() }));
-      } finally {
-        setLookingUpPhonetic(null);
-      }
-    }, 300);
-  };
-
-  // Handle phonetic input change (manual edit)
-  const handlePhoneticInputChange = (segmentIndex: number, value: string) => {
-    setPhoneticInputs(prev => ({ ...prev, [segmentIndex]: value }));
-  };
-
-  // Preview the regenerated segment with pronunciation fix
-  const handlePreviewFix = async (segment: ParsedSegment) => {
-    const word = wordInputs[segment.index]?.trim();
-    const phonetic = phoneticInputs[segment.index]?.trim() || word;
-    if (!word || !projectId || !voiceSampleUrl) return;
-
-    setRegeneratingSegment(segment.index);
-
-    try {
-      const result = await regenerateAudioSegment(
-        segment.text,
-        segment.index,
-        voiceSampleUrl,
-        projectId,
-        { word, phonetic }
-      );
-
-      if (result.success && result.segment?.audioUrl) {
-        setPreviewAudioUrls(prev => ({
-          ...prev,
-          [segment.index]: result.segment!.audioUrl
-        }));
-
-        // Auto-play the preview
-        if (audioRef.current) {
-          audioRef.current.src = result.segment.audioUrl;
-          audioRef.current.play();
-          setPlayingSegment(segment.index);
-        }
-
-        toast({
-          title: "Preview ready",
-          description: "Listen to the regenerated segment. Click Apply to use it.",
-        });
-      } else {
-        toast({
-          title: "Regeneration failed",
-          description: result.error || "Could not regenerate segment",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to regenerate",
-        variant: "destructive",
-      });
-    } finally {
-      setRegeneratingSegment(null);
-    }
-  };
-
-  // Apply the fix (recombine audio with the new segment)
-  const handleApplyFix = async (segment: ParsedSegment) => {
-    if (!projectId || !previewAudioUrls[segment.index]) return;
-
-    setApplyingFix(segment.index);
-
-    try {
-      // Recombine all segments (the regenerated segment is already uploaded)
-      const result = await recombineAudioSegments(projectId, captionCount);
-
-      if (result.success && result.audioUrl) {
-        // Clear the preview and inputs for this segment
-        setPreviewAudioUrls(prev => {
-          const newState = { ...prev };
-          delete newState[segment.index];
-          return newState;
-        });
-        setWordInputs(prev => {
-          const newState = { ...prev };
-          delete newState[segment.index];
-          return newState;
-        });
-        setPhoneticInputs(prev => {
-          const newState = { ...prev };
-          delete newState[segment.index];
-          return newState;
-        });
-
-        // Notify parent of updated audio
-        if (onAudioUpdated) {
-          onAudioUpdated(result.audioUrl);
-        }
-
-        toast({
-          title: "Fix applied",
-          description: "Audio has been updated with the corrected pronunciation.",
-        });
-      } else {
-        toast({
-          title: "Apply failed",
-          description: result.error || "Could not recombine audio",
-          variant: "destructive",
-        });
-      }
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to apply fix",
-        variant: "destructive",
-      });
-    } finally {
-      setApplyingFix(null);
-    }
-  };
-
-  // Play/pause preview audio
-  const handlePlayPreview = (segmentIndex: number) => {
-    const url = previewAudioUrls[segmentIndex];
-    if (!url) return;
-
-    if (playingSegment === segmentIndex && audioRef.current && !audioRef.current.paused) {
-      audioRef.current.pause();
-      setPlayingSegment(null);
-    } else {
-      if (audioRef.current) {
-        audioRef.current.src = url;
-        audioRef.current.play();
-        setPlayingSegment(segmentIndex);
-      }
-    }
-  };
-
-  // Handle audio ended
-  const handleAudioEnded = () => {
-    setPlayingSegment(null);
-  };
-
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
@@ -307,12 +115,9 @@ export function CaptionsPreviewModal({
             </span>
           </DialogTitle>
           <DialogDescription>
-            Review the generated SRT captions. {canFixPronunciation && "Type any mispronounced word to regenerate that segment."}
+            Review the generated SRT captions.
           </DialogDescription>
         </DialogHeader>
-
-        {/* Hidden audio element for playback */}
-        <audio ref={audioRef} onEnded={handleAudioEnded} className="hidden" />
 
         {/* Image Generation Settings */}
         {imageCount !== undefined && onImageCountChange && (
@@ -383,98 +188,9 @@ export function CaptionsPreviewModal({
                     </div>
 
                     {/* Segment text */}
-                    <p className="text-sm text-foreground mb-2 leading-relaxed">
+                    <p className="text-sm text-foreground leading-relaxed">
                       {segment.text}
                     </p>
-
-                    {/* Pronunciation fix section */}
-                    {canFixPronunciation && (
-                      <div className="flex items-center gap-2 pt-2 border-t border-border/50 flex-wrap">
-                        <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        <div className="flex items-center gap-1">
-                          <Input
-                            placeholder="word"
-                            value={wordInputs[segment.index] || ''}
-                            onChange={(e) => handleWordInputChange(segment.index, e.target.value)}
-                            className="h-8 text-sm w-24"
-                            disabled={regeneratingSegment === segment.index || applyingFix === segment.index}
-                          />
-                          <span className="text-muted-foreground">→</span>
-                          <div className="relative">
-                            <Input
-                              placeholder="phonetic"
-                              value={phoneticInputs[segment.index] || ''}
-                              onChange={(e) => handlePhoneticInputChange(segment.index, e.target.value)}
-                              className="h-8 text-sm w-28"
-                              disabled={regeneratingSegment === segment.index || applyingFix === segment.index}
-                            />
-                            {lookingUpPhonetic === segment.index && (
-                              <Loader2 className="w-3 h-3 animate-spin absolute right-2 top-2.5 text-muted-foreground" />
-                            )}
-                          </div>
-                        </div>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handlePreviewFix(segment)}
-                          disabled={
-                            !wordInputs[segment.index]?.trim() ||
-                            regeneratingSegment === segment.index ||
-                            applyingFix === segment.index
-                          }
-                          className="h-8"
-                        >
-                          {regeneratingSegment === segment.index ? (
-                            <>
-                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                              Generating...
-                            </>
-                          ) : (
-                            <>
-                              <RefreshCw className="w-3 h-3 mr-1" />
-                              Preview
-                            </>
-                          )}
-                        </Button>
-
-                        {/* Preview playback and apply buttons */}
-                        {previewAudioUrls[segment.index] && (
-                          <>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handlePlayPreview(segment.index)}
-                              className="h-8"
-                            >
-                              {playingSegment === segment.index ? (
-                                <Pause className="w-3 h-3" />
-                              ) : (
-                                <Play className="w-3 h-3" />
-                              )}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="default"
-                              onClick={() => handleApplyFix(segment)}
-                              disabled={applyingFix === segment.index}
-                              className="h-8"
-                            >
-                              {applyingFix === segment.index ? (
-                                <>
-                                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                                  Applying...
-                                </>
-                              ) : (
-                                <>
-                                  <Check className="w-3 h-3 mr-1" />
-                                  Apply
-                                </>
-                              )}
-                            </Button>
-                          </>
-                        )}
-                      </div>
-                    )}
                   </div>
                 ))}
               </div>

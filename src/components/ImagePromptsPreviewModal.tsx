@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { Check, X, Image as ImageIcon, Edit2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, Palette, RefreshCw, AlertTriangle, Trash2 } from "lucide-react";
+import { Check, X, Image as ImageIcon, Edit2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, Palette, RefreshCw, AlertTriangle, Trash2, MapPin } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -33,12 +34,14 @@ interface ImagePromptsPreviewModalProps {
   prompts: ImagePrompt[];
   stylePrompt: string;
   imageTemplates: ImageTemplate[];  // Saved templates from settings
-  onConfirm: (editedPrompts: ImagePrompt[], editedStylePrompt: string) => void;
+  onConfirm: (editedPrompts: ImagePrompt[], editedStylePrompt: string, topic?: string) => void;
   onCancel: () => void;
   onBack?: () => void;
   onForward?: () => void;
-  onRegenerate?: () => void;  // Regenerate prompts (always filters modern keywords)
+  onRegenerate?: (topic?: string) => void;  // Regenerate prompts with optional topic constraint
   isRegenerating?: boolean;
+  topic?: string;  // Era/topic constraint (e.g., "Regency England 1810s")
+  onTopicChange?: (topic: string) => void;
 }
 
 function formatTimecode(time: string | undefined): string {
@@ -139,9 +142,12 @@ export function ImagePromptsPreviewModal({
   onBack,
   onForward,
   onRegenerate,
-  isRegenerating = false
+  isRegenerating = false,
+  topic = '',
+  onTopicChange
 }: ImagePromptsPreviewModalProps) {
   const [editedPrompts, setEditedPrompts] = useState<ImagePrompt[]>(prompts);
+  const [editedTopic, setEditedTopic] = useState(topic);
 
   // Pagination for large prompt lists (prevents stack overflow with 500+ items)
   const PROMPTS_PER_PAGE = 20;
@@ -183,6 +189,19 @@ export function ImagePromptsPreviewModal({
       setSelectedStyleKey(detectStyleKey(stylePrompt));
     }
   }, [stylePrompt]);
+
+  // Sync topic when prop changes
+  useEffect(() => {
+    setEditedTopic(topic);
+  }, [topic]);
+
+  // Handle topic change (notify parent immediately)
+  const handleTopicChange = (newTopic: string) => {
+    setEditedTopic(newTopic);
+    if (onTopicChange) {
+      onTopicChange(newTopic);
+    }
+  };
 
   // Scan for modern/anachronistic terms in prompts
   const MODERN_TERMS = [
@@ -355,12 +374,34 @@ export function ImagePromptsPreviewModal({
           </div>
         )}
 
+        {/* Era/Topic Constraint */}
+        <div className="border rounded-lg p-3 bg-muted/30">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <span className="text-sm font-medium">Era / Topic</span>
+                <p className="text-xs text-muted-foreground">Constrains all images to this time period</p>
+              </div>
+            </div>
+            <Input
+              value={editedTopic}
+              onChange={(e) => handleTopicChange(e.target.value)}
+              placeholder="e.g., Regency England 1810s"
+              className="w-[250px]"
+            />
+          </div>
+        </div>
+
         {/* Image Style Selector */}
         <div className="border rounded-lg p-3 bg-muted/30">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Palette className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Image Style</span>
+              <div>
+                <span className="text-sm font-medium">Painting Style</span>
+                <p className="text-xs text-muted-foreground">Visual aesthetic only - doesn't affect era/content</p>
+              </div>
             </div>
             <Select value={selectedStyleKey} onValueChange={handleStyleSelect}>
               <SelectTrigger className="w-[200px]">

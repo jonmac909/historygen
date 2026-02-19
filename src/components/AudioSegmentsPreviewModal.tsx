@@ -10,8 +10,9 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AudioSegment } from "@/lib/api";
+import { AudioSegment, regenerateAudioSegment, recombineAudioSegments, lookupPhonetic } from "@/lib/api";
 import { PronunciationModal } from "./PronunciationModal";
+import { toast } from "@/hooks/use-toast";
 
 interface AudioSegmentsPreviewModalProps {
   isOpen: boolean;
@@ -24,6 +25,10 @@ interface AudioSegmentsPreviewModalProps {
   onBack?: () => void;
   onForward?: () => void;
   regeneratingIndex: number | null;
+  // For pronunciation fixes
+  projectId?: string;
+  voiceSampleUrl?: string;
+  onAudioUpdated?: (newUrl: string) => void;
 }
 
 interface AudioSegmentCardProps {
@@ -32,6 +37,11 @@ interface AudioSegmentCardProps {
   onRegenerate: (editedText?: string) => void;
   editedText: string;
   onTextChange: (text: string) => void;
+  // Pronunciation fix props
+  projectId?: string;
+  voiceSampleUrl?: string;
+  segmentCount: number;
+  onAudioUpdated?: (newUrl: string) => void;
 }
 
 function formatTime(seconds: number): string {
@@ -46,7 +56,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, onTextChange }: AudioSegmentCardProps) {
+function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, onTextChange, projectId, voiceSampleUrl, segmentCount, onAudioUpdated }: AudioSegmentCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -54,6 +64,18 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
   const [isExpanded, setIsExpanded] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
 
+  // Pronunciation fix state
+  const [wordInput, setWordInput] = useState('');
+  const [phoneticInput, setPhoneticInput] = useState('');
+  const [lookingUpPhonetic, setLookingUpPhonetic] = useState(false);
+  const [previewAudioUrl, setPreviewAudioUrl] = useState<string | null>(null);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [regeneratingFix, setRegeneratingFix] = useState(false);
+  const [applyingFix, setApplyingFix] = useState(false);
+  const previewAudioRef = useRef<HTMLAudioElement>(null);
+  const lookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const canFixPronunciation = !!projectId && !!voiceSampleUrl;
   const hasTextChanged = editedText !== segment.text;
 
   // Reset when segment URL changes (after regeneration)
@@ -112,6 +134,127 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
 
   const handleRegenerate = () => {
     onRegenerate(hasTextChanged ? editedText : undefined);
+  };
+
+  // Pronunciation fix handlers
+  const handleWordInputChange = async (value: string) => {
+    setWordInput(value);
+
+    // Clear any pending lookup timeout
+    if (lookupTimeoutRef.current) {
+      clearTimeout(lookupTimeoutRef.current);
+    }
+
+    // If empty, clear phonetic too
+    if (!value.trim()) {
+      setPhoneticInput('');
+      return;
+    }
+
+    // Debounce the phonetic lookup (300ms)
+    lookupTimeoutRef.current = setTimeout(async () => {
+      setLookingUpPhonetic(true);
+      try {
+        const result = await lookupPhonetic(value.trim());
+        setPhoneticInput(result.phonetic);
+      } catch {
+        setPhoneticInput(value.trim());
+      } finally {
+        setLookingUpPhonetic(false);
+      }
+    }, 300);
+  };
+
+  const handlePreviewFix = async () => {
+    const word = wordInput.trim();
+    const phonetic = phoneticInput.trim() || word;
+    if (!word || !projectId || !voiceSampleUrl) return;
+
+    setRegeneratingFix(true);
+    try {
+      const result = await regenerateAudioSegment(
+        editedText,
+        segment.index,
+        voiceSampleUrl,
+        projectId,
+        { word, phonetic }
+      );
+
+      if (result.success && result.segment?.audioUrl) {
+        setPreviewAudioUrl(result.segment.audioUrl);
+        toast({
+          title: "Preview ready",
+          description: `Hear how "${word}" sounds as "${phonetic}"`,
+        });
+      } else {
+        toast({
+          title: "Preview failed",
+          description: result.error || "Could not generate preview",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Preview failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRegeneratingFix(false);
+    }
+  };
+
+  const togglePreviewPlay = () => {
+    if (!previewAudioRef.current) return;
+
+    if (isPreviewPlaying) {
+      previewAudioRef.current.pause();
+      setIsPreviewPlaying(false);
+    } else {
+      previewAudioRef.current.play()
+        .then(() => setIsPreviewPlaying(true))
+        .catch((err) => console.error('Failed to play preview:', err));
+    }
+  };
+
+  const handleApplyFix = async () => {
+    if (!projectId || !previewAudioUrl) return;
+
+    setApplyingFix(true);
+    try {
+      const result = await recombineAudioSegments(projectId, segmentCount);
+
+      if (result.success && result.audioUrl) {
+        // Clear the fix state
+        setWordInput('');
+        setPhoneticInput('');
+        setPreviewAudioUrl(null);
+
+        // Notify parent of updated audio
+        if (onAudioUpdated) {
+          onAudioUpdated(result.audioUrl);
+        }
+
+        toast({
+          title: "Fix applied",
+          description: "Audio has been updated with the pronunciation fix",
+        });
+      } else {
+        toast({
+          title: "Apply failed",
+          description: result.error || "Could not apply fix",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Apply failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setApplyingFix(false);
+    }
   };
 
   return (
@@ -233,6 +376,102 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
         <span>Duration: {formatTime(segment.duration)}</span>
         <span>Size: {formatSize(segment.size)}</span>
       </div>
+
+      {/* Pronunciation Fix Section */}
+      {canFixPronunciation && (
+        <div className="border-t pt-3 mt-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <span className="text-xs text-muted-foreground flex-shrink-0">Fix pronunciation:</span>
+            <div className="flex items-center gap-1">
+              <Input
+                placeholder="word"
+                value={wordInput}
+                onChange={(e) => handleWordInputChange(e.target.value)}
+                className="h-7 text-sm w-24"
+                disabled={regeneratingFix || applyingFix}
+              />
+              <span className="text-muted-foreground">→</span>
+              <div className="relative">
+                <Input
+                  placeholder="phonetic"
+                  value={phoneticInput}
+                  onChange={(e) => setPhoneticInput(e.target.value)}
+                  className="h-7 text-sm w-28"
+                  disabled={regeneratingFix || applyingFix}
+                />
+                {lookingUpPhonetic && (
+                  <Loader2 className="w-3 h-3 animate-spin absolute right-2 top-2 text-muted-foreground" />
+                )}
+              </div>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handlePreviewFix}
+              disabled={!wordInput.trim() || regeneratingFix || applyingFix}
+              className="h-7 text-xs"
+            >
+              {regeneratingFix ? (
+                <>
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                  Preview
+                </>
+              )}
+            </Button>
+            {previewAudioUrl && (
+              <>
+                <audio
+                  ref={previewAudioRef}
+                  src={previewAudioUrl}
+                  onEnded={() => setIsPreviewPlaying(false)}
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={togglePreviewPlay}
+                  className="h-7 text-xs"
+                >
+                  {isPreviewPlaying ? (
+                    <>
+                      <Pause className="w-3 h-3 mr-1" />
+                      Stop
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3 h-3 mr-1" />
+                      Play
+                    </>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleApplyFix}
+                  disabled={applyingFix}
+                  className="h-7 text-xs"
+                >
+                  {applyingFix ? (
+                    <>
+                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                      Applying...
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3 h-3 mr-1" />
+                      Apply Fix
+                    </>
+                  )}
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -248,6 +487,9 @@ export function AudioSegmentsPreviewModal({
   onBack,
   onForward,
   regeneratingIndex,
+  projectId,
+  voiceSampleUrl,
+  onAudioUpdated,
 }: AudioSegmentsPreviewModalProps) {
   const [isPlayingAll, setIsPlayingAll] = useState(false);
   const [allCurrentTime, setAllCurrentTime] = useState(0);
@@ -450,6 +692,10 @@ export function AudioSegmentsPreviewModal({
               onRegenerate={(editedText) => handleSegmentRegenerate(segment.index, editedText)}
               editedText={editedTexts[segment.index] || segment.text}
               onTextChange={(text) => handleTextChange(segment.index, text)}
+              projectId={projectId}
+              voiceSampleUrl={voiceSampleUrl}
+              segmentCount={segments.length}
+              onAudioUpdated={onAudioUpdated}
             />
           ))}
         </div>
