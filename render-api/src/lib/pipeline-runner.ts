@@ -671,8 +671,9 @@ export async function runPipeline(
     if (shouldSkipStep('script', resumeFrom) && existing.script) {
       console.log(`[Pipeline] Using existing script (${existing.script.length} chars)`);
       const actualWordCount = existing.script.split(/\s+/).length;
-      calculatedImageCount = Math.min(300, Math.max(10, Math.round(actualWordCount / 100)));
-      console.log(`[Pipeline] Image count: ${calculatedImageCount} (${actualWordCount} words / 100)`);
+      // Add INTRO_CLIP_COUNT extra images for video clips (first 12 are used for I2V)
+      calculatedImageCount = Math.min(300, Math.max(10, Math.round(actualWordCount / 100))) + INTRO_CLIP_COUNT;
+      console.log(`[Pipeline] Image count: ${calculatedImageCount} (${actualWordCount} words / 100 + ${INTRO_CLIP_COUNT} for clips)`);
       steps.push({ step: 'script', success: true, duration: 0, data: { skipped: true, wordCount: actualWordCount } });
     } else {
       reportProgress('script', 15, 'Generating script...');
@@ -763,9 +764,10 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
           data: { wordCount: actualWordCount, grade: scriptGrade, attempts: scriptAttempt },
         });
 
-        // Calculate image count: 1 image per 100 words (min 10, max 300)
-        calculatedImageCount = Math.min(300, Math.max(10, Math.round(actualWordCount / 100)));
-        console.log(`[Pipeline] Image count: ${calculatedImageCount} (${actualWordCount} words / 100)`);
+        // Calculate image count: 1 image per 100 words (min 10, max 300) + clips
+        // Add INTRO_CLIP_COUNT extra images for video clips (first 12 are used for I2V)
+        calculatedImageCount = Math.min(300, Math.max(10, Math.round(actualWordCount / 100))) + INTRO_CLIP_COUNT;
+        console.log(`[Pipeline] Image count: ${calculatedImageCount} (${actualWordCount} words / 100 + ${INTRO_CLIP_COUNT} for clips)`);
 
       // Save script to project
       await saveProjectToDatabase(supabase, projectId, {
