@@ -3142,6 +3142,109 @@ router.get('/phonetic/:word', (req: Request, res: Response) => {
   });
 });
 
+// Generate audio for a single word (for pronunciation preview)
+router.post('/word', async (req: Request, res: Response) => {
+  const { word, phonetic, voiceSampleUrl } = req.body;
+
+  if (!word) {
+    return res.status(400).json({ error: 'word is required' });
+  }
+  if (!voiceSampleUrl) {
+    return res.status(400).json({ error: 'voiceSampleUrl is required' });
+  }
+
+  // Validate the voice sample URL
+  const urlValidation = validateVoiceSampleUrl(voiceSampleUrl);
+  if (!urlValidation.valid) {
+    return res.status(400).json({ error: urlValidation.error });
+  }
+
+  const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
+  if (!RUNPOD_API_KEY) {
+    return res.status(500).json({ error: 'TTS service not configured' });
+  }
+
+  try {
+    // Use phonetic if provided, otherwise use the word itself
+    const textToSpeak = phonetic || word;
+    console.log(`[Word Preview] Generating audio for word "${word}" as "${textToSpeak}"`);
+
+    // Start TTS job
+    const startResponse = await fetch(`${RUNPOD_API_URL}/run`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RUNPOD_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        input: {
+          text: textToSpeak,
+          reference_audio_url: voiceSampleUrl,
+        },
+      }),
+    });
+
+    if (!startResponse.ok) {
+      const errorText = await startResponse.text();
+      console.error('[Word Preview] Failed to start TTS job:', errorText);
+      return res.status(500).json({ error: 'Failed to start TTS job' });
+    }
+
+    const startResult = await startResponse.json();
+    const jobId = startResult.id;
+
+    if (!jobId) {
+      return res.status(500).json({ error: 'No job ID returned from TTS service' });
+    }
+
+    // Poll for completion
+    const startTime = Date.now();
+    const timeout = 30000; // 30 second timeout for a single word
+
+    while (Date.now() - startTime < timeout) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const statusResponse = await fetch(`${RUNPOD_API_URL}/status/${jobId}`, {
+        headers: { 'Authorization': `Bearer ${RUNPOD_API_KEY}` },
+      });
+
+      if (!statusResponse.ok) {
+        continue;
+      }
+
+      const statusResult = await statusResponse.json();
+
+      if (statusResult.status === 'COMPLETED') {
+        const audioBase64 = statusResult.output?.audio_base64;
+        if (!audioBase64) {
+          return res.status(500).json({ error: 'No audio returned from TTS' });
+        }
+
+        // Convert base64 to data URL for easy playback
+        const audioDataUrl = `data:audio/wav;base64,${audioBase64}`;
+
+        console.log(`[Word Preview] Successfully generated audio for "${word}"`);
+        return res.json({
+          success: true,
+          word,
+          phonetic: textToSpeak,
+          audioUrl: audioDataUrl,
+        });
+      } else if (statusResult.status === 'FAILED') {
+        console.error('[Word Preview] TTS job failed:', statusResult.error);
+        return res.status(500).json({ error: 'TTS job failed' });
+      }
+    }
+
+    return res.status(504).json({ error: 'TTS job timed out' });
+  } catch (error) {
+    console.error('[Word Preview] Error:', error);
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Word preview generation failed'
+    });
+  }
+});
+
 // Recombine segments into a new combined audio file
 router.post('/recombine', async (req: Request, res: Response) => {
   const { projectId, segmentCount } = req.body;

@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AudioSegment, regenerateAudioSegment, recombineAudioSegments, lookupPhonetic } from "@/lib/api";
+import { AudioSegment, regenerateAudioSegment, recombineAudioSegments, lookupPhonetic, previewWordPronunciation } from "@/lib/api";
 import { PronunciationModal } from "./PronunciationModal";
 import { toast } from "@/hooks/use-toast";
 
@@ -68,11 +68,18 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
   const [wordInput, setWordInput] = useState('');
   const [phoneticInput, setPhoneticInput] = useState('');
   const [lookingUpPhonetic, setLookingUpPhonetic] = useState(false);
-  const [previewAudioUrl, setPreviewAudioUrl] = useState<string | null>(null);
-  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
-  const [regeneratingFix, setRegeneratingFix] = useState(false);
+  // Word-only preview (just hear the word)
+  const [wordPreviewUrl, setWordPreviewUrl] = useState<string | null>(null);
+  const [generatingWordPreview, setGeneratingWordPreview] = useState(false);
+  const [isWordPreviewPlaying, setIsWordPreviewPlaying] = useState(false);
+  const wordPreviewAudioRef = useRef<HTMLAudioElement>(null);
+  // Segment regeneration preview
+  const [segmentPreviewUrl, setSegmentPreviewUrl] = useState<string | null>(null);
+  const [regeneratingSegment, setRegeneratingSegment] = useState(false);
+  const [isSegmentPreviewPlaying, setIsSegmentPreviewPlaying] = useState(false);
+  const segmentPreviewAudioRef = useRef<HTMLAudioElement>(null);
+  // Apply state
   const [applyingFix, setApplyingFix] = useState(false);
-  const previewAudioRef = useRef<HTMLAudioElement>(null);
   const lookupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const canFixPronunciation = !!projectId && !!voiceSampleUrl;
@@ -165,31 +172,30 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
     }, 300);
   };
 
-  const handlePreviewFix = async () => {
+  // 1. Hear Word - Generate just the word pronunciation
+  const handleHearWord = async () => {
     const word = wordInput.trim();
     const phonetic = phoneticInput.trim() || word;
-    if (!word || !projectId || !voiceSampleUrl) return;
+    if (!word || !voiceSampleUrl) return;
 
-    setRegeneratingFix(true);
+    setGeneratingWordPreview(true);
     try {
-      const result = await regenerateAudioSegment(
-        editedText,
-        segment.index,
-        voiceSampleUrl,
-        projectId,
-        { word, phonetic }
-      );
+      const result = await previewWordPronunciation(word, phonetic, voiceSampleUrl);
 
-      if (result.success && result.segment?.audioUrl) {
-        setPreviewAudioUrl(result.segment.audioUrl);
-        toast({
-          title: "Preview ready",
-          description: `Hear how "${word}" sounds as "${phonetic}"`,
-        });
+      if (result.success && result.audioUrl) {
+        setWordPreviewUrl(result.audioUrl);
+        // Auto-play
+        setTimeout(() => {
+          if (wordPreviewAudioRef.current) {
+            wordPreviewAudioRef.current.play()
+              .then(() => setIsWordPreviewPlaying(true))
+              .catch(console.error);
+          }
+        }, 100);
       } else {
         toast({
           title: "Preview failed",
-          description: result.error || "Could not generate preview",
+          description: result.error || "Could not generate word preview",
           variant: "destructive",
         });
       }
@@ -200,25 +206,79 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
         variant: "destructive",
       });
     } finally {
-      setRegeneratingFix(false);
+      setGeneratingWordPreview(false);
     }
   };
 
-  const togglePreviewPlay = () => {
-    if (!previewAudioRef.current) return;
+  const toggleWordPreviewPlay = () => {
+    if (!wordPreviewAudioRef.current || !wordPreviewUrl) return;
 
-    if (isPreviewPlaying) {
-      previewAudioRef.current.pause();
-      setIsPreviewPlaying(false);
+    if (isWordPreviewPlaying) {
+      wordPreviewAudioRef.current.pause();
+      setIsWordPreviewPlaying(false);
     } else {
-      previewAudioRef.current.play()
-        .then(() => setIsPreviewPlaying(true))
-        .catch((err) => console.error('Failed to play preview:', err));
+      wordPreviewAudioRef.current.play()
+        .then(() => setIsWordPreviewPlaying(true))
+        .catch(console.error);
     }
   };
 
+  // 2. Regen Segment - Regenerate the full segment with the fix
+  const handleRegenSegmentWithFix = async () => {
+    const word = wordInput.trim();
+    const phonetic = phoneticInput.trim() || word;
+    if (!word || !projectId || !voiceSampleUrl) return;
+
+    setRegeneratingSegment(true);
+    try {
+      const result = await regenerateAudioSegment(
+        editedText,
+        segment.index,
+        voiceSampleUrl,
+        projectId,
+        { word, phonetic }
+      );
+
+      if (result.success && result.segment?.audioUrl) {
+        setSegmentPreviewUrl(result.segment.audioUrl);
+        toast({
+          title: "Segment ready",
+          description: "Listen to the regenerated segment, then Apply to use it",
+        });
+      } else {
+        toast({
+          title: "Regeneration failed",
+          description: result.error || "Could not regenerate segment",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Regeneration failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setRegeneratingSegment(false);
+    }
+  };
+
+  const toggleSegmentPreviewPlay = () => {
+    if (!segmentPreviewAudioRef.current || !segmentPreviewUrl) return;
+
+    if (isSegmentPreviewPlaying) {
+      segmentPreviewAudioRef.current.pause();
+      setIsSegmentPreviewPlaying(false);
+    } else {
+      segmentPreviewAudioRef.current.play()
+        .then(() => setIsSegmentPreviewPlaying(true))
+        .catch(console.error);
+    }
+  };
+
+  // 3. Apply - Splice the regenerated segment into the full audio
   const handleApplyFix = async () => {
-    if (!projectId || !previewAudioUrl) return;
+    if (!projectId || !segmentPreviewUrl) return;
 
     setApplyingFix(true);
     try {
@@ -228,7 +288,8 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
         // Clear the fix state
         setWordInput('');
         setPhoneticInput('');
-        setPreviewAudioUrl(null);
+        setWordPreviewUrl(null);
+        setSegmentPreviewUrl(null);
 
         // Notify parent of updated audio
         if (onAudioUpdated) {
@@ -379,17 +440,34 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
 
       {/* Pronunciation Fix Section */}
       {canFixPronunciation && (
-        <div className="border-t pt-3 mt-3">
+        <div className="border-t pt-3 mt-3 space-y-2">
+          {/* Hidden audio elements */}
+          {wordPreviewUrl && (
+            <audio
+              ref={wordPreviewAudioRef}
+              src={wordPreviewUrl}
+              onEnded={() => setIsWordPreviewPlaying(false)}
+            />
+          )}
+          {segmentPreviewUrl && (
+            <audio
+              ref={segmentPreviewAudioRef}
+              src={segmentPreviewUrl}
+              onEnded={() => setIsSegmentPreviewPlaying(false)}
+            />
+          )}
+
+          {/* Row 1: Word/Phonetic inputs + Hear Word button */}
           <div className="flex items-center gap-2 flex-wrap">
             <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-            <span className="text-xs text-muted-foreground flex-shrink-0">Fix pronunciation:</span>
+            <span className="text-xs text-muted-foreground flex-shrink-0">Fix:</span>
             <div className="flex items-center gap-1">
               <Input
                 placeholder="word"
                 value={wordInput}
                 onChange={(e) => handleWordInputChange(e.target.value)}
                 className="h-7 text-sm w-24"
-                disabled={regeneratingFix || applyingFix}
+                disabled={generatingWordPreview || regeneratingSegment || applyingFix}
               />
               <span className="text-muted-foreground">→</span>
               <div className="relative">
@@ -398,78 +476,111 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
                   value={phoneticInput}
                   onChange={(e) => setPhoneticInput(e.target.value)}
                   className="h-7 text-sm w-28"
-                  disabled={regeneratingFix || applyingFix}
+                  disabled={generatingWordPreview || regeneratingSegment || applyingFix}
                 />
                 {lookingUpPhonetic && (
                   <Loader2 className="w-3 h-3 animate-spin absolute right-2 top-2 text-muted-foreground" />
                 )}
               </div>
             </div>
+
+            {/* Hear Word button */}
             <Button
               size="sm"
               variant="outline"
-              onClick={handlePreviewFix}
-              disabled={!wordInput.trim() || regeneratingFix || applyingFix}
+              onClick={handleHearWord}
+              disabled={!wordInput.trim() || generatingWordPreview || regeneratingSegment || applyingFix}
               className="h-7 text-xs"
             >
-              {regeneratingFix ? (
+              {generatingWordPreview ? (
                 <>
                   <Loader2 className="w-3 h-3 mr-1 animate-spin" />
                   Generating...
                 </>
               ) : (
                 <>
-                  <RefreshCw className="w-3 h-3 mr-1" />
-                  Preview
+                  <Volume2 className="w-3 h-3 mr-1" />
+                  Hear Word
                 </>
               )}
             </Button>
-            {previewAudioUrl && (
-              <>
-                <audio
-                  ref={previewAudioRef}
-                  src={previewAudioUrl}
-                  onEnded={() => setIsPreviewPlaying(false)}
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={togglePreviewPlay}
-                  className="h-7 text-xs"
-                >
-                  {isPreviewPlaying ? (
-                    <>
-                      <Pause className="w-3 h-3 mr-1" />
-                      Stop
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3 h-3 mr-1" />
-                      Play
-                    </>
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={handleApplyFix}
-                  disabled={applyingFix}
-                  className="h-7 text-xs"
-                >
-                  {applyingFix ? (
-                    <>
-                      <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                      Applying...
-                    </>
-                  ) : (
-                    <>
-                      <Check className="w-3 h-3 mr-1" />
-                      Apply Fix
-                    </>
-                  )}
-                </Button>
-              </>
+
+            {/* Play word preview again */}
+            {wordPreviewUrl && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={toggleWordPreviewPlay}
+                className="h-7 text-xs px-2"
+              >
+                {isWordPreviewPlaying ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+              </Button>
             )}
+
+            {/* Regen Segment button */}
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleRegenSegmentWithFix}
+              disabled={!wordInput.trim() || generatingWordPreview || regeneratingSegment || applyingFix}
+              className="h-7 text-xs"
+            >
+              {regeneratingSegment ? (
+                <>
+                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-3 h-3 mr-1" />
+                  Regen Segment
+                </>
+              )}
+            </Button>
           </div>
+
+          {/* Row 2: Segment preview playback + Apply (only shows after segment is regenerated) */}
+          {segmentPreviewUrl && (
+            <div className="flex items-center gap-2 pl-6">
+              <span className="text-xs text-muted-foreground">Segment preview:</span>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={toggleSegmentPreviewPlay}
+                className="h-7 text-xs"
+              >
+                {isSegmentPreviewPlaying ? (
+                  <>
+                    <Pause className="w-3 h-3 mr-1" />
+                    Stop
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3 h-3 mr-1" />
+                    Play Segment
+                  </>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleApplyFix}
+                disabled={applyingFix}
+                className="h-7 text-xs"
+              >
+                {applyingFix ? (
+                  <>
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                    Applying...
+                  </>
+                ) : (
+                  <>
+                    <Check className="w-3 h-3 mr-1" />
+                    Apply Fix
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

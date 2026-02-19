@@ -898,6 +898,47 @@ export async function lookupPhonetic(word: string): Promise<{ word: string; phon
   }
 }
 
+// Preview pronunciation of a single word (for hearing before regenerating segment)
+export async function previewWordPronunciation(
+  word: string,
+  phonetic: string,
+  voiceSampleUrl: string
+): Promise<{ success: boolean; audioUrl?: string; error?: string }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/word`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        word,
+        phonetic,
+        voiceSampleUrl
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Word preview error:', response.status, errorText);
+      return { success: false, error: `Failed to preview: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      audioUrl: data.audioUrl
+    };
+  } catch (error) {
+    console.error('Word preview error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Word preview failed'
+    };
+  }
+}
+
 export async function recombineAudioSegments(
   projectId: string,
   segmentCount: number = 10
