@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/hooks/use-toast";
-import { regenerateAudioSegment, recombineAudioSegments } from "@/lib/api";
+import { regenerateAudioSegment, recombineAudioSegments, lookupPhonetic } from "@/lib/api";
 
 interface ParsedSegment {
   index: number;
@@ -87,13 +87,16 @@ export function CaptionsPreviewModal({
   const [isEditing, setIsEditing] = useState(false);
   const [segments, setSegments] = useState<ParsedSegment[]>([]);
 
-  // Pronunciation fix state
-  const [fixInputs, setFixInputs] = useState<Record<number, string>>({});
+  // Pronunciation fix state - separate word and phonetic inputs
+  const [wordInputs, setWordInputs] = useState<Record<number, string>>({});
+  const [phoneticInputs, setPhoneticInputs] = useState<Record<number, string>>({});
+  const [lookingUpPhonetic, setLookingUpPhonetic] = useState<number | null>(null);
   const [regeneratingSegment, setRegeneratingSegment] = useState<number | null>(null);
   const [previewAudioUrls, setPreviewAudioUrls] = useState<Record<number, string>>({});
   const [playingSegment, setPlayingSegment] = useState<number | null>(null);
   const [applyingFix, setApplyingFix] = useState<number | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lookupTimeoutRef = useRef<Record<number, NodeJS.Timeout>>({});
 
   // Sync state when srtContent prop changes
   useEffect(() => {
@@ -125,34 +128,49 @@ export function CaptionsPreviewModal({
     URL.revokeObjectURL(url);
   };
 
-  // Handle pronunciation fix input change
-  const handleFixInputChange = (segmentIndex: number, value: string) => {
-    setFixInputs(prev => ({ ...prev, [segmentIndex]: value }));
+  // Handle word input change with auto-fill phonetic
+  const handleWordInputChange = async (segmentIndex: number, value: string) => {
+    setWordInputs(prev => ({ ...prev, [segmentIndex]: value }));
+
+    // Clear any pending lookup timeout
+    if (lookupTimeoutRef.current[segmentIndex]) {
+      clearTimeout(lookupTimeoutRef.current[segmentIndex]);
+    }
+
+    // If empty, clear phonetic too
+    if (!value.trim()) {
+      setPhoneticInputs(prev => ({ ...prev, [segmentIndex]: '' }));
+      return;
+    }
+
+    // Debounce the phonetic lookup (300ms)
+    lookupTimeoutRef.current[segmentIndex] = setTimeout(async () => {
+      setLookingUpPhonetic(segmentIndex);
+      try {
+        const result = await lookupPhonetic(value.trim());
+        // Only update if the word hasn't changed
+        if (wordInputs[segmentIndex] === value || !wordInputs[segmentIndex]) {
+          setPhoneticInputs(prev => ({ ...prev, [segmentIndex]: result.phonetic }));
+        }
+      } catch (e) {
+        // If lookup fails, just use the word itself
+        setPhoneticInputs(prev => ({ ...prev, [segmentIndex]: value.trim() }));
+      } finally {
+        setLookingUpPhonetic(null);
+      }
+    }, 300);
+  };
+
+  // Handle phonetic input change (manual edit)
+  const handlePhoneticInputChange = (segmentIndex: number, value: string) => {
+    setPhoneticInputs(prev => ({ ...prev, [segmentIndex]: value }));
   };
 
   // Preview the regenerated segment with pronunciation fix
-  // Format: "word → phonetic" or "word:phonetic" or just "word" (re-attempts same spelling)
   const handlePreviewFix = async (segment: ParsedSegment) => {
-    const fixInput = fixInputs[segment.index]?.trim();
-    if (!fixInput || !projectId || !voiceSampleUrl) return;
-
-    // Parse input: "word → phonetic" or "word:phonetic" or just "word"
-    let word: string;
-    let phonetic: string;
-
-    if (fixInput.includes('→')) {
-      const parts = fixInput.split('→').map(s => s.trim());
-      word = parts[0];
-      phonetic = parts[1] || parts[0];
-    } else if (fixInput.includes(':')) {
-      const parts = fixInput.split(':').map(s => s.trim());
-      word = parts[0];
-      phonetic = parts[1] || parts[0];
-    } else {
-      // Just the word - re-attempt with same spelling
-      word = fixInput;
-      phonetic = fixInput;
-    }
+    const word = wordInputs[segment.index]?.trim();
+    const phonetic = phoneticInputs[segment.index]?.trim() || word;
+    if (!word || !projectId || !voiceSampleUrl) return;
 
     setRegeneratingSegment(segment.index);
 
@@ -211,13 +229,18 @@ export function CaptionsPreviewModal({
       const result = await recombineAudioSegments(projectId, captionCount);
 
       if (result.success && result.audioUrl) {
-        // Clear the preview for this segment
+        // Clear the preview and inputs for this segment
         setPreviewAudioUrls(prev => {
           const newState = { ...prev };
           delete newState[segment.index];
           return newState;
         });
-        setFixInputs(prev => {
+        setWordInputs(prev => {
+          const newState = { ...prev };
+          delete newState[segment.index];
+          return newState;
+        });
+        setPhoneticInputs(prev => {
           const newState = { ...prev };
           delete newState[segment.index];
           return newState;
@@ -366,21 +389,36 @@ export function CaptionsPreviewModal({
 
                     {/* Pronunciation fix section */}
                     {canFixPronunciation && (
-                      <div className="flex items-center gap-2 pt-2 border-t border-border/50">
+                      <div className="flex items-center gap-2 pt-2 border-t border-border/50 flex-wrap">
                         <Volume2 className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                        <Input
-                          placeholder="word → phonetic (e.g. bond → bahnd)"
-                          value={fixInputs[segment.index] || ''}
-                          onChange={(e) => handleFixInputChange(segment.index, e.target.value)}
-                          className="h-8 text-sm flex-1 max-w-[280px]"
-                          disabled={regeneratingSegment === segment.index || applyingFix === segment.index}
-                        />
+                        <div className="flex items-center gap-1">
+                          <Input
+                            placeholder="word"
+                            value={wordInputs[segment.index] || ''}
+                            onChange={(e) => handleWordInputChange(segment.index, e.target.value)}
+                            className="h-8 text-sm w-24"
+                            disabled={regeneratingSegment === segment.index || applyingFix === segment.index}
+                          />
+                          <span className="text-muted-foreground">→</span>
+                          <div className="relative">
+                            <Input
+                              placeholder="phonetic"
+                              value={phoneticInputs[segment.index] || ''}
+                              onChange={(e) => handlePhoneticInputChange(segment.index, e.target.value)}
+                              className="h-8 text-sm w-28"
+                              disabled={regeneratingSegment === segment.index || applyingFix === segment.index}
+                            />
+                            {lookingUpPhonetic === segment.index && (
+                              <Loader2 className="w-3 h-3 animate-spin absolute right-2 top-2.5 text-muted-foreground" />
+                            )}
+                          </div>
+                        </div>
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => handlePreviewFix(segment)}
                           disabled={
-                            !fixInputs[segment.index]?.trim() ||
+                            !wordInputs[segment.index]?.trim() ||
                             regeneratingSegment === segment.index ||
                             applyingFix === segment.index
                           }

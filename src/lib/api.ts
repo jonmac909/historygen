@@ -877,6 +877,27 @@ export async function regenerateAudioSegment(
   }
 }
 
+// Lookup phonetic spelling for a word (auto-fill for pronunciation fixes)
+export async function lookupPhonetic(word: string): Promise<{ word: string; phonetic: string; found: boolean }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/phonetic/${encodeURIComponent(word)}`, {
+      method: 'GET',
+      headers: withRenderAuth({})
+    });
+
+    if (!response.ok) {
+      return { word, phonetic: word, found: false };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Phonetic lookup error:', error);
+    return { word, phonetic: word, found: false };
+  }
+}
+
 export async function recombineAudioSegments(
   projectId: string,
   segmentCount: number = 10
