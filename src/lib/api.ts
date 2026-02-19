@@ -827,12 +827,13 @@ export async function generateAudioStreaming(
   }
 }
 
-// Regenerate a single audio segment
+// Regenerate a single audio segment (with optional pronunciation fix)
 export async function regenerateAudioSegment(
   segmentText: string,
   segmentIndex: number,
   voiceSampleUrl: string,
-  projectId: string
+  projectId: string,
+  pronunciationFix?: { word: string; phonetic: string }
 ): Promise<{ success: boolean; segment?: AudioSegment; error?: string }> {
   const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
 
@@ -846,7 +847,8 @@ export async function regenerateAudioSegment(
         segmentText,
         segmentIndex,
         voiceSampleUrl,
-        projectId
+        projectId,
+        pronunciationFix
       })
     });
 

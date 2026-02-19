@@ -4089,6 +4089,11 @@ const Index = () => {
         forwardLabel="Video Prompts"
         imageCount={settings.imageCount}
         onImageCountChange={(count) => setSettings(prev => ({ ...prev, imageCount: count }))}
+        // Pronunciation fix props
+        projectId={projectId}
+        voiceSampleUrl={settings.voiceSampleUrl}
+        audioUrl={pendingAudioUrl || undefined}
+        onAudioUpdated={(newUrl) => setPendingAudioUrl(newUrl)}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}

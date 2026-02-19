@@ -1786,87 +1786,7 @@ export function ProjectResults({
             </div>
           </div>
 
-          {/* Video Prompts (Clip Prompts) */}
-          <div
-            className={`flex items-center justify-between py-3 ${onGoToClipPrompts ? 'cursor-pointer hover:bg-muted/50' : ''} transition-colors px-2 -mx-2 rounded-lg`}
-            onClick={onGoToClipPrompts}
-          >
-            <div className="flex items-center gap-3">
-              <Sparkles className="w-5 h-5 text-muted-foreground" />
-              <span className="font-medium text-foreground">Video Prompts</span>
-              <span className="text-sm text-muted-foreground">
-                {clipPrompts && clipPrompts.length > 0
-                  ? `${clipPrompts.length} scenes`
-                  : 'Pending'}
-              </span>
-              {getCostForStep('clip_prompts') !== null && (
-                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                  {formatCost(getCostForStep('clip_prompts'))}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => toggleApproval('clipPrompts', e)}
-                className={`h-8 w-8 ${
-                  approvedSteps.includes('clipPrompts')
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={approvedSteps.includes('clipPrompts') ? 'Mark as not approved' : 'Mark as approved'}
-              >
-                {approvedSteps.includes('clipPrompts') ? (
-                  <CheckSquare className="w-4 h-4" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {/* Video Clips */}
-          <div
-            className={`flex items-center justify-between py-3 ${onGoToClips ? 'cursor-pointer hover:bg-muted/50' : ''} transition-colors px-2 -mx-2 rounded-lg`}
-            onClick={onGoToClips}
-          >
-            <div className="flex items-center gap-3">
-              <Film className="w-5 h-5 text-muted-foreground" />
-              <span className="font-medium text-foreground">Video Clips</span>
-              <span className="text-sm text-muted-foreground">
-                {clipUrls && clipUrls.length > 0
-                  ? `${clipUrls.length} × 12s clips`
-                  : 'Pending'}
-              </span>
-              {getCostForStep('video_clips') !== null && (
-                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                  {formatCost(getCostForStep('video_clips'))}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => toggleApproval('clips', e)}
-                className={`h-8 w-8 ${
-                  approvedSteps.includes('clips')
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={approvedSteps.includes('clips') ? 'Mark as not approved' : 'Mark as approved'}
-              >
-                {approvedSteps.includes('clips') ? (
-                  <CheckSquare className="w-4 h-4" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {/* Image Prompts */}
+          {/* Image Prompts - NOW COMES FIRST (before videos) */}
           <div
             className={`flex items-center justify-between py-3 ${onGoToPrompts ? 'cursor-pointer hover:bg-muted/50' : ''} transition-colors px-2 -mx-2 rounded-lg`}
             onClick={onGoToPrompts}
@@ -1998,6 +1918,46 @@ export function ProjectResults({
                 title={approvedSteps.includes('images') ? 'Mark as not approved' : 'Mark as approved'}
               >
                 {approvedSteps.includes('images') ? (
+                  <CheckSquare className="w-4 h-4" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Video Clips - generated from first 12 images */}
+          <div
+            className={`flex items-center justify-between py-3 ${onGoToClips ? 'cursor-pointer hover:bg-muted/50' : ''} transition-colors px-2 -mx-2 rounded-lg`}
+            onClick={onGoToClips}
+          >
+            <div className="flex items-center gap-3">
+              <Zap className="w-5 h-5 text-muted-foreground" />
+              <span className="font-medium text-foreground">Video Clips</span>
+              <span className="text-sm text-muted-foreground">
+                {clipUrls && clipUrls.length > 0
+                  ? `${clipUrls.length} clips`
+                  : 'Pending'}
+              </span>
+              {getCostForStep('clips') !== null && (
+                <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                  {formatCost(getCostForStep('clips'))}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => toggleApproval('clips', e)}
+                className={`h-8 w-8 ${
+                  approvedSteps.includes('clips')
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title={approvedSteps.includes('clips') ? 'Mark as not approved' : 'Mark as approved'}
+              >
+                {approvedSteps.includes('clips') ? (
                   <CheckSquare className="w-4 h-4" />
                 ) : (
                   <Square className="w-4 h-4" />

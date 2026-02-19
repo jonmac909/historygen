@@ -2845,9 +2845,10 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
   });
 }
 
-// Regenerate a single segment
+// Regenerate a single segment (with optional pronunciation fix)
 router.post('/segment', async (req: Request, res: Response) => {
-  const { segmentText, segmentIndex, voiceSampleUrl, projectId } = req.body;
+  const { segmentText, segmentIndex, voiceSampleUrl, projectId, pronunciationFix } = req.body;
+  // pronunciationFix: { word: string, phonetic: string } - optional one-off fix for this segment
 
   try {
     if (!segmentText) {
@@ -2939,7 +2940,20 @@ router.post('/segment', async (req: Request, res: Response) => {
       const batchPromises = batchChunks.map(async (chunkText, i) => {
         const chunkIndex = batch + i;
         try {
-          const jobId = await startTTSJob(chunkText, RUNPOD_API_KEY, referenceAudioBase64);
+          // Apply global pronunciation fixes
+          let ttsText = applyPronunciationFixes(chunkText);
+
+          // Apply one-off pronunciation fix if provided
+          if (pronunciationFix?.word && pronunciationFix?.phonetic) {
+            const regex = new RegExp(`\\b${pronunciationFix.word}\\b`, 'gi');
+            const before = ttsText;
+            ttsText = ttsText.replace(regex, pronunciationFix.phonetic);
+            if (before !== ttsText) {
+              console.log(`[ONE-OFF FIX] "${pronunciationFix.word}" → "${pronunciationFix.phonetic}"`);
+            }
+          }
+
+          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64);
           const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
           const audioData = base64ToBuffer(output.audio_base64);
           console.log(`  Chunk ${chunkIndex + 1}/${chunks.length}: ${audioData.length} bytes`);
