@@ -2133,7 +2133,10 @@ const Index = () => {
       setPendingImages(updatedImages);
 
       // Save to database with complete array (not inside setter)
-      autoSave("images", { imageUrls: updatedImages });
+      // Include imagePrompts to persist edited prompts
+      autoSave("images", { imageUrls: updatedImages, imagePrompts: imagePrompts.map((p, i) =>
+        i === index ? promptToUse : p
+      ) });
 
       // Clear existing video URLs since images changed - user needs to re-render
       setVideoUrl(undefined);
@@ -2242,7 +2245,10 @@ const Index = () => {
       setTimeout(() => {
         // Get the latest state by reading from the setter
         setPendingImages(currentImages => {
-          autoSave("images", { imageUrls: currentImages });
+          setImagePrompts(currentPrompts => {
+            autoSave("images", { imageUrls: currentImages, imagePrompts: currentPrompts });
+            return currentPrompts; // No change, just reading
+          });
           return currentImages; // No change, just reading
         });
       }, 100);
