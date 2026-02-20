@@ -2122,13 +2122,17 @@ const Index = () => {
 
       // Update the image at the specific index and save to database
       const newImageUrl = imageResult.images![0];
-      setPendingImages(prev => {
-        const newImages = [...prev];
-        newImages[index] = newImageUrl;
-        // Save updated images to database
-        autoSave("images", { imageUrls: newImages });
-        return newImages;
-      });
+
+      // Build updated array OUTSIDE state setter to avoid race conditions
+      // that can cause data loss if pendingImages state is stale/incomplete
+      const updatedImages = [...pendingImages];
+      updatedImages[index] = newImageUrl;
+
+      // Update state
+      setPendingImages(updatedImages);
+
+      // Save to database with complete array (not inside setter)
+      autoSave("images", { imageUrls: updatedImages });
 
       // Clear existing video URLs since images changed - user needs to re-render
       setVideoUrl(undefined);
@@ -2206,13 +2210,12 @@ const Index = () => {
             );
 
             if (imageResult.success && imageResult.images && imageResult.images.length > 0) {
-              // Update the image at the specific index and save to database
+              // Update the image at the specific index
+              // Don't autoSave here - save once at the end to avoid race conditions
               const newImageUrl = imageResult.images![0];
               setPendingImages(prev => {
                 const newImages = [...prev];
                 newImages[index] = newImageUrl;
-                // Save updated images to database
-                autoSave("images", { imageUrls: newImages });
                 return newImages;
               });
             }
@@ -2232,6 +2235,16 @@ const Index = () => {
       // Clear existing video URLs since images changed - user needs to re-render
       setVideoUrl(undefined);
       setSmokeEmbersVideoUrl(undefined);
+
+      // Save all updated images to database ONCE after all regenerations complete
+      // Use setTimeout to ensure React state updates are batched first
+      setTimeout(() => {
+        // Get the latest state by reading from the setter
+        setPendingImages(currentImages => {
+          autoSave("images", { imageUrls: currentImages });
+          return currentImages; // No change, just reading
+        });
+      }, 100);
 
       toast({
         title: "Images Regenerated",
@@ -3218,9 +3231,40 @@ const Index = () => {
       setSrtContent(project.srtContent);
     }
     if (project.srtUrl) setPendingSrtUrl(project.srtUrl);
-    if (project.imageUrls) {
+
+    // Load images - with AUTO-RECOVERY if images seem missing
+    const expectedImageCount = project.imagePrompts?.length || 0;
+    const actualImageCount = project.imageUrls?.length || 0;
+
+    // Auto-recover if images are suspiciously low (less than 50% of prompts)
+    if (expectedImageCount > 0 && actualImageCount < expectedImageCount * 0.5) {
+      console.log(`[handleOpenProject] Image count mismatch: ${actualImageCount} images vs ${expectedImageCount} prompts. Auto-recovering from storage...`);
+
+      // Try to reconnect images from storage
+      const { reconnectOrphanedImages } = await import('@/lib/api');
+      const reconnectResult = await reconnectOrphanedImages(project.id);
+
+      if (reconnectResult.success && reconnectResult.imageUrls && reconnectResult.imageUrls.length > actualImageCount) {
+        console.log(`[handleOpenProject] Recovered ${reconnectResult.imageUrls.length} images from storage!`);
+        setPendingImages(reconnectResult.imageUrls);
+        // Save recovered images back to database
+        upsertProject({
+          id: project.id,
+          imageUrls: reconnectResult.imageUrls,
+        }).catch(err => console.error('[handleOpenProject] Failed to save recovered images:', err));
+
+        toast({
+          title: "Images Recovered",
+          description: `Found ${reconnectResult.imageUrls.length} images in storage (was showing ${actualImageCount})`,
+        });
+      } else if (project.imageUrls) {
+        // Fallback to whatever we have
+        setPendingImages(project.imageUrls);
+      }
+    } else if (project.imageUrls) {
       setPendingImages(project.imageUrls);
     }
+
     // Use stored image prompts if available, otherwise create basic ones
     if (project.imagePrompts && project.imagePrompts.length > 0) {
       setImagePrompts(project.imagePrompts);

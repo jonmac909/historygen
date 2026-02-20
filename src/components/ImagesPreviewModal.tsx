@@ -717,6 +717,7 @@ export function ImagesPreviewModal({
               <Download className="w-4 h-4 mr-2" />
               Images
             </Button>
+            {/* Emergency reconnect - only shown when zero images (auto-recovery should handle most cases) */}
             {images.length === 0 && onReconnectImages && (
               <Button variant="outline" onClick={onReconnectImages} className="border-orange-500 text-orange-600 hover:bg-orange-50">
                 <Bug className="w-4 h-4 mr-2" />
