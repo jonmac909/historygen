@@ -51,11 +51,11 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
 };
 
 // Safety terms - CRITICAL for preventing inappropriate content
-// NOTE: Z-Image may not support negative_prompt, so we embed safety directly in positive prompt
-const SAFETY_PREFIX = "Beautiful family-friendly historical oil painting, elegant and dignified scene, ";
-const SAFETY_SUFFIX = ", all people wearing full period-appropriate clothing covering arms and legs, formal modest historical attire, museum-quality fine art painting style, peaceful serene atmosphere, no violence no nudity no medical scenes";
-// Keep negative prompt in case some models support it, but primary safety is in positive prompt
-const NEGATIVE_PROMPT = "nudity, nude, naked, bare skin, medical, surgery, torture, violence, gore, blood, death, horror";
+// Z-Image currently ignores negative_prompt but we keep it in case they add support
+// SLEEPY HISTORY AESTHETIC: Cozy, romantic, cinematic, heartwarming - perfect for bedtime viewing
+const SAFETY_PREFIX = "Cinematic romantic historical oil painting, warm golden lighting, ";
+const SAFETY_SUFFIX = ", fully clothed in modest period attire, men in masculine clothing women in feminine dresses, soft candlelit atmosphere, peaceful cozy mood, museum-quality fine art";
+const NEGATIVE_PROMPT = "nudity, nude, naked, bare skin, revealing clothing, violence, gore, blood, horror, scary, dark";
 
 // Detect placeholder prompts that should NOT be used for image generation
 function isPlaceholderPrompt(prompt: string): boolean {
@@ -79,7 +79,7 @@ async function startImageJob(apiKey: string, prompt: string, quality: string, as
     body: JSON.stringify({
       input: {
         prompt: safePrompt,
-        negative_prompt: NEGATIVE_PROMPT,  // Explicitly tell model what NOT to generate
+        negative_prompt: NEGATIVE_PROMPT,  // Currently ignored by Z-Image but kept for future
         quality: quality === "high" ? "high" : "basic",
         aspectRatio,
       },

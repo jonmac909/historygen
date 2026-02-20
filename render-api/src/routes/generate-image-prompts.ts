@@ -643,6 +643,18 @@ CONTENT SAFETY (CRITICAL - MUST BE FAMILY-FRIENDLY):
 - NO disturbing, shocking, or traumatic imagery
 - You may depict dramatic historical scenes including warfare and conflict - avoid explicit gore
 - ALWAYS describe clothing explicitly: "wearing a full-length linen robe", "dressed in formal Greek chiton", "clothed in Egyptian royal garments"
+- MEN must wear masculine period clothing (tailcoats, breeches, waistcoats, robes, tunics)
+- WOMEN must wear feminine period dresses (gowns, empire waists, petticoats, robes)
+- NO cross-dressing: men should never wear dresses, women should never wear men's clothing
+
+AESTHETIC PRIORITY (SLEEPY HISTORY STYLE - COZY BEDTIME VIEWING):
+- Every image should feel WARM, COZY, and ROMANTIC - like a beautiful bedtime story
+- Emphasize SOFT LIGHTING: candlelight, golden hour, firelight, moonlight, gentle dawn
+- Create INTIMATE ATMOSPHERE: cozy chambers, warm parlors, romantic gardens
+- Focus on TENDER MOMENTS: courtship, quiet conversations, peaceful domestic scenes
+- Use CINEMATIC COMPOSITION: beautiful framing, depth, elegant arrangement
+- Evoke HEARTWARMING EMOTIONS: love, tenderness, serenity, gentle joy
+- Avoid anything harsh, scary, dark, or unsettling - keep everything soothing and romantic
 
 RULES:
 1. EVERY image must be VISUALLY STUNNING - gorgeous colors, elegant composition, cinematic lighting
@@ -678,22 +690,24 @@ ATMOSPHERIC QUALITY (MAKE EACH IMAGE A MASTERPIECE):
 
 FALLBACK RULE (for abstract/unclear narration):
 - If the narration discusses emotions, politics, or abstract concepts that are hard to visualize, DO NOT default to "people talking in a room"
-- Instead, show a VISUALLY STRIKING scene relevant to the era and topic:
-  * For love stories: gardens, moonlit balconies, intimate candlelit chambers
-  * For political intrigue: shadowy corridors, throne rooms, secret meetings
-  * For tragedy: stormy skies over palaces, lonely figures at windows, autumn landscapes
-  * For triumph: grand processions, sunlit celebrations, crowds cheering
+- Instead, show a COZY, ROMANTIC, VISUALLY BEAUTIFUL scene relevant to the era and topic:
+  * For love stories: romantic gardens at sunset, moonlit balconies, intimate candlelit chambers, tender moments by firelight
+  * For political intrigue: elegant private studies with warm candlelight, cozy library meetings, intimate parlor conversations
+  * For tragedy: gentle rain on windows, contemplative figure by soft firelight, autumn gardens at dusk (NEVER dark or scary)
+  * For triumph: warm sunlit celebrations, joyful garden parties, romantic reunions, tender embraces
+- ALWAYS keep scenes WARM and COZY - never dark, scary, or harsh
 
 PROMPT FORMAT:
 7. Keep descriptions 50-70 words - rich enough for stunning visuals
 8. Start with SETTING and ATMOSPHERE (e.g., "Magnificent Georgian palace at golden hour", "Moonlit English garden")
 9. Include CINEMATIC elements: dramatic lighting, rich colors, elegant details
 10. Describe COSTUMES in detail: silk gowns, embroidered waistcoats, powdered wigs, jewels
-11. EXAMPLE PROMPTS for Georgian England (Queen Charlotte era):
-   - "Magnificent Buckingham House exterior at golden sunset, Georgian architecture gleaming, manicured gardens with fountains, horse-drawn carriages arriving, aristocrats in silk finery, warm amber light"
-   - "Lavish palace ballroom, crystal chandeliers casting warm glow, couples in exquisite silk gowns and embroidered coats dancing minuet, mirrors reflecting candlelight, musicians in powdered wigs"
-   - "Intimate royal bedchamber at dawn, soft morning light through silk curtains, four-poster bed with velvet drapes, elegant writing desk, personal letters, quiet contemplation"
-   - "Grand English countryside estate, rolling green hills, sheep grazing, manor house in distance, aristocratic hunting party on horseback, autumn colors, misty morning"
+11. EXAMPLE PROMPTS for Georgian England (Queen Charlotte era) - COZY ROMANTIC STYLE:
+   - "Magnificent Buckingham House at golden sunset, warm amber glow on Georgian architecture, manicured gardens with gentle fountains, elegant aristocrats in silk finery arriving by carriage, romantic dreamy atmosphere"
+   - "Intimate candlelit ballroom, crystal chandeliers casting warm golden light, elegant couple in silk gown and embroidered tailcoat sharing tender dance, soft romantic glow, cozy evening ambiance"
+   - "Cozy royal sitting room at twilight, warm firelight dancing on silk wallpaper, lady in elegant empire-waist gown reading love letters, soft candlelight, peaceful intimate mood"
+   - "Romantic English garden at sunset, rose arbor with climbing flowers, gentleman in tailcoat and lady in flowing gown strolling arm in arm, warm golden hour light, tender romantic moment"
+   - "Elegant drawing room tea party, warm afternoon light through tall windows, ladies in modest empire-waist dresses and men in formal coats, delicate china, cozy intimate gathering"
 12. Do NOT include any text, titles, or words in the image
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
