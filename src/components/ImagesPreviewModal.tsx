@@ -96,6 +96,10 @@ export function ImagesPreviewModal({
   onReconnectImages,
   regeneratingIndices = new Set()
 }: ImagesPreviewModalProps) {
+  // Debug: log prompts array on render
+  console.log('[ImagesPreviewModal] prompts:', prompts?.length, 'images:', images?.length);
+  console.log('[ImagesPreviewModal] prompts array:', prompts?.map((p, i) => ({ arrayIndex: i, promptIndex: p?.index, hasPrompt: !!p?.sceneDescription })));
+
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [imageKeys, setImageKeys] = useState<Record<number, number>>({});
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
@@ -776,6 +780,7 @@ export function ImagesPreviewModal({
           </div>
 
           {/* Script/Audio text panel */}
+          {console.log('[ImagesPreviewModal] lightbox:', { lightboxIndex, promptAtIndex: prompts?.[lightboxIndex!], hasPrompts: !!prompts, promptsLength: prompts?.length })}
           {(srtContent || prompts) && prompts?.[lightboxIndex] && (
             <div
               className="flex-shrink-0 w-[35%] max-h-[85vh] bg-black/60 rounded-lg p-4 overflow-y-auto cursor-default"
