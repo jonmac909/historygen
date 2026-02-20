@@ -4164,6 +4164,11 @@ const Index = () => {
           regeneratingIndex={regeneratingSegmentIndex}
           projectId={projectId}
           voiceSampleUrl={settings.voiceSampleUrl || undefined}
+          ttsSettings={{
+            temperature: settings.ttsTemperature,
+            topP: settings.ttsTopP,
+            repetitionPenalty: settings.ttsRepetitionPenalty,
+          }}
           onAudioUpdated={(newUrl) => setPendingAudioUrl(newUrl)}
         />
       ) : (

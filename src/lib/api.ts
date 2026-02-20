@@ -903,7 +903,8 @@ export async function previewWordPronunciation(
   word: string,
   phonetic: string,
   voiceSampleUrl: string,
-  sentenceContext?: string  // The full sentence containing the word
+  sentenceContext?: string,  // The full sentence containing the word
+  ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number }  // Same TTS settings as original audio
 ): Promise<{ success: boolean; audioUrl?: string; error?: string }> {
   const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
 
@@ -917,7 +918,8 @@ export async function previewWordPronunciation(
         word,
         phonetic,
         voiceSampleUrl,
-        sentenceContext
+        sentenceContext,
+        ttsSettings
       })
     });
 

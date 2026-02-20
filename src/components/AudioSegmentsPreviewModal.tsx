@@ -14,6 +14,12 @@ import { AudioSegment, regenerateAudioSegment, recombineAudioSegments, lookupPho
 import { PronunciationModal } from "./PronunciationModal";
 import { toast } from "@/hooks/use-toast";
 
+interface TTSSettings {
+  temperature?: number;
+  topP?: number;
+  repetitionPenalty?: number;
+}
+
 interface AudioSegmentsPreviewModalProps {
   isOpen: boolean;
   segments: AudioSegment[];
@@ -28,6 +34,7 @@ interface AudioSegmentsPreviewModalProps {
   // For pronunciation fixes
   projectId?: string;
   voiceSampleUrl?: string;
+  ttsSettings?: TTSSettings;  // Same TTS settings used for original audio
   onAudioUpdated?: (newUrl: string) => void;
 }
 
@@ -40,6 +47,7 @@ interface AudioSegmentCardProps {
   // Pronunciation fix props
   projectId?: string;
   voiceSampleUrl?: string;
+  ttsSettings?: TTSSettings;  // Same TTS settings used for original audio
   segmentCount: number;
   onAudioUpdated?: (newUrl: string) => void;
 }
@@ -56,7 +64,7 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, onTextChange, projectId, voiceSampleUrl, segmentCount, onAudioUpdated }: AudioSegmentCardProps) {
+function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, onTextChange, projectId, voiceSampleUrl, ttsSettings, segmentCount, onAudioUpdated }: AudioSegmentCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -183,7 +191,7 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
 
     setGeneratingWordPreview(true);
     try {
-      const result = await previewWordPronunciation(word, phonetic, voiceSampleUrl, sentenceContext);
+      const result = await previewWordPronunciation(word, phonetic, voiceSampleUrl, sentenceContext, ttsSettings);
 
       if (result.success && result.audioUrl) {
         setWordPreviewUrl(result.audioUrl);
@@ -603,6 +611,7 @@ export function AudioSegmentsPreviewModal({
   regeneratingIndex,
   projectId,
   voiceSampleUrl,
+  ttsSettings,
   onAudioUpdated,
 }: AudioSegmentsPreviewModalProps) {
   const [isPlayingAll, setIsPlayingAll] = useState(false);
@@ -808,6 +817,7 @@ export function AudioSegmentsPreviewModal({
               onTextChange={(text) => handleTextChange(segment.index, text)}
               projectId={projectId}
               voiceSampleUrl={voiceSampleUrl}
+              ttsSettings={ttsSettings}
               segmentCount={segments.length}
               onAudioUpdated={onAudioUpdated}
             />

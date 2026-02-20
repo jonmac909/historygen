@@ -3144,7 +3144,7 @@ router.get('/phonetic/:word', (req: Request, res: Response) => {
 
 // Generate audio for a single word (for pronunciation preview)
 router.post('/word', async (req: Request, res: Response) => {
-  const { word, phonetic, voiceSampleUrl, sentenceContext } = req.body;
+  const { word, phonetic, voiceSampleUrl, sentenceContext, ttsSettings } = req.body;
 
   if (!word) {
     return res.status(400).json({ error: 'word is required' });
@@ -3181,6 +3181,25 @@ router.post('/word', async (req: Request, res: Response) => {
     }
     console.log(`[Word Preview] Generating audio for word "${word}" as "${pronunciation}" in context`);
 
+    // Build input payload with same TTS settings as original audio generation
+    const inputPayload: Record<string, unknown> = {
+      text: textToSpeak,
+      reference_audio_url: voiceSampleUrl,
+    };
+
+    // Apply TTS settings to match original voice characteristics
+    if (ttsSettings) {
+      if (ttsSettings.temperature !== undefined) {
+        inputPayload.temperature = ttsSettings.temperature;
+      }
+      if (ttsSettings.topP !== undefined) {
+        inputPayload.top_p = ttsSettings.topP;
+      }
+      if (ttsSettings.repetitionPenalty !== undefined) {
+        inputPayload.repetition_penalty = ttsSettings.repetitionPenalty;
+      }
+    }
+
     // Start TTS job
     const startResponse = await fetch(`${RUNPOD_API_URL}/run`, {
       method: 'POST',
@@ -3188,12 +3207,7 @@ router.post('/word', async (req: Request, res: Response) => {
         'Authorization': `Bearer ${RUNPOD_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        input: {
-          text: textToSpeak,
-          reference_audio_url: voiceSampleUrl,
-        },
-      }),
+      body: JSON.stringify({ input: inputPayload }),
     });
 
     if (!startResponse.ok) {
