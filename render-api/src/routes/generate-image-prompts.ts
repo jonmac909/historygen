@@ -808,16 +808,25 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
     console.log(`📊 Processing batches with max ${MAX_CONCURRENT_BATCHES} concurrent requests`);
     const batchSettled = await processBatchesWithConcurrency(batchTasks, MAX_CONCURRENT_BATCHES);
 
+    // FIX: Don't trust Claude's indices - use array position instead
+    // Each batch returns items that should correspond to its window range
     const sceneDescriptions: { index: number; sceneDescription: string }[] = [];
     const failedBatches: number[] = [];
 
-    for (let i = 0; i < batchSettled.length; i++) {
-      const result = batchSettled[i];
+    for (let batchIndex = 0; batchIndex < batchSettled.length; batchIndex++) {
+      const result = batchSettled[batchIndex];
       if (result.status === 'fulfilled') {
-        sceneDescriptions.push(...result.value);
+        const batchStart = batchIndex * BATCH_SIZE_PARALLEL;
+        // Assign correct indices based on batch position, not Claude's returned index
+        const batchResults = result.value.map((item, itemIndex) => ({
+          index: batchStart + itemIndex + 1, // Force correct 1-based index
+          sceneDescription: item.sceneDescription,
+        }));
+        sceneDescriptions.push(...batchResults);
+        console.log(`Batch ${batchIndex + 1}: assigned indices ${batchStart + 1} to ${batchStart + batchResults.length}`);
       } else {
-        failedBatches.push(i + 1);
-        console.error(`Batch ${i + 1}/${numBatches} failed after ${RETRY_MAX_ATTEMPTS} retries: ${result.reason}`);
+        failedBatches.push(batchIndex + 1);
+        console.error(`Batch ${batchIndex + 1}/${numBatches} failed after ${RETRY_MAX_ATTEMPTS} retries: ${result.reason}`);
       }
     }
 
