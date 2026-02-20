@@ -24,6 +24,7 @@ import { ImagePromptsPreviewModal } from "@/components/ImagePromptsPreviewModal"
 import { CaptionsPreviewModal } from "@/components/CaptionsPreviewModal";
 import { VideoClipPromptsModal } from "@/components/VideoClipPromptsModal";
 import { VideoClipsPreviewModal } from "@/components/VideoClipsPreviewModal";
+import { ImageScannerModal } from "@/components/ImageScannerModal";
 import { ThumbnailGeneratorModal } from "@/components/ThumbnailGeneratorModal";
 import { VideoRenderModal } from "@/components/VideoRenderModal";
 // VisualEffectsModal removed - now integrated into VideoRenderModal with 2-pass rendering
@@ -70,7 +71,7 @@ import { OutlierFinderView } from "@/components/OutlierFinderView";
 import { FavoritesView } from "@/components/FavoritesView";
 
 type InputMode = "url" | "title";
-type ViewState = "create" | "outlier-finder" | "favorites" | "processing" | "review-script" | "review-audio" | "review-captions" | "review-clip-prompts" | "review-clips" | "review-prompts" | "review-images" | "review-render" | "review-thumbnails" | "review-youtube" | "results";
+type ViewState = "create" | "outlier-finder" | "favorites" | "processing" | "review-script" | "review-audio" | "review-captions" | "review-clip-prompts" | "review-clips" | "review-prompts" | "review-images" | "review-scanner" | "review-render" | "review-thumbnails" | "review-youtube" | "results";
 type EntryMode = "script" | "captions" | "images";
 
 const LAST_SETTINGS_KEY = "historygenai-last-settings";
@@ -4331,9 +4332,9 @@ const Index = () => {
         onCancel={handleCancelRequest}
         onBack={handleBackToPrompts}
         onForward={() => {
-          // "Video" button should generate video clips from first 12 images
+          // Go to image scanner before generating video clips
           setSettings(prev => ({ ...prev, fullAutomation: false }));
-          handleImagesConfirm();
+          setViewState("review-scanner");
         }}
         onRegenerate={handleRegenerateImage}
         onRegenerateMultiple={handleRegenerateMultipleImages}
@@ -4357,6 +4358,42 @@ const Index = () => {
           }
         }}
         regeneratingIndices={regeneratingImageIndices}
+      />
+
+      {/* Image Scanner Modal - Content moderation and historical accuracy check */}
+      <ImageScannerModal
+        isOpen={viewState === "review-scanner"}
+        images={pendingImages}
+        prompts={imagePrompts}
+        srtContent={pendingSrtContent || srtContent}
+        eraTopic={settings.topic || videoTitle || "Historical documentary"}
+        projectId={projectId}
+        onCancel={handleCancelRequest}
+        onBack={() => setViewState("review-images")}
+        onContinue={(updatedPrompts) => {
+          // If prompts were updated, save them
+          if (updatedPrompts) {
+            setImagePrompts(updatedPrompts);
+            autoSave("prompts", { imagePrompts: updatedPrompts });
+          }
+          // Continue to video clip generation
+          handleImagesConfirm();
+        }}
+        onRegenerate={async (indices, editedPrompts) => {
+          // Regenerate specific images with edited prompts
+          const promptsMap = editedPrompts;
+          for (const index of indices) {
+            const editedPrompt = promptsMap.get(index);
+            if (editedPrompt) {
+              // Update imagePrompts state
+              setImagePrompts(prev => prev.map(p =>
+                p.index === index ? { ...p, sceneDescription: editedPrompt, prompt: editedPrompt } : p
+              ));
+            }
+          }
+          // Regenerate the images
+          await handleRegenerateMultipleImages(indices, editedPrompts);
+        }}
       />
 
       {/* Video Render Modal (2-pass: basic + effects) */}

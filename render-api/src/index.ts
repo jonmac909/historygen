@@ -37,6 +37,7 @@ import videoAnalysisRouter from './routes/video-analysis';
 import visionTestRouter from './routes/vision-test';
 import videoEditorRouter from './routes/video-editor';
 import fullPipelineRouter from './routes/full-pipeline';
+import scanImagesRouter from './routes/scan-images';
 
 dotenv.config();
 
@@ -180,6 +181,7 @@ app.use('/video-analysis', videoAnalysisRouter);
 app.use('/vision-test', visionTestRouter);
 app.use('/video-editor', videoEditorRouter);
 app.use('/full-pipeline', fullPipelineRouter);
+app.use('/scan-images', scanImagesRouter);
 
 // Error handling
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

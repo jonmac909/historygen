@@ -2902,3 +2902,159 @@ export async function getRunningPipelines(): Promise<RunningPipelinesResult> {
     return { count: 0, pipelines: [] };
   }
 }
+
+// ============================================================================
+// Image Scanner (Content Moderation)
+// ============================================================================
+
+export interface ScanResult {
+  index: number;
+  imageUrl: string;
+  safe: boolean;
+  violations: string[];
+  confidence: number;
+  details: string;
+}
+
+export interface ScanProgressEvent {
+  type: 'scanning';
+  index: number;
+  total: number;
+}
+
+export interface ScanResultEvent {
+  type: 'result';
+  index: number;
+  imageUrl: string;
+  safe: boolean;
+  violations: string[];
+  confidence: number;
+  details: string;
+}
+
+export interface ScanCompleteEvent {
+  type: 'complete';
+  totalScanned: number;
+  flaggedCount: number;
+  results: ScanResult[];
+}
+
+export interface ScanErrorEvent {
+  type: 'error';
+  error: string;
+}
+
+export type ScanEvent = ScanProgressEvent | ScanResultEvent | ScanCompleteEvent | ScanErrorEvent;
+
+/**
+ * Scan images for content violations and historical inaccuracies.
+ * Returns an SSE stream with progress updates.
+ */
+export async function scanImagesStreaming(
+  images: Array<{ index: number; imageUrl: string }>,
+  eraTopic: string,
+  projectId: string,
+  onProgress: (event: ScanEvent) => void
+): Promise<void> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    throw new Error('Render API URL not configured');
+  }
+
+  const response = await fetch(`${renderUrl}/scan-images`, {
+    method: 'POST',
+    headers: withRenderAuth({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({ images, eraTopic, projectId })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to scan images: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error('No response body');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          onProgress(data);
+        } catch (e) {
+          console.error('Failed to parse SSE data:', e);
+        }
+      }
+    }
+  }
+}
+
+export interface RewritePromptResult {
+  success: boolean;
+  newPrompt?: string;
+  error?: string;
+}
+
+/**
+ * Rewrite a prompt to fix content violations.
+ */
+export async function rewritePrompt(
+  originalPrompt: string,
+  scriptContext: string,
+  violations: string[],
+  eraTopic: string
+): Promise<RewritePromptResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/scan-images/rewrite`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ originalPrompt, scriptContext, violations, eraTopic })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errorData.error || `Failed to rewrite prompt: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    return {
+      success: true,
+      newPrompt: result.newPrompt
+    };
+  } catch (error) {
+    console.error('Rewrite prompt error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to rewrite prompt'
+    };
+  }
+}

@@ -565,8 +565,9 @@ After large-scale events, zoom to individual experience.
 ### Time Transitions
 Smooth: "In the years that followed...", "Generations later...", "The seasons turned and turned again..."`;
 
-// Auto Poster Image Style: Dutch Golden Age (image-a)
-const DUTCH_GOLDEN_AGE_STYLE = `Warm classical oil-painting style, inspired by Dutch Golden Age.. Soft, intimate chiaroscuro with lifted shadows and glowing midtones, avoiding harsh contrast. Rich, earthy palette of warm reds, ochres, umbers, and deep teal-blues. Painterly brushwork with visible texture and gentle edges. Quiet, reverent, contemplative mood. Old-world, timeless atmosphere with a sense of stillness, intimacy, and human warmth. Romantic historical painting sensibility with softened realism. Gentle, peaceful tone — not scary, not violent. no violence, no fear, no horror, no threatening mood, no nudity, no sexualized content, no flat illustration, no gouache or watercolor, no cartoon style, no Pixar or fantasy concept art, no modern cinematic lighting, no ultra-sharp realism, no high saturation`;
+// Auto Poster Image Style: Classical Oil Painting (era-neutral technique)
+// NOTE: Removed "Dutch Golden Age" reference to prevent 1600s Dutch era contamination
+const CLASSICAL_OIL_STYLE = `Warm classical oil-painting style. Soft, intimate chiaroscuro with lifted shadows and glowing midtones, avoiding harsh contrast. Rich, earthy palette of warm reds, ochres, umbers, and deep teal-blues. Painterly brushwork with visible texture and gentle edges. Quiet, reverent, contemplative mood. Old-world, timeless atmosphere with a sense of stillness, intimacy, and human warmth. Romantic historical painting sensibility with softened realism. Gentle, peaceful tone — not scary, not violent. IMPORTANT: This describes PAINTING TECHNIQUE only - all clothing, architecture, objects, and cultural elements must match the ERA specified in the scene description, not any historical painting era. no violence, no fear, no horror, no threatening mood, no nudity, no sexualized content, no flat illustration, no gouache or watercolor, no cartoon style, no Pixar or fantasy concept art, no modern cinematic lighting, no ultra-sharp realism, no high saturation`;
 
 // Intro video clips configuration
 const INTRO_CLIP_COUNT = 12;  // 12 video clips at start
@@ -918,7 +919,7 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
           srtContent,  // Reuse SRT downloaded earlier
           projectId,
           imageCount: calculatedImageCount,
-          masterStylePrompt: DUTCH_GOLDEN_AGE_STYLE,  // Use Dutch Golden Age style for Auto Poster
+          masterStylePrompt: CLASSICAL_OIL_STYLE,  // Era-neutral classical oil painting technique
           modernKeywordFilter: input.modernKeywordFilter !== false,  // Default true
           stream: true,
         }, (data) => {

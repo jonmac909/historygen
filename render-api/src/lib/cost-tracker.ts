@@ -16,6 +16,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 export const PRICING = {
   claude_input: 3 / 1_000_000,      // $3 per 1M input tokens
   claude_output: 15 / 1_000_000,    // $15 per 1M output tokens
+  claude_vision: 0.004,             // per image scanned with Claude Vision
   fish_speech: 0.004,               // per minute of audio output
   z_image: 0.035,                   // per image generated
   seedance: 0.21,                   // per 12s clip (prorated for shorter clips)
@@ -69,6 +70,9 @@ export async function saveCost(params: CostRecord): Promise<number> {
   switch (service) {
     case 'claude':
       unitCost = unitType === 'input_tokens' ? PRICING.claude_input : PRICING.claude_output;
+      break;
+    case 'claude_vision':
+      unitCost = PRICING.claude_vision;
       break;
     case 'fish_speech':
       unitCost = PRICING.fish_speech;
