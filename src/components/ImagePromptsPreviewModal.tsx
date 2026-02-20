@@ -592,7 +592,11 @@ export function ImagePromptsPreviewModal({
           )}
           <Button onClick={handleConfirm}>
             <Check className="w-4 h-4 mr-2" />
-            {onForward ? 'Regenerate All Images' : 'Generate Images'}
+            {existingImageCount > 0 && existingImageCount < editedPrompts.length
+              ? `Generate ${editedPrompts.length - existingImageCount} New Images`
+              : onForward
+                ? 'Regenerate All Images'
+                : `Generate ${editedPrompts.length} Images`}
           </Button>
         </DialogFooter>
       </DialogContent>
