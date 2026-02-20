@@ -3041,7 +3041,9 @@ router.post('/segment', async (req: Request, res: Response) => {
           if (pronunciationFix?.word) {
             // If no phonetic provided, auto-lookup from dictionary
             const phonetic = pronunciationFix.phonetic || lookupPhonetic(pronunciationFix.word);
-            const regex = new RegExp(`\\b${pronunciationFix.word}\\b`, 'gi');
+            // Escape special regex characters in the word
+            const escapedWord = pronunciationFix.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
             const before = ttsText;
             ttsText = ttsText.replace(regex, phonetic);
             if (before !== ttsText) {
@@ -3180,8 +3182,10 @@ router.post('/word', async (req: Request, res: Response) => {
     // This produces natural speech with the same voice instead of robotic "the correct pronunciation is..."
     let textToSpeak: string;
     if (sentenceContext) {
+      // Escape special regex characters in the word
+      const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       // Replace the word (case-insensitive) with the phonetic spelling
-      const wordRegex = new RegExp(`\\b${word}\\b`, 'gi');
+      const wordRegex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
       textToSpeak = sentenceContext.replace(wordRegex, pronunciation);
     } else {
       // Fallback: repeat the word in a natural phrase
