@@ -3189,10 +3189,15 @@ router.post('/word', async (req: Request, res: Response) => {
     }
     console.log(`[Word Preview] Generating audio for word "${word}" as "${pronunciation}" in context`);
 
+    // Download voice sample and convert to base64 (same as main audio generation)
+    // RunPod works better with base64 than URLs
+    const referenceAudioBase64 = await downloadVoiceSample(voiceSampleUrl);
+    console.log(`[Word Preview] Voice sample ready: ${referenceAudioBase64.length} chars base64`);
+
     // Build input payload with same TTS settings as original audio generation
     const inputPayload: Record<string, unknown> = {
       text: textToSpeak,
-      reference_audio_url: voiceSampleUrl,
+      reference_audio_base64: referenceAudioBase64,
     };
 
     // Apply TTS settings to match original voice characteristics
