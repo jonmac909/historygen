@@ -35,10 +35,10 @@ const internalAuthHeader: Record<string, string> = internalApiKey
   : {};
 
 export interface PipelineInput {
-  sourceVideoId: string;
-  sourceVideoUrl: string;
+  sourceVideoId?: string;  // Optional - not needed if providing existing script
+  sourceVideoUrl?: string;  // Optional - not needed if providing existing script
   originalTitle: string;
-  originalThumbnailUrl: string;
+  originalThumbnailUrl?: string;  // Optional - can be generated
   channelName?: string;
   publishAt?: string;  // ISO timestamp for scheduled publish (5 PM PST)
   sourceDurationSeconds?: number;  // Original video duration for matching script length
@@ -637,11 +637,22 @@ export async function runPipeline(
       currentStep: resumeFrom || 'script',
     });
 
-    // Step 1: Fetch transcript (skip if resuming past this step)
+    // Step 1: Fetch transcript (skip if resuming, no URL provided, or script already exists)
     let transcript: string = '';
+    const hasExistingScript = existing.script && existing.script.length > 0;
+    const hasSourceUrl = input.sourceVideoUrl && input.sourceVideoUrl.length > 0;
+
     if (shouldSkipStep('transcript', resumeFrom)) {
       console.log(`[Pipeline] Skipping transcript fetch (resuming from ${resumeFrom})`);
       steps.push({ step: 'transcript', success: true, duration: 0, data: { skipped: true } });
+    } else if (hasExistingScript) {
+      // Skip transcript if we already have a script - no need to fetch from YouTube
+      console.log(`[Pipeline] Skipping transcript fetch (existing script provided)`);
+      steps.push({ step: 'transcript', success: true, duration: 0, data: { skipped: true, reason: 'existing_script' } });
+    } else if (!hasSourceUrl) {
+      // No YouTube URL provided - can't fetch transcript
+      console.log(`[Pipeline] No source URL provided, skipping transcript fetch`);
+      steps.push({ step: 'transcript', success: true, duration: 0, data: { skipped: true, reason: 'no_url' } });
     } else {
       reportProgress('transcript', 5, 'Fetching source transcript...');
       const transcriptStart = Date.now();
@@ -669,13 +680,18 @@ export async function runPipeline(
     let script: string = existing.script || '';
     let calculatedImageCount: number = 10;  // Will be recalculated based on actual word count
 
-    if (shouldSkipStep('script', resumeFrom) && existing.script) {
-      console.log(`[Pipeline] Using existing script (${existing.script.length} chars)`);
-      const actualWordCount = existing.script.split(/\s+/).length;
+    if (hasExistingScript || shouldSkipStep('script', resumeFrom)) {
+      // Use existing script - skip generation
+      console.log(`[Pipeline] Using existing script (${existing.script!.length} chars)`);
+      script = existing.script!;
+      const actualWordCount = script.split(/\s+/).length;
       // Add INTRO_CLIP_COUNT extra images for video clips (first 12 are used for I2V)
       calculatedImageCount = Math.min(300, Math.max(10, Math.round(actualWordCount / 100))) + INTRO_CLIP_COUNT;
       console.log(`[Pipeline] Image count: ${calculatedImageCount} (${actualWordCount} words / 100 + ${INTRO_CLIP_COUNT} for clips)`);
       steps.push({ step: 'script', success: true, duration: 0, data: { skipped: true, wordCount: actualWordCount } });
+    } else if (!transcript && !hasSourceUrl) {
+      // No transcript and no URL - can't generate script without input
+      throw new Error('Cannot generate script: no YouTube URL or existing script provided');
     } else {
       reportProgress('script', 15, 'Generating script...');
       const scriptStart = Date.now();
@@ -1109,68 +1125,75 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
     });
 
     // Step 10: Analyze thumbnail + generate using original as reference
-    reportProgress('thumbnail', 68, 'Analyzing and generating thumbnail...');
-    const thumbnailStart = Date.now();
+    // Thumbnail is NOT part of full auto pipeline - only generate if originalThumbnailUrl is provided
     let thumbnailUrl: string = '';
-    const MAX_THUMBNAIL_ATTEMPTS = 5;
-    let thumbnailAttempt = 0;
-    let lastThumbnailError: string = '';
 
-    while (!thumbnailUrl && thumbnailAttempt < MAX_THUMBNAIL_ATTEMPTS) {
-      thumbnailAttempt++;
-      try {
-        reportProgress('thumbnail', 68, `Generating thumbnail (attempt ${thumbnailAttempt})...`);
-        console.log(`[Pipeline] Thumbnail generation attempt ${thumbnailAttempt}/${MAX_THUMBNAIL_ATTEMPTS}`);
+    if (input.originalThumbnailUrl) {
+      reportProgress('thumbnail', 68, 'Analyzing and generating thumbnail...');
+      const thumbnailStart = Date.now();
+      const MAX_THUMBNAIL_ATTEMPTS = 5;
+      let thumbnailAttempt = 0;
+      let lastThumbnailError: string = '';
 
-        // Download original thumbnail as base64 for image-to-image generation
-        console.log(`[Pipeline] Downloading original thumbnail: ${input.originalThumbnailUrl}`);
-        const originalThumbnailBase64 = await downloadImageAsBase64(input.originalThumbnailUrl);
+      while (!thumbnailUrl && thumbnailAttempt < MAX_THUMBNAIL_ATTEMPTS) {
+        thumbnailAttempt++;
+        try {
+          reportProgress('thumbnail', 68, `Generating thumbnail (attempt ${thumbnailAttempt})...`);
+          console.log(`[Pipeline] Thumbnail generation attempt ${thumbnailAttempt}/${MAX_THUMBNAIL_ATTEMPTS}`);
 
-        // Analyze original thumbnail style
-        const analysisRes = await callInternalAPI('/analyze-thumbnail', {
-          thumbnailUrl: input.originalThumbnailUrl,
-          videoTitle: input.originalTitle,
-        });
+          // Download original thumbnail as base64 for image-to-image generation
+          console.log(`[Pipeline] Downloading original thumbnail: ${input.originalThumbnailUrl}`);
+          const originalThumbnailBase64 = await downloadImageAsBase64(input.originalThumbnailUrl);
 
-        // Build a prompt for original recreation inspired by the source
-        const enhancedPrompt = `Create an original thumbnail inspired by this image. Use the same style, color palette, text placement, and mood - but make it a unique, original composition. Keep similar visual elements and aesthetic but don't copy directly.`;
+          // Analyze original thumbnail style
+          const analysisRes = await callInternalAPI('/analyze-thumbnail', {
+            thumbnailUrl: input.originalThumbnailUrl,
+            videoTitle: input.originalTitle,
+          });
 
-        // Generate new thumbnail using original as reference image (image-to-image)
-        const thumbnailRes = await callStreamingAPI('/generate-thumbnails', {
-          projectId,
-          exampleImageBase64: originalThumbnailBase64,
-          prompt: enhancedPrompt,
-          thumbnailCount: 1,
-          stream: true,
-        }, undefined, 120000);
+          // Build a prompt for original recreation inspired by the source
+          const enhancedPrompt = `Create an original thumbnail inspired by this image. Use the same style, color palette, text placement, and mood - but make it a unique, original composition. Keep similar visual elements and aesthetic but don't copy directly.`;
 
-        if (thumbnailRes.thumbnails?.[0]) {
-          thumbnailUrl = thumbnailRes.thumbnails[0];
-          console.log(`[Pipeline] Thumbnail generated successfully on attempt ${thumbnailAttempt}`);
-        } else {
-          throw new Error('No thumbnail URL in response');
-        }
-      } catch (error: any) {
-        lastThumbnailError = error.message;
-        console.warn(`[Pipeline] Thumbnail attempt ${thumbnailAttempt} failed: ${error.message}`);
-        if (thumbnailAttempt < MAX_THUMBNAIL_ATTEMPTS) {
-          console.log(`[Pipeline] Retrying thumbnail generation...`);
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+          // Generate new thumbnail using original as reference image (image-to-image)
+          const thumbnailRes = await callStreamingAPI('/generate-thumbnails', {
+            projectId,
+            exampleImageBase64: originalThumbnailBase64,
+            prompt: enhancedPrompt,
+            thumbnailCount: 1,
+            stream: true,
+          }, undefined, 120000);
+
+          if (thumbnailRes.thumbnails?.[0]) {
+            thumbnailUrl = thumbnailRes.thumbnails[0];
+            console.log(`[Pipeline] Thumbnail generated successfully on attempt ${thumbnailAttempt}`);
+          } else {
+            throw new Error('No thumbnail URL in response');
+          }
+        } catch (error: any) {
+          lastThumbnailError = error.message;
+          console.warn(`[Pipeline] Thumbnail attempt ${thumbnailAttempt} failed: ${error.message}`);
+          if (thumbnailAttempt < MAX_THUMBNAIL_ATTEMPTS) {
+            console.log(`[Pipeline] Retrying thumbnail generation...`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+          }
         }
       }
-    }
 
-    if (!thumbnailUrl) {
-      // All attempts failed - this is now a fatal error
-      throw new Error(`Thumbnail generation failed after ${MAX_THUMBNAIL_ATTEMPTS} attempts: ${lastThumbnailError}`);
-    }
+      if (!thumbnailUrl) {
+        // All attempts failed - log warning but don't fail pipeline
+        console.warn(`[Pipeline] Thumbnail generation failed after ${MAX_THUMBNAIL_ATTEMPTS} attempts: ${lastThumbnailError}`);
+        console.log(`[Pipeline] Continuing without thumbnail...`);
+      }
 
-    steps.push({
-      step: 'thumbnail',
-      success: true,
-      duration: Date.now() - thumbnailStart,
-      data: { thumbnailUrl, attempts: thumbnailAttempt },
-    });
+      steps.push({
+        step: 'thumbnail',
+        success: !!thumbnailUrl,
+        duration: Date.now() - thumbnailStart,
+        data: thumbnailUrl ? { thumbnailUrl, attempts: thumbnailAttempt } : { error: lastThumbnailError },
+      });
+    } else {
+      console.log(`[Pipeline] Skipping thumbnail generation (no originalThumbnailUrl provided)`);
+    }
 
     // Step 11: Render video (streaming) - with intro clips if available
     reportProgress('render', 72, 'Rendering video...');
@@ -1280,7 +1303,7 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
       // Use smokeEmbersVideoUrl since pipeline always renders with smoke+embers effects
       await saveProjectToDatabase(supabase, projectId, {
         smokeEmbersVideoUrl: videoUrl,
-        thumbnails: [thumbnailUrl],
+        ...(thumbnailUrl ? { thumbnails: [thumbnailUrl] } : {}),
         currentStep: 'upload',
       });
     } catch (error: any) {
