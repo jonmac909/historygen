@@ -4331,8 +4331,9 @@ const Index = () => {
         onCancel={handleCancelRequest}
         onBack={handleBackToPrompts}
         onForward={() => {
+          // "Video" button should generate video clips from first 12 images
           setSettings(prev => ({ ...prev, fullAutomation: false }));
-          handleGoToRender();
+          handleImagesConfirm();
         }}
         onRegenerate={handleRegenerateImage}
         onRegenerateMultiple={handleRegenerateMultipleImages}
