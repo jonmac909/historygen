@@ -833,7 +833,8 @@ export async function regenerateAudioSegment(
   segmentIndex: number,
   voiceSampleUrl: string,
   projectId: string,
-  pronunciationFix?: { word: string; phonetic: string }
+  pronunciationFix?: { word: string; phonetic: string },
+  ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number }  // Same TTS settings as original audio
 ): Promise<{ success: boolean; segment?: AudioSegment; error?: string }> {
   const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
 
@@ -848,7 +849,8 @@ export async function regenerateAudioSegment(
         segmentIndex,
         voiceSampleUrl,
         projectId,
-        pronunciationFix
+        pronunciationFix,
+        ttsSettings
       })
     });
 

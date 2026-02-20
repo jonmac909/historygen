@@ -247,7 +247,8 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
         segment.index,
         voiceSampleUrl,
         projectId,
-        { word, phonetic }
+        { word, phonetic },
+        ttsSettings  // Pass same TTS settings as original audio
       );
 
       if (result.success && result.segment?.audioUrl) {

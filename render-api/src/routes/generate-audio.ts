@@ -2940,8 +2940,9 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
 // Regenerate a single segment (with optional pronunciation fix)
 router.post('/segment', async (req: Request, res: Response) => {
-  const { segmentText, segmentIndex, voiceSampleUrl, projectId, pronunciationFix } = req.body;
+  const { segmentText, segmentIndex, voiceSampleUrl, projectId, pronunciationFix, ttsSettings } = req.body;
   // pronunciationFix: { word: string, phonetic: string } - optional one-off fix for this segment
+  // ttsSettings: { temperature, topP, repetitionPenalty } - same settings as original audio
 
   try {
     if (!segmentText) {
@@ -3048,7 +3049,14 @@ router.post('/segment', async (req: Request, res: Response) => {
             }
           }
 
-          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64);
+          // Pass TTS settings to match original audio voice characteristics
+          const ttsJobSettings = ttsSettings ? {
+            temperature: ttsSettings.temperature,
+            topP: ttsSettings.topP,
+            repetitionPenalty: ttsSettings.repetitionPenalty,
+          } : undefined;
+
+          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, ttsJobSettings);
           const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
           const audioData = base64ToBuffer(output.audio_base64);
           console.log(`  Chunk ${chunkIndex + 1}/${chunks.length}: ${audioData.length} bytes`);
