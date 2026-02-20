@@ -968,42 +968,19 @@ export function ProjectResults({
   // Full automation mode uses the pipeline modals (review-render, review-youtube) instead.
   // This component is the final "Project Ready" page and should NEVER auto-trigger rendering.
 
-  // Auto-heal image prompts when count doesn't match images
-  useEffect(() => {
-    const imageAssets = assets.filter(a => a.id.startsWith('image-') && a.url);
-    const imageCount = imageAssets.length;
-    const promptCount = imagePrompts?.length || 0;
-
-    // Only heal if we have images, srt content, and a mismatch
-    if (imageCount > 0 && srtContent && promptCount !== imageCount && onImagePromptsHealed) {
-      console.log(`[ProjectResults] Healing image prompts: ${promptCount} prompts → ${imageCount} images`);
-
-      const segments = parseSRTTimings(srtContent);
-      if (segments.length === 0) return;
-
-      const totalDuration = segments[segments.length - 1].endTime;
-      const imageDuration = totalDuration / imageCount;
-
-      // Create healed prompts with correct timing for each image
-      const healedPrompts: ImagePromptWithTiming[] = imageAssets.map((_, index) => {
-        const startSeconds = index * imageDuration;
-        const endSeconds = (index + 1) * imageDuration;
-
-        // Try to use existing prompt if it exists for this index
-        const existingPrompt = imagePrompts?.[index];
-
-        return {
-          index,
-          prompt: existingPrompt?.prompt || `Scene ${index + 1}`,
-          sceneDescription: existingPrompt?.sceneDescription || `Scene ${index + 1}`,
-          startSeconds,
-          endSeconds,
-        };
-      });
-
-      onImagePromptsHealed(healedPrompts);
-    }
-  }, [assets, imagePrompts, srtContent, onImagePromptsHealed]);
+  // DISABLED: Auto-heal was destroying real prompts loaded from Supabase.
+  // The prompts are already stored correctly - don't overwrite them.
+  // If timing needs adjustment, that should be a separate manual action.
+  // useEffect(() => {
+  //   const imageAssets = assets.filter(a => a.id.startsWith('image-') && a.url);
+  //   const imageCount = imageAssets.length;
+  //   const promptCount = imagePrompts?.length || 0;
+  //
+  //   if (imageCount > 0 && srtContent && promptCount !== imageCount && onImagePromptsHealed) {
+  //     console.log(`[ProjectResults] Healing image prompts: ${promptCount} prompts → ${imageCount} images`);
+  //     // ... healing logic disabled
+  //   }
+  // }, [assets, imagePrompts, srtContent, onImagePromptsHealed]);
 
   // Calculate image timings based on SRT
   const getImageTimings = () => {
