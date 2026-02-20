@@ -204,6 +204,56 @@ function cleanScript(script: string): string {
   return cleaned;
 }
 
+// Hardcoded subscribe CTA - must appear in EVERY script after 3rd/4th sentence
+const SUBSCRIBE_CTA = `As always, I'd love to know—where in the world are you listening from and what time is it for you? And if you enjoy these cozy journeys through history, consider subscribing so you don't miss the next one. Whether you're here to drift into sleep or to follow the currents of history, I'm glad you're with me.`;
+
+/**
+ * Insert subscribe CTA after the 3rd or 4th sentence of the script
+ * This ensures the CTA is always present, regardless of Claude's output
+ */
+function insertSubscribeCTA(script: string): string {
+  // Skip if CTA is already present (Claude included it)
+  if (script.includes("where in the world are you listening from")) {
+    console.log(`[Pipeline] Subscribe CTA already present, skipping insertion`);
+    return script;
+  }
+
+  // Find sentence boundaries - look for period/exclamation/question followed by space and capital letter
+  const sentences: string[] = [];
+  let currentSentence = '';
+
+  for (let i = 0; i < script.length; i++) {
+    currentSentence += script[i];
+
+    // Check if this is end of sentence (punctuation followed by space and capital, or double newline)
+    if ((script[i] === '.' || script[i] === '!' || script[i] === '?') &&
+        i + 2 < script.length &&
+        script[i + 1] === ' ' &&
+        /[A-Z]/.test(script[i + 2])) {
+      sentences.push(currentSentence);
+      currentSentence = '';
+      i++; // Skip the space
+    }
+  }
+
+  // Add remaining text as last sentence
+  if (currentSentence.trim()) {
+    sentences.push(currentSentence);
+  }
+
+  // Insert CTA after sentence 3 or 4 (use 4 if we have enough sentences)
+  const insertPosition = sentences.length >= 5 ? 4 : Math.min(3, sentences.length);
+
+  if (insertPosition > 0 && sentences.length > insertPosition) {
+    sentences.splice(insertPosition, 0, '\n\n' + SUBSCRIBE_CTA + '\n\n');
+    console.log(`[Pipeline] Inserted subscribe CTA after sentence ${insertPosition}`);
+  } else {
+    console.log(`[Pipeline] Script too short for CTA insertion (${sentences.length} sentences)`);
+  }
+
+  return sentences.join(' ').replace(/\s*\n\n\s*/g, '\n\n').replace(/  +/g, ' ');
+}
+
 // Grade a script using Claude to check topic adherence and quality
 async function gradeScript(
   script: string,
@@ -510,7 +560,7 @@ Then include 2-3 contemplative questions woven naturally into the prose:
 Brief preview in flowing language:
 We'll explore where [the story] began, what [sources/evidence] tell us, and how [it evolved/fell/transformed] over [time period].
 
-As always, I'd love to know—where in the world are you listening from and what time is it for you? Whether you're here to drift into sleep or to follow the currents of history, I'm glad you're with me.
+As always, I'd love to know—where in the world are you listening from and what time is it for you? And if you enjoy these cozy journeys through history, consider subscribing so you don't miss the next one. Whether you're here to drift into sleep or to follow the currents of history, I'm glad you're with me.
 
 Now, let's begin.
 
@@ -747,6 +797,9 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
 
           // Clean the script of markdown headers and formatting
           script = cleanScript(script);
+
+          // HARDCODE: Insert subscribe CTA after 3rd/4th sentence (must appear in EVERY script)
+          script = insertSubscribeCTA(script);
           console.log(`[Pipeline] Script cleaned, length: ${script.length} chars`);
 
           // Grade the script for topic adherence

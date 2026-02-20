@@ -54,8 +54,8 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
 // Z-Image currently ignores negative_prompt but we keep it in case they add support
 // SLEEPY HISTORY AESTHETIC: Cozy, romantic, cinematic, heartwarming - perfect for bedtime viewing
 const SAFETY_PREFIX = "Cinematic romantic historical oil painting, warm golden lighting, ";
-const SAFETY_SUFFIX = ", fully clothed in modest period attire, men in masculine clothing women in feminine dresses, soft candlelit atmosphere, peaceful cozy mood, museum-quality fine art";
-const NEGATIVE_PROMPT = "nudity, nude, naked, bare skin, revealing clothing, violence, gore, blood, horror, scary, dark";
+const SAFETY_SUFFIX = ", fully clothed in modest period attire, men in masculine clothing women in feminine dresses, soft candlelit atmosphere, peaceful cozy mood, museum-quality fine art, no cars, no automobiles, no modern vehicles, no electricity, no streetlights, horse-drawn carriages only";
+const NEGATIVE_PROMPT = "nudity, nude, naked, bare skin, revealing clothing, violence, gore, blood, horror, scary, dark, car, cars, automobile, automobiles, modern vehicles, trucks, buses, motorcycles, streetlights, electric lights";
 
 // Detect placeholder prompts that should NOT be used for image generation
 function isPlaceholderPrompt(prompt: string): boolean {

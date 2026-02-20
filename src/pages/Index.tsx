@@ -2184,15 +2184,18 @@ const Index = () => {
         const batch = indices.slice(i, i + MAX_CONCURRENT);
 
         await Promise.all(batch.map(async (index) => {
-          if (!imagePrompts[index]) return;
+          // index is 1-based (Image 1 = index 1), but array is 0-based
+          const arrayIndex = index - 1;
+          if (arrayIndex < 0 || !imagePrompts[arrayIndex]) return;
 
           // Get scene description (use edited version if provided)
+          // editedPrompts Map uses 1-based index as key
           const editedDescription = editedPrompts?.get(index);
-          const sceneDescription = editedDescription || imagePrompts[index].sceneDescription;
+          const sceneDescription = editedDescription || imagePrompts[arrayIndex].sceneDescription;
 
           // Rebuild the prompt with current style + scene description
           const promptToUse: ImagePromptWithTiming = {
-            ...imagePrompts[index],
+            ...imagePrompts[arrayIndex],
             sceneDescription: sceneDescription,
             prompt: `${currentStylePrompt}. ${sceneDescription}`
           };
@@ -2200,7 +2203,7 @@ const Index = () => {
           // Update the prompts state with the rebuilt prompt
           setImagePrompts(prev => {
             const newPrompts = [...prev];
-            newPrompts[index] = promptToUse;
+            newPrompts[arrayIndex] = promptToUse;
             return newPrompts;
           });
 
@@ -2214,17 +2217,17 @@ const Index = () => {
             );
 
             if (imageResult.success && imageResult.images && imageResult.images.length > 0) {
-              // Update the image at the specific index
+              // Update the image at the specific array index (0-based)
               // Don't autoSave here - save once at the end to avoid race conditions
               const newImageUrl = imageResult.images![0];
               setPendingImages(prev => {
                 const newImages = [...prev];
-                newImages[index] = newImageUrl;
+                newImages[arrayIndex] = newImageUrl;
                 return newImages;
               });
             }
           } catch (error) {
-            console.error(`Failed to regenerate image ${index + 1}:`, error);
+            console.error(`Failed to regenerate image ${index}:`, error);
           } finally {
             // Remove this index from regenerating set
             setRegeneratingImageIndices(prev => {

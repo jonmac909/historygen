@@ -80,7 +80,7 @@ async function startVideoTask(
   // IMPORTANT: For I2V (image-to-video), use MINIMAL motion-only prompts
   // The image already contains the scene - we just need to animate it subtly
   // Complex scene descriptions cause the AI to generate multiple shots instead of animating the source image
-  const motionPrompt = `Subtle animation of this image. Slow gentle camera push-in, very slight ambient movement, single continuous static shot, no scene changes, no cuts, no new elements`;
+  const motionPrompt = `Nearly static image. Minimal parallax effect only. No camera movement, no zoom, no pan. Extremely subtle atmospheric drift - barely perceptible flickering candlelight or dust motes. Single frozen moment, like a painting coming slightly alive. No character movement, no walking, no gestures.`;
   console.log(`[I2V] Starting task for clip ${clipIndex + 1} with MINIMAL motion prompt (ignoring scene description for I2V)`);
   console.log(`[I2V] Original prompt (not used): ${prompt.substring(0, 60)}...`);
 
