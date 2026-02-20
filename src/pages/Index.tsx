@@ -2346,6 +2346,8 @@ const Index = () => {
     }
 
     console.log(`[Video Generation] Animating first ${imagesToAnimate.length} images as video clips`);
+    console.log(`[Video Generation] Image URLs to animate:`, imagesToAnimate.map((url, i) => ({ clipIndex: i + 1, imageUrl: url?.substring(0, 80) + '...' })));
+    console.log(`[Video Generation] Prompts for clips:`, promptsForClips.map((p, i) => ({ promptIndex: p.index, arrayIndex: i, prompt: p.prompt?.substring(0, 50) + '...' })));
 
     const steps: GenerationStep[] = [
       { id: "clips", label: "Generating Video Clips from Images", status: "pending" },
@@ -2359,14 +2361,18 @@ const Index = () => {
       updateStep("clips", "active", `0/${imagesToAnimate.length} (0%)`);
 
       // Create clip prompts from image prompts + image URLs
+      // IMPORTANT: index is 1-based (1-12), array position is 0-based (0-11)
       const clipPromptsForVideo: ClipPrompt[] = promptsForClips.map((p, i) => ({
-        index: i + 1,
+        index: i + 1,  // 1-based index for clips
         startSeconds: i * CLIP_DURATION,
         endSeconds: (i + 1) * CLIP_DURATION,
         prompt: p.prompt,
         sceneDescription: p.prompt, // Use image prompt as scene description
-        imageUrl: imagesToAnimate[i],
+        imageUrl: imagesToAnimate[i],  // Use array position to get corresponding image
       }));
+
+      console.log(`[Video Generation] Created ${clipPromptsForVideo.length} clip prompts:`,
+        clipPromptsForVideo.map(c => ({ index: c.index, hasImageUrl: !!c.imageUrl, imageUrlPreview: c.imageUrl?.substring(0, 60) })));
 
       // Generate video clips
       const clipsResult = await generateVideoClipsStreaming(
@@ -3267,7 +3273,13 @@ const Index = () => {
 
     // Use stored image prompts if available, otherwise create basic ones
     if (project.imagePrompts && project.imagePrompts.length > 0) {
-      setImagePrompts(project.imagePrompts);
+      // Validate and re-index prompts if needed (ensure 1-based indexing)
+      const reindexedPrompts = project.imagePrompts.map((p, arrayIndex) => ({
+        ...p,
+        index: arrayIndex + 1,  // Force 1-based indexing based on array position
+      }));
+      console.log(`[handleOpenProject] Loading ${reindexedPrompts.length} imagePrompts (re-indexed to 1-based)`);
+      setImagePrompts(reindexedPrompts);
     } else if (project.imageUrls) {
       const basicPrompts: ImagePromptWithTiming[] = project.imageUrls.map((url, index) => ({
         index: index + 1,
@@ -3280,9 +3292,25 @@ const Index = () => {
       }));
       setImagePrompts(basicPrompts);
     }
-    // Load clip prompts and video clips
-    if (project.clipPrompts) setClipPrompts(project.clipPrompts);
-    if (project.clips) setGeneratedClips(project.clips);
+    // Load clip prompts and video clips with validation
+    if (project.clipPrompts) {
+      // Filter out any prompts with invalid indexes and re-index if needed
+      const validPrompts = project.clipPrompts.filter(p => p.index >= 1);
+      if (validPrompts.length !== project.clipPrompts.length) {
+        console.warn(`[handleOpenProject] Filtered out ${project.clipPrompts.length - validPrompts.length} invalid clipPrompts (index < 1)`);
+      }
+      console.log(`[handleOpenProject] Loading ${validPrompts.length} clipPrompts:`, validPrompts.map(p => ({ index: p.index, hasImageUrl: !!p.imageUrl })));
+      setClipPrompts(validPrompts);
+    }
+    if (project.clips) {
+      // Filter out any clips with invalid indexes
+      const validClips = project.clips.filter(c => c.index >= 1);
+      if (validClips.length !== project.clips.length) {
+        console.warn(`[handleOpenProject] Filtered out ${project.clips.length - validClips.length} invalid clips (index < 1). Original indexes:`, project.clips.map(c => c.index));
+      }
+      console.log(`[handleOpenProject] Loading ${validClips.length} clips:`, validClips.map(c => ({ index: c.index, hasVideoUrl: !!c.videoUrl })));
+      setGeneratedClips(validClips);
+    }
 
     // Load video URLs if available
     if (project.videoUrl) {

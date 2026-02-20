@@ -77,10 +77,12 @@ async function startVideoTask(
   duration: number = CLIP_DURATION,
   resolution: string = CLIP_RESOLUTION
 ): Promise<string> {
-  // Single animated image with subtle motion - gentle camera push-in and subject movement allowed
-  // NO scene changes, NO cuts, just one image gently animated
-  const motionPrompt = `${prompt}. Single continuous shot, subtle slow camera push-in, gentle subject movement, no scene changes, no cuts, smooth cinematic animation of one image`;
-  console.log(`[I2V] Starting task for clip ${clipIndex + 1} with prompt: ${motionPrompt.substring(0, 100)}...`);
+  // IMPORTANT: For I2V (image-to-video), use MINIMAL motion-only prompts
+  // The image already contains the scene - we just need to animate it subtly
+  // Complex scene descriptions cause the AI to generate multiple shots instead of animating the source image
+  const motionPrompt = `Subtle animation of this image. Slow gentle camera push-in, very slight ambient movement, single continuous static shot, no scene changes, no cuts, no new elements`;
+  console.log(`[I2V] Starting task for clip ${clipIndex + 1} with MINIMAL motion prompt (ignoring scene description for I2V)`);
+  console.log(`[I2V] Original prompt (not used): ${prompt.substring(0, 60)}...`);
 
   // v1-pro-fast-image-to-video: animates static images, supports 5s/10s
   const input = {
