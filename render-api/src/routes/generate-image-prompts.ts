@@ -1021,4 +1021,172 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
   }
 });
 
+// Extend existing prompts by adding N more at the end
+router.post('/extend', async (req: Request, res: Response) => {
+  const {
+    script,
+    srtContent,
+    count,  // How many prompts to add
+    startFromSeconds,  // Starting time (end of last existing prompt)
+    audioDuration,  // Total audio duration
+    stylePrompt,
+    topic,
+    projectId
+  } = req.body;
+
+  // Validate inputs
+  if (!count || count < 1 || count > 50) {
+    return res.status(400).json({ error: 'Count must be between 1 and 50' });
+  }
+  if (!startFromSeconds || !audioDuration || startFromSeconds >= audioDuration) {
+    return res.status(400).json({ error: 'Invalid time range for new prompts' });
+  }
+
+  console.log(`[extend] Adding ${count} prompts from ${startFromSeconds.toFixed(2)}s to ${audioDuration.toFixed(2)}s`);
+
+  try {
+    const anthropic = createAnthropicClient();
+    const selectedModel = 'claude-sonnet-4-5-20250929';
+
+    // Parse SRT to get text content for the time range
+    const segments = parseSrt(srtContent);
+
+    // Calculate windows for new prompts
+    const timeRange = audioDuration - startFromSeconds;
+    const windowDuration = timeRange / count;
+
+    const windows: { startSeconds: number; endSeconds: number; text: string }[] = [];
+    for (let i = 0; i < count; i++) {
+      const windowStart = startFromSeconds + (i * windowDuration);
+      const windowEnd = startFromSeconds + ((i + 1) * windowDuration);
+
+      // Get overlapping text from SRT
+      const overlappingSegments = segments.filter(seg =>
+        seg.startSeconds < windowEnd && seg.endSeconds > windowStart
+      );
+      const text = overlappingSegments.map(s => s.text).join(' ') || `Scene continuation ${i + 1}`;
+
+      windows.push({ startSeconds: windowStart, endSeconds: windowEnd, text });
+    }
+
+    console.log(`[extend] Created ${windows.length} windows from ${windows[0]?.startSeconds.toFixed(2)}s to ${windows[windows.length - 1]?.endSeconds.toFixed(2)}s`);
+
+    // Extract time period context
+    const { context: timePeriod, inputTokens: contextTokens, outputTokens: contextOutTokens } =
+      await extractTimePeriod(anthropic, script.substring(0, 8000));
+
+    let totalInputTokens = contextTokens;
+    let totalOutputTokens = contextOutTokens;
+
+    // Generate scene descriptions
+    const windowDescriptions = windows.map((w, i) =>
+      `IMAGE ${i + 1} (${formatTimecodeForFilename(w.startSeconds)} to ${formatTimecodeForFilename(w.endSeconds)}):\nNarration: "${w.text}"`
+    ).join('\n\n');
+
+    const systemPrompt = `You are an expert at creating gorgeous, historically accurate visual descriptions for documentary images.
+
+ERA: ${topic || timePeriod.era}
+REGION: ${timePeriod.region}
+VISUAL CONSTRAINTS: ${timePeriod.visualConstraints}
+
+Create ${count} stunning scene descriptions that continue a documentary video. These are ADDITIONAL images being added to an existing set, so:
+- Do NOT include establishing shots (those exist at the start)
+- Focus on varied, interesting scenes that complement the narrative
+- Mix exteriors, interiors, action, and intimate moments
+
+RULES:
+1. Each scene 50-70 words
+2. VISUALLY STUNNING - dramatic lighting, rich colors, elegant details
+3. Period-accurate clothing and settings
+4. NO modern elements (museums, researchers, etc.)
+5. Return ONLY a JSON array
+
+Output format:
+[
+  {"index": 1, "sceneDescription": "..."},
+  {"index": 2, "sceneDescription": "..."}
+]`;
+
+    const userPrompt = `Generate ${count} visual scene descriptions for these time segments.
+
+SCRIPT CONTEXT:
+${script.substring(0, 6000)}
+
+TIME-CODED SEGMENTS:
+${windowDescriptions}
+
+Return ONLY a JSON array with ${count} items.`;
+
+    const messageStream = await anthropic.messages.stream({
+      model: selectedModel,
+      max_tokens: Math.min(MAX_TOKENS, count * 150 + 500),
+      system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
+      messages: [{ role: 'user', content: userPrompt }],
+    });
+
+    let fullResponse = '';
+    for await (const event of messageStream) {
+      if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
+        fullResponse += event.delta.text;
+      }
+    }
+
+    const finalMessage = await messageStream.finalMessage();
+    if (finalMessage?.usage) {
+      totalInputTokens += finalMessage.usage.input_tokens || 0;
+      totalOutputTokens += finalMessage.usage.output_tokens || 0;
+    }
+
+    // Parse response
+    const sceneDescriptions = extractJsonArray(fullResponse) as { index: number; sceneDescription: string }[] | null;
+    if (!sceneDescriptions || sceneDescriptions.length === 0) {
+      throw new Error('Failed to parse scene descriptions from response');
+    }
+
+    // Build final prompts with timing
+    const newPrompts: ImagePrompt[] = [];
+    for (let i = 0; i < windows.length; i++) {
+      const window = windows[i];
+      const scene = sceneDescriptions.find(s => s.index === i + 1);
+      const sceneDesc = scene?.sceneDescription || `Historical scene depicting: ${window.text.substring(0, 200)}`;
+
+      newPrompts.push({
+        index: i + 1,  // Will be renumbered by frontend
+        startTime: formatTimecodeForFilename(window.startSeconds),
+        endTime: formatTimecodeForFilename(window.endSeconds),
+        startSeconds: window.startSeconds,
+        endSeconds: window.endSeconds,
+        sceneDescription: sceneDesc,
+        prompt: `${stylePrompt || ''}. ${sceneDesc}`,
+      });
+    }
+
+    console.log(`[extend] Generated ${newPrompts.length} new prompts`);
+    console.log(`[extend] Tokens: ${totalInputTokens} input, ${totalOutputTokens} output`);
+
+    // Save costs if projectId provided
+    if (projectId) {
+      try {
+        await Promise.all([
+          saveCost({ projectId, source: 'manual', step: 'image_prompts_extend', service: 'claude', units: totalInputTokens, unitType: 'input_tokens' }),
+          saveCost({ projectId, source: 'manual', step: 'image_prompts_extend', service: 'claude', units: totalOutputTokens, unitType: 'output_tokens' }),
+        ]);
+      } catch (costError) {
+        console.error('[extend] Error saving costs:', costError);
+      }
+    }
+
+    return res.json({
+      success: true,
+      prompts: newPrompts,
+    });
+
+  } catch (error) {
+    console.error('[extend] Error:', error);
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Failed to extend prompts'
+    });
+  }
+});
+
 export default router;

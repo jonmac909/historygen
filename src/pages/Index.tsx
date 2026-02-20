@@ -39,6 +39,7 @@ import {
   generateCaptions,
   generateImagesStreaming,
   generateImagePrompts,
+  extendImagePrompts,
   generateClipPrompts,
   generateVideoClipsStreaming,
   saveScriptToStorage,
@@ -260,6 +261,7 @@ const Index = () => {
   const [imagePrompts, setImagePrompts] = useState<ImagePromptWithTiming[]>([]);
   const [regeneratingImageIndices, setRegeneratingImageIndices] = useState<Set<number>>(new Set());
   const [isRegeneratingPrompts, setIsRegeneratingPrompts] = useState(false);
+  const [isAddingPrompts, setIsAddingPrompts] = useState(false);
   // Video clips state (LTX-2)
   const [clipPrompts, setClipPrompts] = useState<ClipPrompt[]>([]);
   const [generatedClips, setGeneratedClips] = useState<GeneratedClip[]>([]);
@@ -1391,24 +1393,32 @@ const Index = () => {
 
   // Step 5: After prompts reviewed/edited, generate images
   const handlePromptsConfirm = async (editedPrompts: ImagePromptWithTiming[], editedStylePrompt: string) => {
-    console.log(`[handlePromptsConfirm] Generating ${editedPrompts.length} images based on prompts (NOT using settings.imageCount: ${settings.imageCount})`);
+    // Check if we already have some images - if so, only generate for NEW prompts
+    const existingImageCount = pendingImages.length;
+    const promptsToGenerate = existingImageCount > 0 && existingImageCount < editedPrompts.length
+      ? editedPrompts.slice(existingImageCount)  // Only new prompts
+      : editedPrompts;  // All prompts (no existing images or mismatch)
+
+    const isPartialGeneration = promptsToGenerate.length < editedPrompts.length;
+
+    console.log(`[handlePromptsConfirm] Generating ${promptsToGenerate.length} images (${isPartialGeneration ? `${existingImageCount} already exist` : 'full generation'})`);
 
     setImagePrompts(editedPrompts);
     // Save the edited style prompt to settings so it persists across refreshes
     setSettings(prev => ({ ...prev, customStylePrompt: editedStylePrompt }));
 
     const steps: GenerationStep[] = [
-      { id: "images", label: "Generating Images", status: "pending" },
+      { id: "images", label: isPartialGeneration ? `Generating ${promptsToGenerate.length} New Images` : "Generating Images", status: "pending" },
     ];
 
     setProcessingSteps(steps);
     setViewState("processing");
 
     try {
-      updateStep("images", "active", `0/${editedPrompts.length}`);
+      updateStep("images", "active", `0/${promptsToGenerate.length}`);
 
       const imageResult = await generateImagesStreaming(
-        editedPrompts,
+        promptsToGenerate,
         settings.quality,
         "16:9",
         (completed, total) => {
@@ -1476,10 +1486,17 @@ const Index = () => {
       }
 
       updateStep("images", "completed", "Done");
-      setPendingImages(imageResult.images || []);
+
+      // If partial generation, append new images to existing ones
+      const allImages = isPartialGeneration
+        ? [...pendingImages, ...(imageResult.images || [])]
+        : (imageResult.images || []);
+
+      console.log(`[handlePromptsConfirm] Final image count: ${allImages.length} (${isPartialGeneration ? 'appended' : 'fresh'})`);
+      setPendingImages(allImages);
 
       // Auto-save after images generation
-      autoSave("images", { imageUrls: imageResult.images || [] });
+      autoSave("images", { imageUrls: allImages });
 
       await new Promise(resolve => setTimeout(resolve, 300));
       setViewState("review-images");
@@ -1957,6 +1974,87 @@ const Index = () => {
       });
     } finally {
       setIsRegeneratingPrompts(false);
+    }
+  };
+
+  // Add N more prompts to the end of the existing prompt list
+  const handleAddPrompts = async (count: number) => {
+    if (!pendingSrtContent && !srtContent) {
+      toast({
+        title: "Error",
+        description: "No captions available to generate prompts",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (imagePrompts.length === 0) {
+      toast({
+        title: "Error",
+        description: "No existing prompts to extend",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsAddingPrompts(true);
+
+    try {
+      const script = confirmedScript || pendingScript || "";
+      const srt = pendingSrtContent || srtContent || "";
+
+      // Get the end time of the last existing prompt
+      const lastPrompt = imagePrompts[imagePrompts.length - 1];
+      const startFromSeconds = lastPrompt.endSeconds;
+
+      // Get total audio duration from the last SRT segment or audio
+      const audioDuration = pendingAudioDuration || (lastPrompt.endSeconds + 60); // Fallback: add 60s
+
+      console.log(`[handleAddPrompts] Adding ${count} prompts from ${startFromSeconds.toFixed(2)}s to ${audioDuration.toFixed(2)}s`);
+
+      const result = await extendImagePrompts(
+        script,
+        srt,
+        count,
+        startFromSeconds,
+        audioDuration,
+        settings.customStylePrompt?.trim() || getSelectedImageStyle(),
+        settings.projectTitle,  // Use as topic
+        projectId
+      );
+
+      if (!result.success || !result.prompts) {
+        throw new Error(result.error || "Failed to generate additional prompts");
+      }
+
+      // Renumber new prompts to continue from existing count
+      const startIndex = imagePrompts.length;
+      const newPrompts = result.prompts.map((p, i) => ({
+        ...p,
+        index: startIndex + i + 1,
+      }));
+
+      // Append to existing prompts
+      const updatedPrompts = [...imagePrompts, ...newPrompts];
+      setImagePrompts(updatedPrompts);
+
+      // Auto-save
+      autoSave("prompts", { imagePrompts: updatedPrompts });
+
+      toast({
+        title: "Prompts Added",
+        description: `Added ${newPrompts.length} new prompts (${updatedPrompts.length} total)`,
+      });
+
+    } catch (error) {
+      console.error("Error adding prompts:", error);
+      toast({
+        title: "Failed to Add Prompts",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsAddingPrompts(false);
     }
   };
 
@@ -4131,6 +4229,9 @@ const Index = () => {
         onForward={canGoForwardFromPrompts() ? handleForwardToImages : undefined}
         onRegenerate={() => handleRegenerateImagePrompts(true)}
         isRegenerating={isRegeneratingPrompts}
+        onAddPrompts={handleAddPrompts}
+        isAddingPrompts={isAddingPrompts}
+        existingImageCount={pendingImages.length}
       />
 
       {/* Images Preview Modal */}

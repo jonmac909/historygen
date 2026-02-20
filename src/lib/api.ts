@@ -1083,6 +1083,61 @@ export async function generateImagePrompts(
   return data;
 }
 
+// Extend existing image prompts by adding N more at the end
+export async function extendImagePrompts(
+  script: string,
+  srtContent: string,
+  count: number,
+  startFromSeconds: number,
+  audioDuration: number,
+  stylePrompt: string,
+  topic?: string,
+  projectId?: string
+): Promise<ImagePromptsResult> {
+  console.log(`[extendImagePrompts] Adding ${count} prompts from ${startFromSeconds.toFixed(2)}s to ${audioDuration.toFixed(2)}s`);
+
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-image-prompts/extend`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        script,
+        srtContent,
+        count,
+        startFromSeconds,
+        audioDuration,
+        stylePrompt,
+        topic,
+        projectId
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[extendImagePrompts] Error:', response.status, errorText);
+      return { success: false, error: `Failed to extend prompts: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('[extendImagePrompts] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to extend prompts'
+    };
+  }
+}
+
 // ============================================================================
 // Video Clip Prompts (LTX-2)
 // ============================================================================

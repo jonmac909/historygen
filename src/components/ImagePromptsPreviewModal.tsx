@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Check, X, Image as ImageIcon, Edit2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, Palette, RefreshCw, AlertTriangle, Trash2, MapPin } from "lucide-react";
+import { Check, X, Image as ImageIcon, Edit2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, Palette, RefreshCw, AlertTriangle, Trash2, MapPin, Plus, Minus } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -42,6 +42,9 @@ interface ImagePromptsPreviewModalProps {
   isRegenerating?: boolean;
   topic?: string;  // Era/topic constraint (e.g., "Regency England 1810s")
   onTopicChange?: (topic: string) => void;
+  onAddPrompts?: (count: number) => void;  // Add N more prompts to the end
+  isAddingPrompts?: boolean;
+  existingImageCount?: number;  // How many images already exist (to know which prompts need images)
 }
 
 function formatTimecode(time: string | undefined): string {
@@ -144,10 +147,14 @@ export function ImagePromptsPreviewModal({
   onRegenerate,
   isRegenerating = false,
   topic = '',
-  onTopicChange
+  onTopicChange,
+  onAddPrompts,
+  isAddingPrompts = false,
+  existingImageCount = 0
 }: ImagePromptsPreviewModalProps) {
   const [editedPrompts, setEditedPrompts] = useState<ImagePrompt[]>(prompts);
   const [editedTopic, setEditedTopic] = useState(topic);
+  const [promptsToAdd, setPromptsToAdd] = useState(12);  // Default to 12 (video clip count)
 
   // Pagination for large prompt lists (prevents stack overflow with 500+ items)
   const PROMPTS_PER_PAGE = 20;
@@ -418,6 +425,78 @@ export function ImagePromptsPreviewModal({
             </Select>
           </div>
         </div>
+
+        {/* Add Prompts Section */}
+        {onAddPrompts && (
+          <div className="border rounded-lg p-3 bg-muted/30">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Plus className="w-4 h-4 text-muted-foreground" />
+                <div>
+                  <span className="text-sm font-medium">Add More Prompts</span>
+                  <p className="text-xs text-muted-foreground">
+                    {existingImageCount > 0
+                      ? `${existingImageCount} images exist, ${editedPrompts.length} prompts total`
+                      : 'Append additional image prompts to the end'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setPromptsToAdd(Math.max(1, promptsToAdd - 1))}
+                  disabled={promptsToAdd <= 1 || isAddingPrompts}
+                >
+                  <Minus className="h-4 w-4" />
+                </Button>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={promptsToAdd}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val) && val >= 1 && val <= 50) {
+                      setPromptsToAdd(val);
+                    }
+                  }}
+                  className="w-16 h-8 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  disabled={isAddingPrompts}
+                />
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={() => setPromptsToAdd(Math.min(50, promptsToAdd + 1))}
+                  disabled={promptsToAdd >= 50 || isAddingPrompts}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => onAddPrompts(promptsToAdd)}
+                  disabled={isAddingPrompts}
+                  className="ml-2"
+                >
+                  {isAddingPrompts ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Adding...
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 mr-2" />
+                      Add {promptsToAdd}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Custom Style Prompt Editor - only shown when custom is selected */}
         {selectedStyleKey === 'custom' && (
