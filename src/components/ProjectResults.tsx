@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Download, ChevronLeft, ChevronDown, Video, Loader2, Sparkles, Square, CheckSquare, Play, Pause, Upload, FileText, Mic, MessageSquare, Palette, Image, Target, Film, Youtube, Save, Pencil, Check, X, Tag, Plus, Copy, Zap } from "lucide-react";
+import { Download, ChevronLeft, ChevronDown, Video, Loader2, Sparkles, Square, CheckSquare, Play, Pause, Upload, FileText, Mic, MessageSquare, Palette, Image, Target, Film, Youtube, Save, Pencil, Check, X, Tag, Plus, Copy, Zap, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
@@ -31,7 +31,7 @@ export interface GeneratedAsset {
 }
 
 // Pipeline step types for approval tracking
-type PipelineStep = 'script' | 'audio' | 'captions' | 'clipPrompts' | 'clips' | 'prompts' | 'images' | 'thumbnails' | 'render' | 'youtube';
+type PipelineStep = 'script' | 'audio' | 'captions' | 'clipPrompts' | 'clips' | 'prompts' | 'images' | 'scanner' | 'thumbnails' | 'render' | 'youtube';
 
 interface ProjectResultsProps {
   sourceUrl: string;
@@ -74,6 +74,8 @@ interface ProjectResultsProps {
   onGoToClips?: () => void;
   onGoToPrompts?: () => void;
   onGoToImages?: () => void;
+  onGoToScanner?: () => void;
+  scanStatus?: string;
   onGoToThumbnails?: () => void;
   onGoToRender?: () => void;
   onGoToYouTube?: () => void;
@@ -218,6 +220,8 @@ export function ProjectResults({
   onGoToClips,
   onGoToPrompts,
   onGoToImages,
+  onGoToScanner,
+  scanStatus,
   onGoToThumbnails,
   onGoToRender,
   onGoToYouTube,
@@ -1793,7 +1797,7 @@ export function ProjectResults({
           >
             <div className="flex items-center gap-3">
               <Palette className="w-5 h-5 text-muted-foreground" />
-              <span className="font-medium text-foreground">Prompts</span>
+              <span className="font-medium text-foreground">Image Prompts</span>
               <span className="text-sm text-muted-foreground">
                 {imagePrompts && imagePrompts.length > 0
                   ? `${imagePrompts.length} scenes`
@@ -1918,6 +1922,39 @@ export function ProjectResults({
                 title={approvedSteps.includes('images') ? 'Mark as not approved' : 'Mark as approved'}
               >
                 {approvedSteps.includes('images') ? (
+                  <CheckSquare className="w-4 h-4" />
+                ) : (
+                  <Square className="w-4 h-4" />
+                )}
+              </Button>
+            </div>
+          </div>
+
+          {/* Image Scanner - scans for content/historical issues */}
+          <div
+            className={`flex items-center justify-between py-3 ${onGoToScanner ? 'cursor-pointer hover:bg-muted/50' : ''} transition-colors px-2 -mx-2 rounded-lg`}
+            onClick={onGoToScanner}
+          >
+            <div className="flex items-center gap-3">
+              <ShieldCheck className="w-5 h-5 text-muted-foreground" />
+              <span className="font-medium text-foreground">Image Scanner</span>
+              <span className="text-sm text-muted-foreground">
+                {scanStatus || 'Not scanned'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => toggleApproval('scanner', e)}
+                className={`h-8 w-8 ${
+                  approvedSteps.includes('scanner')
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+                title={approvedSteps.includes('scanner') ? 'Mark as not approved' : 'Mark as approved'}
+              >
+                {approvedSteps.includes('scanner') ? (
                   <CheckSquare className="w-4 h-4" />
                 ) : (
                   <Square className="w-4 h-4" />

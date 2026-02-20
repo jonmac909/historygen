@@ -3553,6 +3553,7 @@ const Index = () => {
           onGoToClips={handleBackToClips}
           onGoToPrompts={handleBackToPrompts}
           onGoToImages={handleBackToImages}
+          onGoToScanner={() => setViewState("review-scanner")}
           onGoToThumbnails={handleBackToThumbnails}
           onGoToRender={handleBackToRender}
           onImagePromptsHealed={(healedPrompts) => {
