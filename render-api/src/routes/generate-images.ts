@@ -50,10 +50,17 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
   return typeof data === 'object' && data !== null && 'status' in data;
 };
 
-// Safety terms - kept minimal so scene content isn't drowned out (negative prompt handles restrictions)
-const SAFETY_PREFIX = "";  // Removed: was overwhelming scene descriptions with 133 chars of generic terms
-const SAFETY_SUFFIX = ", fully clothed figures, modest historical attire, men in suits or robes, women in dresses or gowns";
-const NEGATIVE_PROMPT = "nudity, nude, naked, bare chest, bare skin, exposed skin, topless, shirtless, revealing clothing, classical nude, artistic nude, partial nudity, undressed, unclothed, nsfw, adult content, violence, gore, blood, horror, scary, fear, kissing, romantic embrace, men in dresses, men wearing dresses, male in dress, male in feminine clothing, man in gown, crossdressing, gender swap, gender bending, drag, feminine male, masculine female, androgynous clothing";
+// Safety terms - CRITICAL for preventing inappropriate content
+const SAFETY_PREFIX = "Family-friendly historical scene, ";  // Anchor the generation to safe content
+const SAFETY_SUFFIX = ", all figures fully clothed in period-appropriate modest attire, dignified historical painting style";
+const NEGATIVE_PROMPT = "nudity, nude, naked, bare chest, bare skin, exposed skin, topless, shirtless, revealing clothing, classical nude, artistic nude, partial nudity, undressed, unclothed, nsfw, adult content, violence, gore, blood, horror, scary, fear, torture, restraints, medical procedure, autopsy, dissection, death, corpse, body, surgery, operating table, strapped down, tied up, bondage, chains, kissing, romantic embrace, men in dresses, men wearing dresses, male in dress, male in feminine clothing, man in gown, crossdressing, gender swap, gender bending, drag, feminine male, masculine female, androgynous clothing";
+
+// Detect placeholder prompts that should NOT be used for image generation
+function isPlaceholderPrompt(prompt: string): boolean {
+  // Match "Scene X", "Scene XX", "Scene XXX" patterns (placeholder prompts)
+  const placeholderPattern = /^Scene\s+\d+$/i;
+  return placeholderPattern.test(prompt.trim());
+}
 
 // Start a RunPod job for Z-Image generation
 async function startImageJob(apiKey: string, prompt: string, quality: string, aspectRatio: string): Promise<string> {
@@ -241,6 +248,18 @@ router.post('/', async (req: Request, res: Response) => {
           prompt,
           filename: `image_${String(i + 1).padStart(3, '0')}.png`
         }));
+
+    // CRITICAL: Validate prompts - reject placeholder prompts that would generate random/inappropriate content
+    const placeholderPrompts = normalizedPrompts.filter(p => isPlaceholderPrompt(p.prompt));
+    if (placeholderPrompts.length > 0) {
+      const placeholderIndices = placeholderPrompts.map(p => p.filename).join(', ');
+      console.error(`[BLOCKED] ${placeholderPrompts.length} placeholder prompts detected: ${placeholderIndices}`);
+      return res.status(400).json({
+        error: `Cannot generate images with placeholder prompts. ${placeholderPrompts.length} prompt(s) are missing descriptions (e.g., "Scene 46"). Please regenerate image prompts first.`,
+        placeholderCount: placeholderPrompts.length,
+        examples: placeholderPrompts.slice(0, 3).map(p => p.prompt)
+      });
+    }
 
     const total = normalizedPrompts.length;
     console.log(`Generating ${total} images with Z-Image (quality: ${quality}, aspect: ${aspectRatio}, stream: ${stream}, timed: ${isTimedPrompts})`);
