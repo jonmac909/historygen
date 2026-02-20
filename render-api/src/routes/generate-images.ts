@@ -51,9 +51,11 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
 };
 
 // Safety terms - CRITICAL for preventing inappropriate content
-const SAFETY_PREFIX = "Family-friendly historical scene, ";  // Anchor the generation to safe content
-const SAFETY_SUFFIX = ", all figures fully clothed in period-appropriate modest attire, dignified historical painting style";
-const NEGATIVE_PROMPT = "nudity, nude, naked, bare chest, bare skin, exposed skin, topless, shirtless, revealing clothing, classical nude, artistic nude, partial nudity, undressed, unclothed, nsfw, adult content, violence, gore, blood, horror, scary, fear, torture, restraints, medical procedure, autopsy, dissection, death, corpse, body, surgery, operating table, strapped down, tied up, bondage, chains, kissing, romantic embrace, men in dresses, men wearing dresses, male in dress, male in feminine clothing, man in gown, crossdressing, gender swap, gender bending, drag, feminine male, masculine female, androgynous clothing";
+// NOTE: Z-Image may not support negative_prompt, so we embed safety directly in positive prompt
+const SAFETY_PREFIX = "Beautiful family-friendly historical oil painting, elegant and dignified scene, ";
+const SAFETY_SUFFIX = ", all people wearing full period-appropriate clothing covering arms and legs, formal modest historical attire, museum-quality fine art painting style, peaceful serene atmosphere, no violence no nudity no medical scenes";
+// Keep negative prompt in case some models support it, but primary safety is in positive prompt
+const NEGATIVE_PROMPT = "nudity, nude, naked, bare skin, medical, surgery, torture, violence, gore, blood, death, horror";
 
 // Detect placeholder prompts that should NOT be used for image generation
 function isPlaceholderPrompt(prompt: string): boolean {
