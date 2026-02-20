@@ -3167,10 +3167,10 @@ router.post('/word', async (req: Request, res: Response) => {
   try {
     // Use phonetic if provided, otherwise use the word itself
     const pronunciation = phonetic || word;
-    // Generate a short phrase to give Fish Speech more context for voice cloning
-    // Single words don't clone well - need a sentence for proper voice matching
-    const textToSpeak = `The word is ${pronunciation}. ${pronunciation}.`;
-    console.log(`[Word Preview] Generating audio for word "${word}" as "${pronunciation}" (phrase: "${textToSpeak}")`);
+    // Generate a longer phrase to give Fish Speech enough context for voice cloning
+    // Short phrases don't clone well - need substantial text for proper voice matching
+    const textToSpeak = `Listen carefully now. The correct pronunciation is ${pronunciation}. Once more, ${pronunciation}. And again, ${pronunciation}.`;
+    console.log(`[Word Preview] Generating audio for word "${word}" as "${pronunciation}"`);
 
     // Start TTS job
     const startResponse = await fetch(`${RUNPOD_API_URL}/run`, {
