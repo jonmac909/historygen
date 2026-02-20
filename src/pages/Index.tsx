@@ -4265,15 +4265,15 @@ const Index = () => {
       )}
 
       {/* Captions Preview Modal - Review captions and set image count */}
-      {/* Video Prompts is always the next step after Captions */}
+      {/* Image Prompts is the next step after Captions (images first, then video clips) */}
       <CaptionsPreviewModal
         isOpen={viewState === "review-captions"}
         srtContent={pendingSrtContent || ""}
-        onConfirm={(srt) => { setPendingSrtContent(srt); handleGenerateClipPrompts(); }}
+        onConfirm={handleCaptionsConfirm}
         onCancel={handleCancelRequest}
         onBack={handleBackToAudio}
-        onForward={canGoForwardFromCaptionsToClipPrompts() ? handleForwardToClipPrompts : undefined}
-        forwardLabel="Video Prompts"
+        onForward={canGoForwardFromCaptionsToClipPrompts() ? () => handleCaptionsConfirm(pendingSrtContent || "") : undefined}
+        forwardLabel="Image Prompts"
         imageCount={settings.imageCount}
         onImageCountChange={(count) => setSettings(prev => ({ ...prev, imageCount: count }))}
       />

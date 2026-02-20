@@ -241,7 +241,7 @@ export function AudioPreviewModal({
           ) : (
             <Button onClick={onConfirm} className="w-full sm:w-auto">
               <Check className="w-4 h-4 mr-2" />
-              Confirm
+              Generate Captions
             </Button>
           )}
         </DialogFooter>

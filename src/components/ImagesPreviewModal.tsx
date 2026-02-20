@@ -734,13 +734,13 @@ export function ImagesPreviewModal({
 
           {onForward ? (
             <Button onClick={onForward}>
-              Video
+              Generate Video Clips
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           ) : (
             <Button onClick={onConfirm}>
               <Check className="w-4 h-4 mr-2" />
-              Complete
+              Generate Video Clips
             </Button>
           )}
         </DialogFooter>

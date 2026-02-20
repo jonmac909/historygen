@@ -455,7 +455,7 @@ export function VideoClipsPreviewModal({
               </Button>
               <Button onClick={onConfirm} disabled={successCount === 0}>
                 <Check className="w-4 h-4 mr-1" />
-                Continue to Images
+                Continue to Render
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
