@@ -9,7 +9,10 @@ import { saveCost } from '../lib/cost-tracker';
 const router = Router();
 
 interface ScanImagesRequest {
-  imageUrls: string[];
+  // Frontend sends images as array of objects with index and imageUrl
+  images?: Array<{ index: number; imageUrl: string }>;
+  // Legacy: also accept imageUrls as array of strings
+  imageUrls?: string[];
   eraTopic: string;
   projectId?: string;
 }
@@ -32,9 +35,14 @@ interface RewritePromptRequest {
 
 // POST /scan-images - Scan images for content issues (streaming)
 router.post('/', async (req: Request, res: Response) => {
-  const { imageUrls, eraTopic, projectId }: ScanImagesRequest = req.body;
+  const { images, imageUrls, eraTopic, projectId }: ScanImagesRequest = req.body;
 
-  if (!imageUrls || imageUrls.length === 0) {
+  // Support both formats: images (array of {index, imageUrl}) or imageUrls (array of strings)
+  const urls: string[] = images
+    ? images.map(img => img.imageUrl)
+    : (imageUrls || []);
+
+  if (urls.length === 0) {
     return res.status(400).json({ error: 'No image URLs provided' });
   }
 
@@ -64,7 +72,7 @@ router.post('/', async (req: Request, res: Response) => {
   };
 
   try {
-    const total = imageUrls.length;
+    const total = urls.length;
     const results: ScanResult[] = [];
     let scannedCount = 0;
     let flaggedCount = 0;
@@ -82,7 +90,7 @@ router.post('/', async (req: Request, res: Response) => {
     const startTime = Date.now();
 
     for (let i = 0; i < total; i += MAX_CONCURRENT) {
-      const batch = imageUrls.slice(i, Math.min(i + MAX_CONCURRENT, total));
+      const batch = urls.slice(i, Math.min(i + MAX_CONCURRENT, total));
       const batchStartIndex = i;
 
       const batchResults = await Promise.all(
