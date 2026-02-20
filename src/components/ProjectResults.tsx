@@ -303,31 +303,30 @@ export function ProjectResults({
     complete: { label: 'Complete', percent: 100 },
   };
 
-  // Auto-detect actively running pipeline on mount (check if updated_at is recent)
-  useEffect(() => {
-    if (!projectId) return;
-    const detect = async () => {
-      try {
-        const { data } = await supabase
-          .from('generation_projects')
-          .select('status, current_step, current_progress, progress_message, updated_at')
-          .eq('id', projectId)
-          .single();
-        if (!data || data.status !== 'in_progress' || !data.current_step) return;
-        if (data.current_step === 'complete') return;
-        // Only consider it running if updated_at is within the last 30 seconds
-        const updatedAt = new Date(data.updated_at).getTime();
-        const age = Date.now() - updatedAt;
-        if (age < 30_000) {
-          setIsResuming(true);
-          setPipelineStep(data.current_step);
-          if (data.current_progress != null) setPipelineProgress(data.current_progress);
-          if (data.progress_message) setProgressMessage(data.progress_message);
-        }
-      } catch { /* ignore */ }
-    };
-    detect();
-  }, [projectId]);
+  // DISABLED: Auto-detect was starting pipeline without user consent
+  // useEffect(() => {
+  //   if (!projectId) return;
+  //   const detect = async () => {
+  //     try {
+  //       const { data } = await supabase
+  //         .from('generation_projects')
+  //         .select('status, current_step, current_progress, progress_message, updated_at')
+  //         .eq('id', projectId)
+  //         .single();
+  //       if (!data || data.status !== 'in_progress' || !data.current_step) return;
+  //       if (data.current_step === 'complete') return;
+  //       const updatedAt = new Date(data.updated_at).getTime();
+  //       const age = Date.now() - updatedAt;
+  //       if (age < 30_000) {
+  //         setIsResuming(true);
+  //         setPipelineStep(data.current_step);
+  //         if (data.current_progress != null) setPipelineProgress(data.current_progress);
+  //         if (data.progress_message) setProgressMessage(data.progress_message);
+  //       }
+  //     } catch { /* ignore */ }
+  //   };
+  //   detect();
+  // }, [projectId]);
 
   // Poll pipeline progress from Supabase while actively running
   useEffect(() => {
