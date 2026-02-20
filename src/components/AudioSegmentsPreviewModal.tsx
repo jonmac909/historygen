@@ -172,15 +172,18 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
     }, 300);
   };
 
-  // 1. Hear Word - Generate just the word pronunciation
+  // 1. Hear Word - Generate the sentence with the word pronounced phonetically
   const handleHearWord = async () => {
     const word = wordInput.trim();
     const phonetic = phoneticInput.trim() || word;
     if (!word || !voiceSampleUrl) return;
 
+    // Use the current segment text as context for natural voice cloning
+    const sentenceContext = editedText || segment.text;
+
     setGeneratingWordPreview(true);
     try {
-      const result = await previewWordPronunciation(word, phonetic, voiceSampleUrl);
+      const result = await previewWordPronunciation(word, phonetic, voiceSampleUrl, sentenceContext);
 
       if (result.success && result.audioUrl) {
         setWordPreviewUrl(result.audioUrl);

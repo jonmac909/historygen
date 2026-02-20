@@ -902,7 +902,8 @@ export async function lookupPhonetic(word: string): Promise<{ word: string; phon
 export async function previewWordPronunciation(
   word: string,
   phonetic: string,
-  voiceSampleUrl: string
+  voiceSampleUrl: string,
+  sentenceContext?: string  // The full sentence containing the word
 ): Promise<{ success: boolean; audioUrl?: string; error?: string }> {
   const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
 
@@ -915,7 +916,8 @@ export async function previewWordPronunciation(
       body: JSON.stringify({
         word,
         phonetic,
-        voiceSampleUrl
+        voiceSampleUrl,
+        sentenceContext
       })
     });
 

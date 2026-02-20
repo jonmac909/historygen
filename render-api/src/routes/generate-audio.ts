@@ -3144,7 +3144,7 @@ router.get('/phonetic/:word', (req: Request, res: Response) => {
 
 // Generate audio for a single word (for pronunciation preview)
 router.post('/word', async (req: Request, res: Response) => {
-  const { word, phonetic, voiceSampleUrl } = req.body;
+  const { word, phonetic, voiceSampleUrl, sentenceContext } = req.body;
 
   if (!word) {
     return res.status(400).json({ error: 'word is required' });
@@ -3167,10 +3167,19 @@ router.post('/word', async (req: Request, res: Response) => {
   try {
     // Use phonetic if provided, otherwise use the word itself
     const pronunciation = phonetic || word;
-    // Generate a longer phrase to give Fish Speech enough context for voice cloning
-    // Short phrases don't clone well - need substantial text for proper voice matching
-    const textToSpeak = `Listen carefully now. The correct pronunciation is ${pronunciation}. Once more, ${pronunciation}. And again, ${pronunciation}.`;
-    console.log(`[Word Preview] Generating audio for word "${word}" as "${pronunciation}"`);
+
+    // If we have sentence context, replace the word with phonetic spelling in the actual sentence
+    // This produces natural speech with the same voice instead of robotic "the correct pronunciation is..."
+    let textToSpeak: string;
+    if (sentenceContext) {
+      // Replace the word (case-insensitive) with the phonetic spelling
+      const wordRegex = new RegExp(`\\b${word}\\b`, 'gi');
+      textToSpeak = sentenceContext.replace(wordRegex, pronunciation);
+    } else {
+      // Fallback: repeat the word in a natural phrase
+      textToSpeak = `${pronunciation}. ${pronunciation}. ${pronunciation}.`;
+    }
+    console.log(`[Word Preview] Generating audio for word "${word}" as "${pronunciation}" in context`);
 
     // Start TTS job
     const startResponse = await fetch(`${RUNPOD_API_URL}/run`, {
