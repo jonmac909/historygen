@@ -780,7 +780,14 @@ export function ImagesPreviewModal({
           </div>
 
           {/* Script/Audio text panel */}
-          {console.log('[ImagesPreviewModal] lightbox:', { lightboxIndex, promptAtIndex: prompts?.[lightboxIndex!], hasPrompts: !!prompts, promptsLength: prompts?.length })}
+          {console.log('[ImagesPreviewModal] lightbox:', {
+            lightboxIndex,
+            promptAtIndex: prompts?.[lightboxIndex!],
+            hasPrompts: !!prompts,
+            promptsLength: prompts?.length,
+            allPromptIndices: prompts?.map(p => p?.index),
+            allPromptScenes: prompts?.map(p => p?.sceneDescription?.substring(0, 30)),
+          })}
           {(srtContent || prompts) && prompts?.[lightboxIndex] && (
             <div
               className="flex-shrink-0 w-[35%] max-h-[85vh] bg-black/60 rounded-lg p-4 overflow-y-auto cursor-default"
