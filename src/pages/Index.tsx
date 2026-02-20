@@ -1392,16 +1392,25 @@ const Index = () => {
   };
 
   // Step 5: After prompts reviewed/edited, generate images
-  const handlePromptsConfirm = async (editedPrompts: ImagePromptWithTiming[], editedStylePrompt: string) => {
-    // Check if we already have some images - if so, only generate for NEW prompts
+  // generateOnlyNew: true = only generate images for new prompts (keep existing), false = regenerate all
+  const handlePromptsConfirm = async (editedPrompts: ImagePromptWithTiming[], editedStylePrompt: string, _topic?: string, generateOnlyNew: boolean = false) => {
     const existingImageCount = pendingImages.length;
-    const promptsToGenerate = existingImageCount > 0 && existingImageCount < editedPrompts.length
-      ? editedPrompts.slice(existingImageCount)  // Only new prompts
-      : editedPrompts;  // All prompts (no existing images or mismatch)
 
-    const isPartialGeneration = promptsToGenerate.length < editedPrompts.length;
+    // Determine which prompts to generate images for
+    let promptsToGenerate: ImagePromptWithTiming[];
+    let isPartialGeneration: boolean;
 
-    console.log(`[handlePromptsConfirm] Generating ${promptsToGenerate.length} images (${isPartialGeneration ? `${existingImageCount} already exist` : 'full generation'})`);
+    if (generateOnlyNew && existingImageCount > 0 && existingImageCount < editedPrompts.length) {
+      // Generate only NEW prompts (keep existing images)
+      promptsToGenerate = editedPrompts.slice(existingImageCount);
+      isPartialGeneration = true;
+    } else {
+      // Regenerate ALL images
+      promptsToGenerate = editedPrompts;
+      isPartialGeneration = false;
+    }
+
+    console.log(`[handlePromptsConfirm] Generating ${promptsToGenerate.length} images (${isPartialGeneration ? `keeping ${existingImageCount} existing` : 'full regeneration'})`);
 
     setImagePrompts(editedPrompts);
     // Save the edited style prompt to settings so it persists across refreshes

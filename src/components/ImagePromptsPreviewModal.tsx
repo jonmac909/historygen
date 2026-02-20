@@ -34,7 +34,7 @@ interface ImagePromptsPreviewModalProps {
   prompts: ImagePrompt[];
   stylePrompt: string;
   imageTemplates: ImageTemplate[];  // Saved templates from settings
-  onConfirm: (editedPrompts: ImagePrompt[], editedStylePrompt: string, topic?: string) => void;
+  onConfirm: (editedPrompts: ImagePrompt[], editedStylePrompt: string, topic?: string, generateOnlyNew?: boolean) => void;
   onCancel: () => void;
   onBack?: () => void;
   onForward?: () => void;
@@ -185,8 +185,15 @@ export function ImagePromptsPreviewModal({
 
   // Sync with props when prompts change
   useEffect(() => {
+    const wasAdding = prompts.length > editedPrompts.length;
     setEditedPrompts(prompts);
-    setCurrentPage(0); // Reset to first page when prompts change
+    if (wasAdding) {
+      // Go to last page to show newly added prompts
+      const newTotalPages = Math.ceil(prompts.length / PROMPTS_PER_PAGE);
+      setCurrentPage(newTotalPages - 1);
+    } else {
+      setCurrentPage(0); // Reset to first page when prompts change entirely
+    }
   }, [prompts]);
 
   // Sync style prompt when prop changes (but only if it's substantive)
@@ -283,13 +290,13 @@ export function ImagePromptsPreviewModal({
     );
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = (generateOnlyNew: boolean = false) => {
     // Rebuild prompts with the current style
     const finalPrompts = editedPrompts.map(p => ({
       ...p,
       prompt: `${editedStyle}. ${p.sceneDescription}`
     }));
-    onConfirm(finalPrompts, editedStyle);
+    onConfirm(finalPrompts, editedStyle, editedTopic, generateOnlyNew);
   };
 
   // Handle style preset selection
@@ -590,14 +597,24 @@ export function ImagePromptsPreviewModal({
               <ChevronRight className="w-4 h-4 ml-2" />
             </Button>
           )}
-          <Button onClick={handleConfirm}>
-            <Check className="w-4 h-4 mr-2" />
-            {existingImageCount > 0 && existingImageCount < editedPrompts.length
-              ? `Generate ${editedPrompts.length - existingImageCount} New Images`
-              : onForward
-                ? 'Regenerate All Images'
-                : `Generate ${editedPrompts.length} Images`}
-          </Button>
+          {/* Show two buttons when there are new prompts beyond existing images */}
+          {existingImageCount > 0 && existingImageCount < editedPrompts.length ? (
+            <>
+              <Button variant="outline" onClick={() => handleConfirm(false)}>
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Regenerate All {editedPrompts.length} Images
+              </Button>
+              <Button onClick={() => handleConfirm(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Generate {editedPrompts.length - existingImageCount} New Images
+              </Button>
+            </>
+          ) : (
+            <Button onClick={() => handleConfirm(false)}>
+              <Check className="w-4 h-4 mr-2" />
+              {onForward ? 'Regenerate All Images' : `Generate ${editedPrompts.length} Images`}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
