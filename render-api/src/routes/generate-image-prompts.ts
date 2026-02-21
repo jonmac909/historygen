@@ -697,13 +697,22 @@ AESTHETIC PRIORITY (SLEEPY HISTORY STYLE - COZY BEDTIME VIEWING):
 - Evoke HEARTWARMING EMOTIONS: love, tenderness, serenity, gentle joy
 - Avoid anything harsh, scary, dark, or unsettling - keep everything soothing and romantic
 
+SUBJECT MATCHING (CRITICAL - MATCH WHO THE NARRATION IS ABOUT):
+- Read the narration and ask: "WHO is this about?" Then show THAT person/group
+- If narration discusses SERVANTS: Show kitchens, servant quarters, below-stairs life, laundry, cooking
+- If narration discusses WORKERS: Show workshops, farms, mills, markets, working-class cottages
+- If narration discusses COMMON PEOPLE: Show villages, taverns, countryside homes, market squares
+- If narration discusses ROYALTY/NOBILITY: Show palaces, grand halls, elegant interiors
+- Do NOT default to aristocracy - match the ACTUAL SUBJECT of the narration
+- The scene should show WHO the story is about, not just "pretty palace imagery"
+
 RULES:
-1. EVERY image must be VISUALLY STUNNING - gorgeous colors, elegant composition, cinematic lighting
-2. SHOWCASE the era's beauty: magnificent architecture, sumptuous costumes, lush landscapes
-3. VARY your scenes: palaces → gardens → ballrooms → countryside → intimate chambers → grand exteriors
-4. VARY your shots: wide establishing → medium group scenes → intimate close-ups → dramatic angles
-5. Include RICH DETAILS: silk fabrics, candlelight reflections, morning mist, golden hour light
-6. For abstract narration (emotions, politics): show a BEAUTIFUL relevant scene, not generic people talking
+1. EVERY image must be BEAUTIFUL - warm colors, cozy composition, soft lighting
+2. MATCH THE SUBJECT: Show the people and places the narration actually discusses
+3. VARY your scenes: interiors → exteriors → landscapes → close-ups
+4. VARY your shots: wide establishing → medium scenes → intimate details
+5. Include WARM DETAILS: firelight, candlelight, morning mist, golden hour
+6. Keep it SIMPLE: One clear scene, one moment, easy to visualize
 
 VISUAL VARIETY (CRITICAL - AVOID REPETITION):
 - NEVER generate 3+ consecutive images of "people sitting/standing in a room talking"
@@ -730,30 +739,37 @@ ATMOSPHERIC QUALITY (MAKE EACH IMAGE A MASTERPIECE):
 - Think like a master painter: What would Vermeer, Rembrandt, or Turner capture in this moment?
 
 FALLBACK RULE (for abstract/unclear narration):
-- If the narration discusses emotions, politics, or abstract concepts that are hard to visualize, DO NOT default to "people talking in a room"
-- Instead, show a COZY, ROMANTIC, VISUALLY BEAUTIFUL scene relevant to the era and topic:
-  * For love stories: romantic gardens at sunset, moonlit balconies, intimate candlelit chambers, tender moments by firelight
-  * For political intrigue: elegant private studies with warm candlelight, cozy library meetings, intimate parlor conversations
-  * For tragedy: gentle rain on windows, contemplative figure by soft firelight, autumn gardens at dusk (NEVER dark or scary)
-  * For triumph: warm sunlit celebrations, joyful garden parties, romantic reunions, tender embraces
-- ALWAYS keep scenes WARM and COZY - never dark, scary, or harsh
+- If the narration is abstract, show a SIMPLE BEAUTIFUL scene related to the story's subject
+- Ask: "Who is this story about?" and show THEIR world:
+  * Story about servants? Show warm kitchen, servants' quarters, domestic work
+  * Story about farmers? Show fields, barns, village life
+  * Story about royalty? Show palace interiors, gardens
+- For emotions/abstract concepts, show:
+  * Peaceful landscapes at golden hour
+  * Cozy interiors with warm firelight
+  * Simple figure by a window or hearth
+- ALWAYS keep scenes WARM, COZY, and SIMPLE - never dark or scary
 
 PROMPT FORMAT:
-7. Keep descriptions 50-70 words - ONE SCENE ONLY, no montages or multiple locations
-8. Start with SETTING and ATMOSPHERE (e.g., "Magnificent Georgian palace at golden hour", "Moonlit English garden")
-9. Include CINEMATIC elements: dramatic lighting, rich colors, elegant details
-10. Describe COSTUMES in detail: silk gowns, embroidered waistcoats, powdered wigs, jewels
-11. EXAMPLE PROMPTS for Georgian England (Queen Charlotte era) - COZY ROMANTIC STYLE:
-   - "Magnificent Buckingham House at golden sunset, warm amber glow on Georgian architecture, manicured gardens with gentle fountains, elegant aristocrats in silk finery arriving by carriage, romantic dreamy atmosphere"
-   - "Intimate candlelit ballroom, crystal chandeliers casting warm golden light, elegant couple in silk gown and embroidered tailcoat sharing tender dance, soft romantic glow, cozy evening ambiance"
-   - "Cozy royal sitting room at twilight, warm firelight dancing on silk wallpaper, lady in elegant empire-waist gown reading love letters, soft candlelight, peaceful intimate mood"
-   - "Romantic English garden at sunset, rose arbor with climbing flowers, gentleman in tailcoat and lady in flowing gown strolling arm in arm, warm golden hour light, tender romantic moment"
-   - "Elegant drawing room tea party, warm afternoon light through tall windows, ladies in modest empire-waist dresses and men in formal coats, delicate china, cozy intimate gathering"
+7. Keep descriptions 40-60 words - ONE SCENE ONLY, simple and clear
+8. Start with SETTING (e.g., "Cozy kitchen", "Village market", "Country cottage")
+9. Include LIGHTING: warm candlelight, golden hour, firelight, soft morning light
+10. Describe CLOTHING appropriate to the CHARACTER (servants wear simple clothes, nobles wear fine clothes)
+11. EXAMPLE PROMPTS - DIVERSE SUBJECTS:
+   - SERVANTS: "Warm Georgian kitchen below-stairs, cook in simple cotton dress stirring pot over hearth fire, copper pans gleaming, flour-dusted table, cozy amber firelight"
+   - WORKERS: "Village blacksmith shop at golden hour, smith in leather apron at glowing forge, horseshoes on wall, warm orange light through dusty windows"
+   - COMMON PEOPLE: "Cozy English cottage interior, family gathered by fireplace, simple wooden furniture, warm candlelight, peaceful evening"
+   - COUNTRYSIDE: "Rolling English farmland at sunset, stone walls, grazing sheep, thatched cottage in distance, warm golden light"
+   - ROYALTY: "Grand palace drawing room, warm afternoon light through tall windows, figures in fine period clothing, elegant but peaceful"
 12. Do NOT include any text, titles, or words in the image
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
 
-IMAGE 1 RULE (MANDATORY): The FIRST image (index 1) MUST ALWAYS be a grand establishing shot of the VIDEO SUBJECT'S primary location - their palace, their city, their court, their kingdom. For royalty: show THEIR palace exterior. For empires: show THEIR capital city. For explorers: show the starting point of THEIR journey. NO people as the main focus - just the magnificent setting that establishes WHERE this story takes place.
+IMAGE 1 RULE (MANDATORY): The FIRST image MUST be an establishing shot of WHERE this story takes place. Match the story's subject:
+- Story about servants/common people: Show the town, village, or estate exterior
+- Story about royalty: Show the palace or grand estate
+- Story about workers: Show the town, factory district, or countryside
+NO people as the main focus - just the setting that establishes the world of the story.
 
 Output format:
 [
