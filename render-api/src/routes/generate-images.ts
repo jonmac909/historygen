@@ -52,9 +52,9 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
 
 // Safety terms - CRITICAL for preventing inappropriate content
 // Z-Image currently ignores negative_prompt but we keep it in case they add support
-// SLEEPY HISTORY AESTHETIC: Cozy, romantic, cinematic, heartwarming - perfect for bedtime viewing
-const SAFETY_PREFIX = "Cinematic romantic historical oil painting, warm golden lighting, ";
-const SAFETY_SUFFIX = ", fully clothed in modest period attire, men in masculine clothing women in feminine dresses, soft candlelit atmosphere, peaceful cozy mood, museum-quality fine art, no cars, no automobiles, no modern vehicles, no electricity, no streetlights, horse-drawn carriages only";
+// SCENE COMES FIRST for priority, then style suffix
+// ERA-AGNOSTIC: Works for Vikings, Regency, Ancient Egypt, etc.
+const STYLE_SUFFIX = ", cinematic romantic historical oil painting style, warm lighting, fully clothed in modest period-appropriate attire, peaceful cozy mood, museum-quality fine art, no modern vehicles, no electricity, no streetlights";
 const NEGATIVE_PROMPT = "nudity, nude, naked, bare skin, revealing clothing, violence, gore, blood, horror, scary, dark, car, cars, automobile, automobiles, modern vehicles, trucks, buses, motorcycles, streetlights, electric lights";
 
 // Detect placeholder prompts that should NOT be used for image generation
@@ -66,8 +66,9 @@ function isPlaceholderPrompt(prompt: string): boolean {
 
 // Start a RunPod job for Z-Image generation
 async function startImageJob(apiKey: string, prompt: string, quality: string, aspectRatio: string): Promise<string> {
-  // Add safety terms to ensure PG-rated content
-  const safePrompt = `${SAFETY_PREFIX}${prompt}${SAFETY_SUFFIX}`;
+  // SCENE FIRST: Put the actual scene description first so Z-Image prioritizes it
+  // Style suffix comes after to add the oil painting aesthetic without overriding the scene
+  const safePrompt = `${prompt}${STYLE_SUFFIX}`;
   console.log(`Starting RunPod job for: ${safePrompt.substring(0, 80)}...`);
 
   const response = await fetch(`${RUNPOD_API_URL}/run`, {
