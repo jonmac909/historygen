@@ -998,12 +998,16 @@ export async function generateImagePrompts(
   modernKeywordFilter: boolean,
   audioDuration?: number,
   topic?: string,
+  subjectFocus?: string,
   onProgress?: (progress: number, message: string) => void
 ): Promise<ImagePromptsResult> {
   console.log('Generating AI-powered image prompts from script and captions...');
   console.log(`Script length: ${script.length}, SRT length: ${srtContent.length}, imageCount: ${imageCount}`);
   if (topic) {
     console.log(`Topic/Era anchor: ${topic}`);
+  }
+  if (subjectFocus) {
+    console.log(`Subject focus: ${subjectFocus}`);
   }
   if (audioDuration) {
     console.log(`Audio duration: ${audioDuration.toFixed(2)}s - images will be evenly distributed across full audio`);
@@ -1017,7 +1021,7 @@ export async function generateImagePrompts(
       const response = await fetch(`${renderUrl}/generate-image-prompts`, {
         method: 'POST',
         headers: withRenderAuth({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, stream: true })
+        body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, stream: true })
       });
 
       if (!response.ok) {
@@ -1072,7 +1076,7 @@ export async function generateImagePrompts(
 
   // Fallback to Supabase Edge Function (no streaming)
   const { data, error } = await supabase.functions.invoke('generate-image-prompts', {
-    body: { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic }
+    body: { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus }
   });
 
   if (error) {
@@ -1098,6 +1102,7 @@ export async function extendImagePrompts(
   audioDuration: number,
   stylePrompt: string,
   topic?: string,
+  subjectFocus?: string,
   projectId?: string
 ): Promise<ImagePromptsResult> {
   console.log(`[extendImagePrompts] Adding ${count} prompts from ${startFromSeconds.toFixed(2)}s to ${audioDuration.toFixed(2)}s`);
@@ -1123,6 +1128,7 @@ export async function extendImagePrompts(
         audioDuration,
         stylePrompt,
         topic,
+        subjectFocus,
         projectId
       })
     });

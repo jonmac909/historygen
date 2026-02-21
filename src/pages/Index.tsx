@@ -81,6 +81,7 @@ const CUSTOM_IMAGE_TEMPLATES_KEY = "historygenai-custom-image-templates";
 const DEFAULT_SETTINGS: GenerationSettings = {
   projectTitle: "",
   topic: "",  // Specific topic to prevent drift (e.g., "Viking Winters", "History of Bread")
+  subjectFocus: "",  // Who the story focuses on (e.g., "servants, housemaids", "Viking farmers")
   fullAutomation: false,
   modernKeywordFilter: true,  // Filter anachronistic keywords by default (turn off for modern videos)
   scriptTemplate: "template-a",
@@ -126,6 +127,7 @@ function loadLastSettings(): GenerationSettings {
         // Always reset project-specific fields for new projects
         projectTitle: "",
         topic: "",
+        subjectFocus: "",  // Reset subject focus for new projects
         // CRITICAL: fullAutomation must ALWAYS start as false
         // User must explicitly click "Full Auto Generate" each time
         fullAutomation: false,
@@ -1362,6 +1364,7 @@ const Index = () => {
         true, // Always filter modern keywords
         pendingAudioDuration,
         settings.topic, // Era anchor for image generation
+        settings.subjectFocus, // Who the story focuses on (e.g., servants, workers)
         (progress, message) => {
           updateStep("prompts", "active", message);
         }
@@ -1755,6 +1758,7 @@ const Index = () => {
         true, // Always filter modern keywords
         pendingAudioDuration,
         settings.topic, // Era anchor for image generation
+        settings.subjectFocus, // Who the story focuses on (e.g., servants, workers)
         (progress, message) => {
           updateStep("prompts", "active", message);
         }
@@ -1955,6 +1959,7 @@ const Index = () => {
         true, // Always filter modern keywords
         pendingAudioDuration,
         settings.topic, // Era anchor for image generation
+        settings.subjectFocus, // Who the story focuses on (e.g., servants, workers)
         (progress, message) => {
           console.log(`[RegeneratePrompts] ${progress}%: ${message}`);
         }
@@ -2029,7 +2034,8 @@ const Index = () => {
         startFromSeconds,
         audioDuration,
         settings.customStylePrompt?.trim() || getSelectedImageStyle(),
-        settings.projectTitle,  // Use as topic
+        settings.topic,  // Era anchor for image generation
+        settings.subjectFocus,  // Who the story focuses on
         projectId
       );
 
@@ -3067,7 +3073,8 @@ const Index = () => {
         getSelectedImageStyle(),
         true, // Always filter modern keywords
         audioDuration,
-        settings.topic // Era anchor for image generation
+        settings.topic, // Era anchor for image generation
+        settings.subjectFocus // Who the story focuses on (e.g., servants, workers)
       );
 
       if (!promptsResult.success) {
@@ -3753,6 +3760,24 @@ const Index = () => {
                   placeholder="e.g., Regency England 1810s, Ancient Rome..."
                   className="flex-1"
                 />
+              </div>
+
+              {/* Subject Focus - who the story is about (servants, workers, etc.) */}
+              <div className="flex items-center gap-3">
+                <div className="w-28 shrink-0">
+                  <label className="text-sm font-medium text-muted-foreground text-left block">Focus</label>
+                  <span className="text-xs text-muted-foreground/70">Who's the story about?</span>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <Input
+                    value={settings.subjectFocus}
+                    onChange={(e) => setSettings(prev => ({ ...prev, subjectFocus: e.target.value }))}
+                    placeholder="e.g., servants, housemaids, coachmen..."
+                  />
+                  <p className="text-xs text-muted-foreground/70">
+                    Ideas: servants, maids, footmen, soldiers, monks, farmers, sailors, merchants, workers
+                  </p>
+                </div>
               </div>
 
               {/* Word Count */}

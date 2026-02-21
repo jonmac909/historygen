@@ -454,13 +454,15 @@ function groupSegmentsForImages(segments: SrtSegment[], imageCount: number, audi
 }
 
 router.post('/', async (req: Request, res: Response) => {
-  const { script, srtContent, imageCount, stylePrompt, masterStylePrompt, modernKeywordFilter, audioDuration, stream, projectId, topic } = req.body;
+  const { script, srtContent, imageCount, stylePrompt, masterStylePrompt, modernKeywordFilter, audioDuration, stream, projectId, topic, subjectFocus } = req.body;
   // Accept both stylePrompt (from frontend) and masterStylePrompt (from pipeline) for compatibility
   const effectiveStylePrompt = stylePrompt || masterStylePrompt || '';
   // Default to true for backward compatibility (filter enabled by default)
   const shouldFilterKeywords = modernKeywordFilter !== false;
   // Topic is used to anchor images to a specific historical era
   const eraTopic = topic || '';
+  // Subject focus specifies who the documentary is about (e.g., "servants, housemaids")
+  const storySubjectFocus = subjectFocus || '';
 
   // Always use Sonnet for best quality scene descriptions
   const selectedModel = 'claude-sonnet-4-5-20250929';
@@ -601,6 +603,20 @@ DO NOT let the painting STYLE (Dutch Golden Age, Renaissance, etc.) influence th
 Example: If topic is "Regency England 1810s" but style is "Dutch Golden Age":
 - CORRECT: Regency empire-waist dresses, tailcoats, Georgian architecture, PAINTED in warm Dutch oil style
 - WRONG: Dutch 1600s ruffs, doublets, or Amsterdam canals
+` : ''}
+${storySubjectFocus ? `
+=== SUBJECT FOCUS (CRITICAL) ===
+This documentary focuses on: ${storySubjectFocus}
+
+IMPORTANT: Show THEIR world, THEIR perspective, THEIR daily life.
+- When royalty/nobility is mentioned, show how ${storySubjectFocus} experienced or viewed it
+- When palaces/mansions are mentioned, show the working areas (kitchens, stables, servants' quarters)
+- Focus on ${storySubjectFocus}, NOT aristocratic ballrooms or royal chambers
+- Show their work, their spaces, their relationships, their struggles
+
+Example: If topic is "Regency England" and subjectFocus is "servants, housemaids":
+- CORRECT: Housemaid polishing silver in the butler's pantry at dawn
+- WRONG: Lady in ballgown dancing at a grand ball
 ` : ''}
 #1 PRIORITY: VISUAL BEAUTY & CINEMATIC IMPACT
 Create images that would hang in a museum or win cinematography awards. Each scene should:
@@ -1111,6 +1127,7 @@ router.post('/extend', async (req: Request, res: Response) => {
     audioDuration,  // Total audio duration
     stylePrompt,
     topic,
+    subjectFocus,
     projectId
   } = req.body;
 
@@ -1168,7 +1185,11 @@ router.post('/extend', async (req: Request, res: Response) => {
 ERA: ${topic || timePeriod.era}
 REGION: ${timePeriod.region}
 VISUAL CONSTRAINTS: ${timePeriod.visualConstraints}
-
+${subjectFocus ? `
+SUBJECT FOCUS: This documentary focuses on ${subjectFocus}.
+Show THEIR world, THEIR perspective, THEIR daily life.
+When royalty/palaces are mentioned, show how ${subjectFocus} experienced it (kitchens, stables, servants' quarters).
+` : ''}
 Create ${count} stunning scene descriptions that continue a documentary video. These are ADDITIONAL images being added to an existing set, so:
 - Do NOT include establishing shots (those exist at the start)
 - Focus on varied, interesting scenes that complement the narrative

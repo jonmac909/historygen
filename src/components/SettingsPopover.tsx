@@ -24,6 +24,7 @@ import type { ScriptTemplate, ImageTemplate } from "@/components/ConfigModal";
 export interface GenerationSettings {
   projectTitle: string;
   topic: string;  // Specific topic focus (e.g., "Viking Winters", "History of Bread", "Cleopatra")
+  subjectFocus: string;  // Who the story focuses on (e.g., "servants, housemaids", "Viking farmers")
   fullAutomation: boolean;
   modernKeywordFilter: boolean;  // Filter anachronistic/modern keywords from image prompts
   scriptTemplate: string;
