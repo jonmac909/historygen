@@ -3721,6 +3721,11 @@ const Index = () => {
             autoSave("complete", { srtContent: undefined });
           }}
           onDeleteImagePrompts={() => {
+            // Remember the prompt count before deleting so regeneration uses the same count
+            const originalCount = imagePrompts.length;
+            if (originalCount > 0) {
+              setSettings(prev => ({ ...prev, imageCount: originalCount }));
+            }
             setImagePrompts([]);
             autoSave("complete", { imagePrompts: [] });
           }}
