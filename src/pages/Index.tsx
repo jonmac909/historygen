@@ -1915,7 +1915,8 @@ const Index = () => {
   // ============================================================================
 
   // Regenerate all image prompts (re-call Claude to generate new scene descriptions)
-  const handleRegenerateImagePrompts = async (modernKeywordFilter: boolean) => {
+  // Accepts optional overrides for topic and subjectFocus from the modal's edited fields
+  const handleRegenerateImagePrompts = async (modernKeywordFilter: boolean, topicOverride?: string, focusOverride?: string) => {
     if (!pendingSrtContent && !srtContent) {
       toast({
         title: "Error",
@@ -1923,6 +1924,19 @@ const Index = () => {
         variant: "destructive",
       });
       return;
+    }
+
+    // Use override values if provided (from modal), otherwise use current settings
+    const effectiveTopic = topicOverride !== undefined ? topicOverride : settings.topic;
+    const effectiveFocus = focusOverride !== undefined ? focusOverride : settings.subjectFocus;
+
+    // Update settings with new values if overrides were provided
+    if (topicOverride !== undefined || focusOverride !== undefined) {
+      setSettings(prev => ({
+        ...prev,
+        topic: effectiveTopic,
+        subjectFocus: effectiveFocus,
+      }));
     }
 
     setIsRegeneratingPrompts(true);
@@ -1950,6 +1964,7 @@ const Index = () => {
 
       console.log(`[RegenerateImagePrompts] Using prompt count: ${promptCount} (imagePrompts.length: ${imagePrompts.length}, settings.imageCount: ${settings.imageCount})`);
       console.log(`[RegenerateImagePrompts] Modern keyword filter: ${modernKeywordFilter}`);
+      console.log(`[RegenerateImagePrompts] Topic: ${effectiveTopic}, Focus: ${effectiveFocus}`);
 
       const promptResult = await generateImagePrompts(
         scriptForPrompts,
@@ -1958,8 +1973,8 @@ const Index = () => {
         getSelectedImageStyle(),
         true, // Always filter modern keywords
         pendingAudioDuration,
-        settings.topic, // Era anchor for image generation
-        settings.subjectFocus, // Who the story focuses on (e.g., servants, workers)
+        effectiveTopic, // Era anchor for image generation (from modal or settings)
+        effectiveFocus, // Who the story focuses on (from modal or settings)
         (progress, message) => {
           console.log(`[RegeneratePrompts] ${progress}%: ${message}`);
         }
@@ -4349,8 +4364,12 @@ const Index = () => {
         onCancel={handleCancelRequest}
         onBack={handleBackToCaptions}
         onForward={canGoForwardFromPrompts() ? handleForwardToImages : undefined}
-        onRegenerate={() => handleRegenerateImagePrompts(true)}
+        onRegenerate={(topic, focus) => handleRegenerateImagePrompts(true, topic, focus)}
         isRegenerating={isRegeneratingPrompts}
+        topic={settings.topic}
+        onTopicChange={(topic) => setSettings(prev => ({ ...prev, topic }))}
+        subjectFocus={settings.subjectFocus}
+        onSubjectFocusChange={(subjectFocus) => setSettings(prev => ({ ...prev, subjectFocus }))}
         onAddPrompts={handleAddPrompts}
         isAddingPrompts={isAddingPrompts}
         existingImageCount={pendingImages.length}

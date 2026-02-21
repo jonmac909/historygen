@@ -38,10 +38,12 @@ interface ImagePromptsPreviewModalProps {
   onCancel: () => void;
   onBack?: () => void;
   onForward?: () => void;
-  onRegenerate?: (topic?: string) => void;  // Regenerate prompts with optional topic constraint
+  onRegenerate?: (topic?: string, subjectFocus?: string) => void;  // Regenerate prompts with optional topic + focus constraints
   isRegenerating?: boolean;
   topic?: string;  // Era/topic constraint (e.g., "Regency England 1810s")
   onTopicChange?: (topic: string) => void;
+  subjectFocus?: string;  // Who the story focuses on (e.g., "servants, housemaids")
+  onSubjectFocusChange?: (focus: string) => void;
   onAddPrompts?: (count: number) => void;  // Add N more prompts to the end
   isAddingPrompts?: boolean;
   existingImageCount?: number;  // How many images already exist (to know which prompts need images)
@@ -148,12 +150,15 @@ export function ImagePromptsPreviewModal({
   isRegenerating = false,
   topic = '',
   onTopicChange,
+  subjectFocus = '',
+  onSubjectFocusChange,
   onAddPrompts,
   isAddingPrompts = false,
   existingImageCount = 0
 }: ImagePromptsPreviewModalProps) {
   const [editedPrompts, setEditedPrompts] = useState<ImagePrompt[]>(prompts);
   const [editedTopic, setEditedTopic] = useState(topic);
+  const [editedFocus, setEditedFocus] = useState(subjectFocus);
   const [promptsToAdd, setPromptsToAdd] = useState(12);  // Default to 12 (video clip count)
 
   // Pagination for large prompt lists (prevents stack overflow with 500+ items)
@@ -209,11 +214,24 @@ export function ImagePromptsPreviewModal({
     setEditedTopic(topic);
   }, [topic]);
 
+  // Sync focus when prop changes
+  useEffect(() => {
+    setEditedFocus(subjectFocus);
+  }, [subjectFocus]);
+
   // Handle topic change (notify parent immediately)
   const handleTopicChange = (newTopic: string) => {
     setEditedTopic(newTopic);
     if (onTopicChange) {
       onTopicChange(newTopic);
+    }
+  };
+
+  // Handle focus change (notify parent immediately)
+  const handleFocusChange = (newFocus: string) => {
+    setEditedFocus(newFocus);
+    if (onSubjectFocusChange) {
+      onSubjectFocusChange(newFocus);
     }
   };
 
@@ -407,6 +425,25 @@ export function ImagePromptsPreviewModal({
           </div>
         </div>
 
+        {/* Subject Focus - who the story is about */}
+        <div className="border rounded-lg p-3 bg-muted/30">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-muted-foreground" />
+              <div>
+                <span className="text-sm font-medium">Focus</span>
+                <p className="text-xs text-muted-foreground">Who the story is about (shows their world, not aristocrats)</p>
+              </div>
+            </div>
+            <Input
+              value={editedFocus}
+              onChange={(e) => handleFocusChange(e.target.value)}
+              placeholder="e.g., servants, housemaids, coachmen..."
+              className="w-[250px]"
+            />
+          </div>
+        </div>
+
         {/* Image Style Selector */}
         <div className="border rounded-lg p-3 bg-muted/30">
           <div className="flex items-center justify-between gap-4">
@@ -578,7 +615,7 @@ export function ImagePromptsPreviewModal({
               Download
             </Button>
             {onRegenerate && (
-              <Button variant="outline" onClick={onRegenerate} disabled={isRegenerating}>
+              <Button variant="outline" onClick={() => onRegenerate(editedTopic, editedFocus)} disabled={isRegenerating}>
                 <RefreshCw className={`w-4 h-4 mr-2 ${isRegenerating ? 'animate-spin' : ''}`} />
                 {isRegenerating ? 'Regenerating...' : 'Redo Prompts'}
               </Button>
