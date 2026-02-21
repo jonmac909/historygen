@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Download, ChevronLeft, ChevronDown, Video, Loader2, Sparkles, Square, CheckSquare, Play, Pause, Upload, FileText, Mic, MessageSquare, Palette, Image, Target, Film, Youtube, Save, Pencil, Check, X, Tag, Plus, Copy, Zap, ShieldCheck } from "lucide-react";
+import { Download, ChevronLeft, ChevronDown, Video, Loader2, Sparkles, Square, CheckSquare, Play, Pause, Upload, FileText, Mic, MessageSquare, Palette, Image, Target, Film, Youtube, Save, Pencil, Check, X, Tag, Plus, Copy, Zap, ShieldCheck, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
@@ -98,6 +98,14 @@ interface ProjectResultsProps {
   onImagesUpload?: (imageUrls: string[]) => void;
   onPromptsUpload?: (prompts: ImagePromptWithTiming[]) => void;
   onVideoUpload?: (videoUrl: string, type: 'basic' | 'smoke_embers') => void;
+  // Delete callbacks - for removing assets when user wants to regenerate
+  onDeleteScript?: () => void;
+  onDeleteAudio?: () => void;
+  onDeleteCaptions?: () => void;
+  onDeleteImagePrompts?: () => void;
+  onDeleteImages?: () => void;
+  onDeleteVideoClips?: () => void;
+  onDeleteRender?: () => void;
   // Tags
   tags?: string[];
   onTagsChange?: (tags: string[]) => void;
@@ -238,6 +246,13 @@ export function ProjectResults({
   onImagesUpload,
   onPromptsUpload,
   onVideoUpload,
+  onDeleteScript,
+  onDeleteAudio,
+  onDeleteCaptions,
+  onDeleteImagePrompts,
+  onDeleteImages,
+  onDeleteVideoClips,
+  onDeleteRender,
   tags = [],
   onTagsChange,
   projectStatus,
@@ -283,6 +298,28 @@ export function ProjectResults({
   const [pipelineStep, setPipelineStep] = useState<string | null>(null);
   const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
   const [pipelineProgress, setPipelineProgress] = useState<number>(0);
+
+  // State for delete confirmation dialog
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ name: string; onConfirm: () => void } | null>(null);
+
+  // Handle delete with confirmation
+  const handleDeleteWithConfirm = (name: string, onConfirm: () => void) => {
+    setDeleteTarget({ name, onConfirm });
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = () => {
+    if (deleteTarget?.onConfirm) {
+      deleteTarget.onConfirm();
+      toast({
+        title: "Deleted",
+        description: `${deleteTarget.name} has been deleted. You can regenerate it.`,
+      });
+    }
+    setDeleteConfirmOpen(false);
+    setDeleteTarget(null);
+  };
   const [progressMessage, setProgressMessage] = useState<string>('');
   const [modernKeywordFilter, setModernKeywordFilter] = useState(true);
 
@@ -1595,23 +1632,20 @@ export function ProjectResults({
               >
                 <Download className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => toggleApproval('script', e)}
-                className={`h-8 w-8 ${
-                  approvedSteps.includes('script')
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={approvedSteps.includes('script') ? 'Mark as not approved' : 'Mark as approved'}
-              >
-                {approvedSteps.includes('script') ? (
-                  <CheckSquare className="w-4 h-4" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-              </Button>
+              {onDeleteScript && assets.find(a => a.id === 'script') && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteWithConfirm('Script', onDeleteScript);
+                  }}
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  title="Delete script"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1666,23 +1700,20 @@ export function ProjectResults({
               >
                 <Download className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => toggleApproval('audio', e)}
-                className={`h-8 w-8 ${
-                  approvedSteps.includes('audio')
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={approvedSteps.includes('audio') ? 'Mark as not approved' : 'Mark as approved'}
-              >
-                {approvedSteps.includes('audio') ? (
-                  <CheckSquare className="w-4 h-4" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-              </Button>
+              {onDeleteAudio && assets.find(a => a.id === 'audio') && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteWithConfirm('Audio', onDeleteAudio);
+                  }}
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  title="Delete audio"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1746,23 +1777,20 @@ export function ProjectResults({
               >
                 <Download className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => toggleApproval('captions', e)}
-                className={`h-8 w-8 ${
-                  approvedSteps.includes('captions')
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={approvedSteps.includes('captions') ? 'Mark as not approved' : 'Mark as approved'}
-              >
-                {approvedSteps.includes('captions') ? (
-                  <CheckSquare className="w-4 h-4" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-              </Button>
+              {onDeleteCaptions && srtContent && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteWithConfirm('Captions', onDeleteCaptions);
+                  }}
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  title="Delete captions"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1816,23 +1844,20 @@ export function ProjectResults({
               >
                 <Download className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => toggleApproval('prompts', e)}
-                className={`h-8 w-8 ${
-                  approvedSteps.includes('prompts')
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={approvedSteps.includes('prompts') ? 'Mark as not approved' : 'Mark as approved'}
-              >
-                {approvedSteps.includes('prompts') ? (
-                  <CheckSquare className="w-4 h-4" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-              </Button>
+              {onDeleteImagePrompts && imagePrompts && imagePrompts.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteWithConfirm('Image Prompts', onDeleteImagePrompts);
+                  }}
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  title="Delete image prompts"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1886,23 +1911,20 @@ export function ProjectResults({
               >
                 <Download className="w-4 h-4" />
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => toggleApproval('images', e)}
-                className={`h-8 w-8 ${
-                  approvedSteps.includes('images')
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={approvedSteps.includes('images') ? 'Mark as not approved' : 'Mark as approved'}
-              >
-                {approvedSteps.includes('images') ? (
-                  <CheckSquare className="w-4 h-4" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-              </Button>
+              {onDeleteImages && assets.some(a => a.id.startsWith('image-') && a.url) && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteWithConfirm('Images', onDeleteImages);
+                  }}
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  title="Delete images"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -1959,23 +1981,20 @@ export function ProjectResults({
               )}
             </div>
             <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => toggleApproval('clips', e)}
-                className={`h-8 w-8 ${
-                  approvedSteps.includes('clips')
-                    ? 'text-green-600 dark:text-green-400'
-                    : 'text-muted-foreground hover:text-foreground'
-                }`}
-                title={approvedSteps.includes('clips') ? 'Mark as not approved' : 'Mark as approved'}
-              >
-                {approvedSteps.includes('clips') ? (
-                  <CheckSquare className="w-4 h-4" />
-                ) : (
-                  <Square className="w-4 h-4" />
-                )}
-              </Button>
+              {onDeleteVideoClips && clipUrls && clipUrls.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteWithConfirm('Video Clips', onDeleteVideoClips);
+                  }}
+                  className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                  title="Delete video clips"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
             </div>
           </div>
 
@@ -2041,23 +2060,20 @@ export function ProjectResults({
                   >
                     <Download className="w-4 h-4" />
                   </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={(e) => toggleApproval('render', e)}
-                    className={`h-8 w-8 ${
-                      approvedSteps.includes('render')
-                        ? 'text-green-600 dark:text-green-400'
-                        : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                    title={approvedSteps.includes('render') ? 'Mark as not approved' : 'Mark as approved'}
-                  >
-                    {approvedSteps.includes('render') ? (
-                      <CheckSquare className="w-4 h-4" />
-                    ) : (
-                      <Square className="w-4 h-4" />
-                    )}
-                  </Button>
+                  {onDeleteRender && (smokeEmbersVideoUrl || embersVideoUrl || basicVideoUrl) && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteWithConfirm('Video Render', onDeleteRender);
+                      }}
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      title="Delete rendered video"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             );
@@ -2695,6 +2711,26 @@ export function ProjectResults({
           }}
         />
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete {deleteTarget?.name}?</DialogTitle>
+            <DialogDescription>
+              This will delete {deleteTarget?.name?.toLowerCase()} so you can regenerate it. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

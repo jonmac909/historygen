@@ -3701,6 +3701,48 @@ const Index = () => {
               });
             }
           }}
+          // Delete callbacks - clear state and database for regeneration
+          onDeleteScript={() => {
+            setConfirmedScript("");
+            setPendingScript("");
+            setGeneratedAssets(prev => prev.filter(a => a.id !== 'script'));
+            autoSave("complete", { script: undefined });
+          }}
+          onDeleteAudio={() => {
+            setPendingAudioUrl(undefined);
+            setAudioUrl("");
+            setPendingAudioDuration(0);
+            setGeneratedAssets(prev => prev.filter(a => a.id !== 'audio'));
+            autoSave("complete", { audioUrl: undefined, audioDuration: undefined });
+          }}
+          onDeleteCaptions={() => {
+            setPendingSrtContent("");
+            setSrtContent("");
+            autoSave("complete", { srtContent: undefined });
+          }}
+          onDeleteImagePrompts={() => {
+            setImagePrompts([]);
+            autoSave("complete", { imagePrompts: [] });
+          }}
+          onDeleteImages={() => {
+            setPendingImages([]);
+            // Keep prompts but clear imageUrl from each
+            const clearedPrompts = imagePrompts.map(p => ({ ...p, imageUrl: undefined }));
+            setImagePrompts(clearedPrompts);
+            setGeneratedAssets(prev => prev.filter(a => !a.id.startsWith('image-')));
+            autoSave("complete", { imageUrls: [], imagePrompts: clearedPrompts });
+          }}
+          onDeleteVideoClips={() => {
+            setGeneratedClips([]);
+            autoSave("complete", { clips: [] });
+          }}
+          onDeleteRender={() => {
+            setVideoUrl(undefined);
+            setVideoUrlCaptioned(undefined);
+            setEmbersVideoUrl(undefined);
+            setSmokeEmbersVideoUrl(undefined);
+            autoSave("complete", { videoUrl: undefined, videoUrlCaptioned: undefined, embersVideoUrl: undefined, smokeEmbersVideoUrl: undefined });
+          }}
         />
       ) : (
         <main className="flex flex-col items-center justify-center px-4 py-32">
