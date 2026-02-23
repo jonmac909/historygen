@@ -663,15 +663,27 @@ For example, if the topic is "Regency Debutante Season", focus on TYPICAL DEBUTA
 The narration provides MOOD and TIMING, but the TOPIC provides the VISUAL CONTENT.
 Do NOT try to literally visualize abstract script passages - show BEAUTIFUL SCENES from the topic's world instead.
 
-CRITICAL - ONE SCENE PER PROMPT:
-- Each prompt must describe EXACTLY ONE location, ONE moment in time
-- NEVER combine multiple scenes, locations, or parallel actions in one prompt
-- NEVER use phrases like "meanwhile", "in another room", "across London", "distant rooms"
-- NEVER describe what's happening in multiple places simultaneously
-- If the script describes 5 things happening at once, pick THE SINGLE MOST BEAUTIFUL SCENE
-- The AI image generator can only create ONE image - don't confuse it with montages
-- BAD: "Prince in bath while servants attend, kitchen fires roar, weavers smash looms in Manchester"
-- GOOD: "Elegant Regency drawing room at golden hour, gentleman in tailcoat reading by firelight"
+⚠️ CRITICAL - SIMPLE, SINGLE SCENE PROMPTS (READ FIRST):
+Your prompts MUST be SIMPLE and SHORT (30-50 words max). Each prompt = ONE scene, ONE moment.
+
+WHAT TO WRITE:
+- ONE location (a room, a garden, a street)
+- ONE subject (a person, a group, a building)
+- ONE moment in time (not a sequence of events)
+- Simple, clear description that an AI image generator can render
+
+WHAT NOT TO WRITE:
+❌ Multiple locations ("in the kitchen... meanwhile in the ballroom...")
+❌ Multiple simultaneous actions ("servants cook while maids polish")
+❌ Narrative sequences ("she enters, then sits, then speaks")
+❌ Long, complex descriptions with many details
+❌ Abstract concepts that can't be visualized
+
+EXAMPLES:
+❌ BAD (too complex): "Prince in bath while servants attend, kitchen fires roar, weavers smash looms in Manchester, riots spread through the countryside"
+✅ GOOD (simple): "Elegant Regency drawing room at golden hour, gentleman in tailcoat reading by firelight"
+✅ GOOD (simple): "Georgian kitchen at dawn, cook in cotton dress stirring pot over hearth fire"
+✅ GOOD (simple): "Misty English countryside, stone cottage with smoking chimney, sheep grazing"
 
 EXAMPLE - Ptolemaic Egypt (Cleopatra's era, 69-30 BCE):
 - GOOD: "Ptolemaic Alexandria harbor, merchant ships with square sails, Greek and Egyptian traders, limestone lighthouse, Mediterranean sea, golden sunset"
@@ -766,18 +778,20 @@ FALLBACK RULE (for abstract/unclear narration):
   * Simple figure by a window or hearth
 - ALWAYS keep scenes WARM, COZY, and SIMPLE - never dark or scary
 
-PROMPT FORMAT:
-7. Keep descriptions 40-60 words - ONE SCENE ONLY, simple and clear
-8. Start with SETTING (e.g., "Cozy kitchen", "Village market", "Country cottage")
-9. Include LIGHTING: warm candlelight, golden hour, firelight, soft morning light
-10. Describe CLOTHING appropriate to the CHARACTER (servants wear simple clothes, nobles wear fine clothes)
-11. EXAMPLE PROMPTS - DIVERSE SUBJECTS:
-   - SERVANTS: "Warm Georgian kitchen below-stairs, cook in simple cotton dress stirring pot over hearth fire, copper pans gleaming, flour-dusted table, cozy amber firelight"
-   - WORKERS: "Village blacksmith shop at golden hour, smith in leather apron at glowing forge, horseshoes on wall, warm orange light through dusty windows"
-   - COMMON PEOPLE: "Cozy English cottage interior, family gathered by fireplace, simple wooden furniture, warm candlelight, peaceful evening"
-   - COUNTRYSIDE: "Rolling English farmland at sunset, stone walls, grazing sheep, thatched cottage in distance, warm golden light"
-   - ROYALTY: "Grand palace drawing room, warm afternoon light through tall windows, figures in fine period clothing, elegant but peaceful"
-12. Do NOT include any text, titles, or words in the image
+PROMPT FORMAT (KEEP IT SIMPLE):
+- MAX 30-50 WORDS per prompt - brevity is key
+- Format: "[Setting], [subject], [lighting/mood]"
+- Start with the LOCATION, then the SUBJECT, then the ATMOSPHERE
+- NO narrative, NO actions sequences, NO "and then..."
+
+GOOD EXAMPLES (notice how SHORT and SIMPLE they are):
+- "Georgian kitchen at dawn, cook in cotton dress by hearth fire, copper pans, warm amber light"
+- "Village blacksmith at golden hour, smith in leather apron at glowing forge, orange firelight"
+- "English cottage interior, family by fireplace, candlelight, peaceful evening"
+- "Rolling farmland at sunset, stone walls, grazing sheep, thatched cottage, golden light"
+- "Grand palace drawing room, afternoon light through tall windows, elegant figures in fine period dress"
+
+Do NOT include any text, titles, or words in the image.
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
 
