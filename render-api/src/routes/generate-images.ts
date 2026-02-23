@@ -24,6 +24,8 @@ interface GenerateImagesRequest {
   aspectRatio?: string;
   stream?: boolean;
   projectId?: string;
+  topic?: string;  // Era/period constraint (e.g., "Regency England 1810s")
+  subjectFocus?: string;  // Who the story focuses on (e.g., "servants, housemaids")
 }
 
 interface JobStatus {
@@ -234,21 +236,33 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'Supabase configuration missing' });
     }
 
-    const { prompts, quality, aspectRatio = "16:9", stream = false, projectId }: GenerateImagesRequest = req.body;
+    const { prompts, quality, aspectRatio = "16:9", stream = false, projectId, topic, subjectFocus }: GenerateImagesRequest = req.body;
 
     if (!prompts || prompts.length === 0) {
       return res.status(400).json({ error: 'No prompts provided' });
     }
 
-    // Normalize prompts
+    // Build era prefix for prompts (if provided)
+    // This ensures images are anchored to the correct historical period
+    let eraPrefix = '';
+    if (topic) {
+      eraPrefix = `${topic}. `;
+      console.log(`[GenerateImages] Era prefix: "${eraPrefix}"`);
+    }
+    if (subjectFocus) {
+      eraPrefix += `Depicting ${subjectFocus}. `;
+      console.log(`[GenerateImages] Subject focus added to prefix`);
+    }
+
+    // Normalize prompts and prepend era prefix
     const isTimedPrompts = typeof prompts[0] === 'object' && 'prompt' in prompts[0];
     const normalizedPrompts: { prompt: string; filename: string }[] = isTimedPrompts
       ? (prompts as ImagePromptWithTiming[]).map(p => ({
-          prompt: p.prompt,
+          prompt: `${eraPrefix}${p.prompt}`,
           filename: `image_${String(p.index).padStart(3, '0')}_${p.startTime}_to_${p.endTime}.png`
         }))
       : (prompts as string[]).map((prompt, i) => ({
-          prompt,
+          prompt: `${eraPrefix}${prompt}`,
           filename: `image_${String(i + 1).padStart(3, '0')}.png`
         }));
 

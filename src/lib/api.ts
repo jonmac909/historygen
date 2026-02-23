@@ -1345,7 +1345,9 @@ export async function generateImages(
   prompts: string[] | ImagePromptWithTiming[],
   quality: string,
   aspectRatio: string = "16:9",
-  projectId?: string
+  projectId?: string,
+  topic?: string,  // Era/period constraint (e.g., "Regency England 1810s")
+  subjectFocus?: string  // Who the story focuses on
 ): Promise<ImageGenerationResult> {
   const renderUrl = import.meta.env.VITE_RENDER_API_URL;
 
@@ -1362,7 +1364,7 @@ export async function generateImages(
       headers: withRenderAuth({
         'Content-Type': 'application/json',
       }),
-      body: JSON.stringify({ prompts, quality, aspectRatio, projectId })
+      body: JSON.stringify({ prompts, quality, aspectRatio, projectId, topic, subjectFocus })
     });
 
     if (!response.ok) {
@@ -1384,7 +1386,9 @@ export async function generateImagesStreaming(
   quality: string,
   aspectRatio: string = "16:9",
   onProgress: (completed: number, total: number, message: string) => void,
-  projectId?: string
+  projectId?: string,
+  topic?: string,  // Era/period constraint (e.g., "Regency England 1810s")
+  subjectFocus?: string  // Who the story focuses on
 ): Promise<ImageGenerationResult> {
   const renderUrl = import.meta.env.VITE_RENDER_API_URL;
 
@@ -1400,7 +1404,7 @@ export async function generateImagesStreaming(
     headers: withRenderAuth({
       'Content-Type': 'application/json',
     }),
-    body: JSON.stringify({ prompts, quality, aspectRatio, stream: true, projectId })
+    body: JSON.stringify({ prompts, quality, aspectRatio, stream: true, projectId, topic, subjectFocus })
   });
 
   if (!response.ok) {

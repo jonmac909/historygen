@@ -622,45 +622,87 @@ const Index = () => {
       currentStep: step,
     };
 
-    // Script - only if has content
-    const scriptValue = overrides?.script || confirmedScript || pendingScript;
-    if (scriptValue) projectData.script = scriptValue;
+    // Script - handle explicit deletions (empty string) from overrides
+    if (overrides?.script !== undefined) {
+      projectData.script = overrides.script;
+    } else if (confirmedScript || pendingScript) {
+      projectData.script = confirmedScript || pendingScript;
+    }
 
-    // Audio - only if has content
-    const audioUrlValue = overrides?.audioUrl || pendingAudioUrl;
-    if (audioUrlValue) projectData.audioUrl = audioUrlValue;
-    const audioDurationValue = overrides?.audioDuration || pendingAudioDuration;
-    if (audioDurationValue) projectData.audioDuration = audioDurationValue;
-    const audioSegmentsValue = overrides?.audioSegments || pendingAudioSegments;
-    if (audioSegmentsValue && audioSegmentsValue.length > 0) projectData.audioSegments = audioSegmentsValue;
+    // Audio - handle explicit deletions from overrides
+    if (overrides?.audioUrl !== undefined) {
+      projectData.audioUrl = overrides.audioUrl;
+    } else if (pendingAudioUrl) {
+      projectData.audioUrl = pendingAudioUrl;
+    }
+    if (overrides?.audioDuration !== undefined) {
+      projectData.audioDuration = overrides.audioDuration;
+    } else if (pendingAudioDuration) {
+      projectData.audioDuration = pendingAudioDuration;
+    }
+    if (overrides?.audioSegments !== undefined) {
+      projectData.audioSegments = overrides.audioSegments;
+    } else if (pendingAudioSegments && pendingAudioSegments.length > 0) {
+      projectData.audioSegments = pendingAudioSegments;
+    }
 
-    // Captions - only if has content
-    const srtContentValue = overrides?.srtContent || pendingSrtContent;
-    if (srtContentValue) projectData.srtContent = srtContentValue;
-    const srtUrlValue = overrides?.srtUrl || pendingSrtUrl;
-    if (srtUrlValue) projectData.srtUrl = srtUrlValue;
+    // Captions - handle explicit deletions from overrides
+    if (overrides?.srtContent !== undefined) {
+      projectData.srtContent = overrides.srtContent;
+    } else if (pendingSrtContent) {
+      projectData.srtContent = pendingSrtContent;
+    }
+    if (overrides?.srtUrl !== undefined) {
+      projectData.srtUrl = overrides.srtUrl;
+    } else if (pendingSrtUrl) {
+      projectData.srtUrl = pendingSrtUrl;
+    }
 
-    // Images - only if has content
-    const imagePromptsValue = overrides?.imagePrompts || imagePrompts;
-    if (imagePromptsValue && imagePromptsValue.length > 0) projectData.imagePrompts = imagePromptsValue;
-    const imageUrlsValue = overrides?.imageUrls || pendingImages;
-    if (imageUrlsValue && imageUrlsValue.length > 0) projectData.imageUrls = imageUrlsValue;
+    // Images - handle explicit deletions (empty arrays) from overrides
+    if (overrides?.imagePrompts !== undefined) {
+      projectData.imagePrompts = overrides.imagePrompts;
+    } else if (imagePrompts && imagePrompts.length > 0) {
+      projectData.imagePrompts = imagePrompts;
+    }
+    if (overrides?.imageUrls !== undefined) {
+      projectData.imageUrls = overrides.imageUrls;
+    } else if (pendingImages && pendingImages.length > 0) {
+      projectData.imageUrls = pendingImages;
+    }
 
-    // Videos - only if has content
-    const videoUrlValue = overrides?.videoUrl || videoUrl;
-    if (videoUrlValue) projectData.videoUrl = videoUrlValue;
-    const videoUrlCaptionedValue = overrides?.videoUrlCaptioned || videoUrlCaptioned;
-    if (videoUrlCaptionedValue) projectData.videoUrlCaptioned = videoUrlCaptionedValue;
-    const embersVideoUrlValue = overrides?.embersVideoUrl || embersVideoUrl;
-    if (embersVideoUrlValue) projectData.embersVideoUrl = embersVideoUrlValue;
-    const smokeEmbersVideoUrlValue = overrides?.smokeEmbersVideoUrl || smokeEmbersVideoUrl;
-    if (smokeEmbersVideoUrlValue) projectData.smokeEmbersVideoUrl = smokeEmbersVideoUrlValue;
+    // Videos - handle explicit deletions from overrides
+    if (overrides?.videoUrl !== undefined) {
+      projectData.videoUrl = overrides.videoUrl;
+    } else if (videoUrl) {
+      projectData.videoUrl = videoUrl;
+    }
+    if (overrides?.videoUrlCaptioned !== undefined) {
+      projectData.videoUrlCaptioned = overrides.videoUrlCaptioned;
+    } else if (videoUrlCaptioned) {
+      projectData.videoUrlCaptioned = videoUrlCaptioned;
+    }
+    if (overrides?.embersVideoUrl !== undefined) {
+      projectData.embersVideoUrl = overrides.embersVideoUrl;
+    } else if (embersVideoUrl) {
+      projectData.embersVideoUrl = embersVideoUrl;
+    }
+    if (overrides?.smokeEmbersVideoUrl !== undefined) {
+      projectData.smokeEmbersVideoUrl = overrides.smokeEmbersVideoUrl;
+    } else if (smokeEmbersVideoUrl) {
+      projectData.smokeEmbersVideoUrl = smokeEmbersVideoUrl;
+    }
 
-    // Video clips - only if has content
-    const clipPromptsValue = overrides?.clipPrompts || clipPrompts;
-    if (clipPromptsValue && clipPromptsValue.length > 0) projectData.clipPrompts = clipPromptsValue;
-    const clipsValue = overrides?.clips || generatedClips;
-    if (clipsValue && clipsValue.length > 0) projectData.clips = clipsValue;
+    // Video clips - handle explicit deletions from overrides
+    if (overrides?.clipPrompts !== undefined) {
+      projectData.clipPrompts = overrides.clipPrompts;
+    } else if (clipPrompts && clipPrompts.length > 0) {
+      projectData.clipPrompts = clipPrompts;
+    }
+    if (overrides?.clips !== undefined) {
+      projectData.clips = overrides.clips;
+    } else if (generatedClips && generatedClips.length > 0) {
+      projectData.clips = generatedClips;
+    }
 
     // Thumbnails - CRITICAL: only save if explicitly provided in overrides or has actual content
     // This prevents state initialization (empty array) from overwriting saved thumbnails
@@ -672,24 +714,39 @@ const Index = () => {
       projectData.selectedThumbnailIndex = selectedThumbnailIndex;
     }
 
-    // YouTube metadata - only if has content
-    const youtubeTitleValue = overrides?.youtubeTitle || youtubeTitle;
-    if (youtubeTitleValue) projectData.youtubeTitle = youtubeTitleValue;
-    const youtubeDescriptionValue = overrides?.youtubeDescription || youtubeDescription;
-    if (youtubeDescriptionValue) projectData.youtubeDescription = youtubeDescriptionValue;
-    const youtubeTagsValue = overrides?.youtubeTags || youtubeTags;
-    if (youtubeTagsValue) projectData.youtubeTags = youtubeTagsValue;
-    const youtubeCategoryIdValue = overrides?.youtubeCategoryId || youtubeCategoryId;
-    if (youtubeCategoryIdValue) projectData.youtubeCategoryId = youtubeCategoryIdValue;
+    // YouTube metadata - handle explicit deletions from overrides
+    if (overrides?.youtubeTitle !== undefined) {
+      projectData.youtubeTitle = overrides.youtubeTitle;
+    } else if (youtubeTitle) {
+      projectData.youtubeTitle = youtubeTitle;
+    }
+    if (overrides?.youtubeDescription !== undefined) {
+      projectData.youtubeDescription = overrides.youtubeDescription;
+    } else if (youtubeDescription) {
+      projectData.youtubeDescription = youtubeDescription;
+    }
+    if (overrides?.youtubeTags !== undefined) {
+      projectData.youtubeTags = overrides.youtubeTags;
+    } else if (youtubeTags) {
+      projectData.youtubeTags = youtubeTags;
+    }
+    if (overrides?.youtubeCategoryId !== undefined) {
+      projectData.youtubeCategoryId = overrides.youtubeCategoryId;
+    } else if (youtubeCategoryId) {
+      projectData.youtubeCategoryId = youtubeCategoryId;
+    }
     if (overrides?.youtubePlaylistId !== undefined) {
       projectData.youtubePlaylistId = overrides.youtubePlaylistId;
     } else if (youtubePlaylistId) {
       projectData.youtubePlaylistId = youtubePlaylistId;
     }
 
-    // Tags - only if has content
-    const tagsValue = overrides?.tags || projectTags;
-    if (tagsValue && tagsValue.length > 0) projectData.tags = tagsValue;
+    // Tags - handle explicit deletions from overrides
+    if (overrides?.tags !== undefined) {
+      projectData.tags = overrides.tags;
+    } else if (projectTags && projectTags.length > 0) {
+      projectData.tags = projectTags;
+    }
 
     upsertProject(projectData).catch(err => console.error('[autoSave] Failed to save project:', err));
   };
@@ -1449,7 +1506,9 @@ const Index = () => {
         (completed, total) => {
           updateStep("images", "active", `${completed}/${total}`);
         },
-        projectId
+        projectId,
+        settings.topic,  // Era/period constraint
+        settings.subjectFocus  // Who the story focuses on
       );
 
       if (!imageResult.success) {
@@ -1653,7 +1712,9 @@ const Index = () => {
           const percent = Math.round((completed / total) * 100);
           updateStep("images", "active", `${completed}/${total} images (${percent}%)`);
         },
-        projectId
+        projectId,
+        settings.topic,  // Era/period constraint
+        settings.subjectFocus  // Who the story focuses on
       );
 
       if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -1854,7 +1915,9 @@ const Index = () => {
         (completed, total, message) => {
           console.log(`Regenerating image: ${message}`);
         },
-        projectId
+        projectId,
+        settings.topic,  // Era/period constraint
+        settings.subjectFocus  // Who the story focuses on
       );
 
       if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -2147,7 +2210,9 @@ const Index = () => {
         settings.quality,
         "16:9",
         () => {}, // No progress callback needed for single image
-        projectId
+        projectId,
+        settings.topic,  // Era/period constraint
+        settings.subjectFocus  // Who the story focuses on
       );
 
       if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -2246,7 +2311,9 @@ const Index = () => {
               settings.quality,
               "16:9",
               () => {},
-              projectId
+              projectId,
+              settings.topic,  // Era/period constraint
+              settings.subjectFocus  // Who the story focuses on
             );
 
             if (imageResult.success && imageResult.images && imageResult.images.length > 0) {
@@ -3796,11 +3863,9 @@ const Index = () => {
           }}
           onDeleteImages={() => {
             setPendingImages([]);
-            // Keep prompts but clear imageUrl from each
-            const clearedPrompts = imagePrompts.map(p => ({ ...p, imageUrl: undefined }));
-            setImagePrompts(clearedPrompts);
+            // Keep prompts unchanged - only clear the generated image URLs
             setGeneratedAssets(prev => prev.filter(a => !a.id.startsWith('image-')));
-            autoSave("complete", { imageUrls: [], imagePrompts: clearedPrompts });
+            autoSave("complete", { imageUrls: [] });
           }}
           onDeleteVideoClips={() => {
             setGeneratedClips([]);

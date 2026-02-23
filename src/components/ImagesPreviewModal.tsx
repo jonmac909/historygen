@@ -637,9 +637,18 @@ export function ImagesPreviewModal({
                 />
 
                 {/* Image number badge */}
-                <div className="absolute bottom-2 left-2 px-2 py-1 bg-background/80 rounded text-xs font-medium">
+                <div className="absolute bottom-2 left-2 px-2 py-1 bg-background/80 rounded text-xs font-medium z-10">
                   {index + 1}
                 </div>
+
+                {/* Prompt/narration text overlay */}
+                {prompts && prompts[index] && (
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-8 pb-2 px-2">
+                    <p className="text-white text-xs line-clamp-2 leading-tight pl-8">
+                      {prompts[index].sceneDescription}
+                    </p>
+                  </div>
+                )}
 
                 {/* Multi-select checkbox */}
                 {isMultiSelectMode && (
