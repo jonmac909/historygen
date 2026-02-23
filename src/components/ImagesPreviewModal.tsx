@@ -641,11 +641,24 @@ export function ImagesPreviewModal({
                   {index + 1}
                 </div>
 
-                {/* Prompt/narration text overlay */}
+                {/* Timing + Narration + Prompt overlay */}
                 {prompts && prompts[index] && (
-                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent pt-8 pb-2 px-2">
-                    <p className="text-white text-xs line-clamp-2 leading-tight pl-8">
-                      {prompts[index].sceneDescription}
+                  <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent pt-10 pb-2 px-2">
+                    {/* Timing badge */}
+                    {prompts[index].startSeconds !== undefined && prompts[index].endSeconds !== undefined && (
+                      <div className="text-white/60 text-[10px] mb-1 pl-8 font-mono">
+                        {Math.floor(prompts[index].startSeconds! / 60)}:{String(Math.floor(prompts[index].startSeconds! % 60)).padStart(2, '0')} - {Math.floor(prompts[index].endSeconds! / 60)}:{String(Math.floor(prompts[index].endSeconds! % 60)).padStart(2, '0')}
+                      </div>
+                    )}
+                    {/* Narration from SRT */}
+                    {srtContent && prompts[index].startSeconds !== undefined && prompts[index].endSeconds !== undefined && (
+                      <p className="text-white/90 text-xs line-clamp-1 leading-tight pl-8 italic mb-0.5">
+                        "{extractSrtTextForTimeRange(srtContent, prompts[index].startSeconds!, prompts[index].endSeconds!) || '...'}"
+                      </p>
+                    )}
+                    {/* Image prompt */}
+                    <p className="text-white/70 text-[10px] line-clamp-1 leading-tight pl-8">
+                      → {prompts[index].sceneDescription}
                     </p>
                   </div>
                 )}
