@@ -3064,3 +3064,294 @@ export async function rewritePrompt(
     };
   }
 }
+
+// ============================================================================
+// YouTube Shorts Generation
+// ============================================================================
+
+export interface HookOption {
+  style: 'story' | 'didyouknow' | 'question' | 'contrast';
+  label: string;
+  preview: string;
+  fullScript: string;
+}
+
+export interface ShortHooksResult {
+  success: boolean;
+  hooks?: HookOption[];
+  error?: string;
+}
+
+export interface ShortGenerationProgress {
+  step: string;
+  progress: number;
+  message: string;
+}
+
+export interface ShortGenerationResult {
+  success: boolean;
+  shortUrl?: string;
+  audioUrl?: string;
+  srtContent?: string;
+  imageUrls?: string[];
+  duration?: number;
+  error?: string;
+}
+
+export interface ShortUploadResult {
+  success: boolean;
+  youtubeUrl?: string;
+  videoId?: string;
+  error?: string;
+}
+
+/**
+ * Generate 4 hook options for a YouTube Short from a full script
+ */
+export async function generateShortHooks(
+  projectId: string,
+  fullScript: string
+): Promise<ShortHooksResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-short-hooks`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ projectId, fullScript })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Short hooks error:', response.status, errorText);
+      return { success: false, error: `Failed to generate hooks: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Short hooks error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate hooks'
+    };
+  }
+}
+
+/**
+ * Generate a YouTube Short with streaming progress updates
+ */
+export async function generateShortStreaming(
+  projectId: string,
+  hookStyle: string,
+  shortScript: string,
+  voiceSampleUrl: string,
+  settings?: {
+    ttsEmotionMarker?: string;
+    ttsTemperature?: number;
+    ttsTopP?: number;
+    ttsRepetitionPenalty?: number;
+  },
+  onProgress?: (progress: ShortGenerationProgress) => void
+): Promise<ShortGenerationResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-short`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        projectId,
+        hookStyle,
+        shortScript,
+        voiceSampleUrl,
+        settings
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Generate short error:', response.status, errorText);
+      return { success: false, error: `Failed to generate short: ${response.status}` };
+    }
+
+    // Handle SSE streaming
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { success: false, error: 'No response body' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: ShortGenerationResult = { success: false, error: 'No response received' };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        if (!event.trim()) continue;
+
+        // Parse event type and data
+        const lines = event.split('\n');
+        let eventType = '';
+        let eventData = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            eventData = line.slice(6);
+          }
+        }
+
+        if (!eventData) continue;
+
+        try {
+          const parsed = JSON.parse(eventData);
+
+          if (eventType === 'progress' && onProgress) {
+            onProgress({
+              step: parsed.step,
+              progress: parsed.progress,
+              message: parsed.message
+            });
+          } else if (eventType === 'complete') {
+            result = {
+              success: parsed.success,
+              shortUrl: parsed.shortUrl,
+              audioUrl: parsed.audioUrl,
+              srtContent: parsed.srtContent,
+              imageUrls: parsed.imageUrls,
+              duration: parsed.duration
+            };
+          } else if (eventType === 'error') {
+            result = {
+              success: false,
+              error: parsed.error
+            };
+          }
+        } catch (e) {
+          // Skip invalid JSON
+        }
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Generate short error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate short'
+    };
+  }
+}
+
+/**
+ * Upload a generated Short to YouTube Shorts
+ */
+export async function uploadShortToYouTube(
+  projectId: string,
+  accessToken: string,
+  onProgress?: (progress: number) => void
+): Promise<ShortUploadResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    // First, get the short URL from the project
+    const { data: project, error: fetchError } = await supabase
+      .from('generation_projects')
+      .select('short_url, video_title, short_hook_style')
+      .eq('id', projectId)
+      .single();
+
+    if (fetchError || !project?.short_url) {
+      return {
+        success: false,
+        error: 'Short video not found for this project'
+      };
+    }
+
+    if (onProgress) onProgress(10);
+
+    // Upload to YouTube using the existing youtube-upload endpoint with #Shorts tag
+    const response = await fetch(`${renderUrl}/youtube-upload`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        videoUrl: project.short_url,
+        accessToken,
+        title: `${project.video_title || 'History'} #Shorts`,
+        description: `Subscribe for more history! #Shorts #History #HistoryFacts`,
+        tags: ['shorts', 'history', 'historical', 'facts', 'education'],
+        categoryId: '27', // Education
+        privacyStatus: 'public',
+        isShort: true
+      })
+    });
+
+    if (onProgress) onProgress(50);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Short upload error:', response.status, errorText);
+      return { success: false, error: `Failed to upload short: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (onProgress) onProgress(100);
+
+    if (data.success && data.videoId) {
+      return {
+        success: true,
+        videoId: data.videoId,
+        youtubeUrl: `https://youtube.com/shorts/${data.videoId}`
+      };
+    }
+
+    return {
+      success: false,
+      error: data.error || 'Upload failed'
+    };
+  } catch (error) {
+    console.error('Short upload error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to upload short'
+    };
+  }
+}

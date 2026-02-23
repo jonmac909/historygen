@@ -38,6 +38,9 @@ import visionTestRouter from './routes/vision-test';
 import videoEditorRouter from './routes/video-editor';
 import fullPipelineRouter from './routes/full-pipeline';
 import scanImagesRouter from './routes/scan-images';
+import generateShortHooksRouter from './routes/generate-short-hooks';
+import generateShortRouter from './routes/generate-short';
+import renderShortRouter from './routes/render-short';
 
 dotenv.config();
 
@@ -182,6 +185,9 @@ app.use('/vision-test', visionTestRouter);
 app.use('/video-editor', videoEditorRouter);
 app.use('/full-pipeline', fullPipelineRouter);
 app.use('/scan-images', scanImagesRouter);
+app.use('/generate-short-hooks', generateShortHooksRouter);
+app.use('/generate-short', generateShortRouter);
+app.use('/render-short', renderShortRouter);
 
 // Error handling
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

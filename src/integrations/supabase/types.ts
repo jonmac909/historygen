@@ -39,6 +39,12 @@ export type Database = {
           settings: Json | null
           thumbnails: Json | null
           selected_thumbnail_index: number | null
+          short_url: string | null
+          short_script: string | null
+          short_audio_url: string | null
+          short_srt_content: string | null
+          short_vertical_images: Json | null
+          short_hook_style: string | null
           created_at: string
           updated_at: string
         }
@@ -66,6 +72,12 @@ export type Database = {
           settings?: Json | null
           thumbnails?: Json | null
           selected_thumbnail_index?: number | null
+          short_url?: string | null
+          short_script?: string | null
+          short_audio_url?: string | null
+          short_srt_content?: string | null
+          short_vertical_images?: Json | null
+          short_hook_style?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -93,6 +105,12 @@ export type Database = {
           settings?: Json | null
           thumbnails?: Json | null
           selected_thumbnail_index?: number | null
+          short_url?: string | null
+          short_script?: string | null
+          short_audio_url?: string | null
+          short_srt_content?: string | null
+          short_vertical_images?: Json | null
+          short_hook_style?: string | null
           created_at?: string
           updated_at?: string
         }

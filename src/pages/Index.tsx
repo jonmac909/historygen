@@ -30,6 +30,9 @@ import { VideoRenderModal } from "@/components/VideoRenderModal";
 // VisualEffectsModal removed - now integrated into VideoRenderModal with 2-pass rendering
 import { YouTubeUploadModal } from "@/components/YouTubeUploadModal";
 import { AutoPosterModal } from "@/components/AutoPosterModal";
+import { ShortHookModal } from "@/components/ShortHookModal";
+import { ShortGenerationModal } from "@/components/ShortGenerationModal";
+import { ShortPreviewModal } from "@/components/ShortPreviewModal";
 import {
   getYouTubeTranscript,
   rewriteScriptStreaming,
@@ -71,7 +74,7 @@ import { OutlierFinderView } from "@/components/OutlierFinderView";
 import { FavoritesView } from "@/components/FavoritesView";
 
 type InputMode = "url" | "title";
-type ViewState = "create" | "outlier-finder" | "favorites" | "processing" | "review-script" | "review-audio" | "review-captions" | "review-clip-prompts" | "review-clips" | "review-prompts" | "review-images" | "review-scanner" | "review-render" | "review-thumbnails" | "review-youtube" | "results";
+type ViewState = "create" | "outlier-finder" | "favorites" | "processing" | "review-script" | "review-audio" | "review-captions" | "review-clip-prompts" | "review-clips" | "review-prompts" | "review-images" | "review-scanner" | "review-render" | "review-thumbnails" | "review-youtube" | "review-short-hook" | "review-short-generate" | "review-short-preview" | "results";
 type EntryMode = "script" | "captions" | "images";
 
 const LAST_SETTINGS_KEY = "historygenai-last-settings";
@@ -298,6 +301,15 @@ const Index = () => {
 
   // Source video thumbnail (from Auto Poster - used as reference for thumbnail generation)
   const [sourceThumbnailUrl, setSourceThumbnailUrl] = useState<string | null>(null);
+
+  // YouTube Short state
+  const [shortHookStyle, setShortHookStyle] = useState<string>("");
+  const [shortScript, setShortScript] = useState<string>("");
+  const [shortUrl, setShortUrl] = useState<string>("");
+  const [shortAudioUrl, setShortAudioUrl] = useState<string>("");
+  const [shortSrtContent, setShortSrtContent] = useState<string>("");
+  const [shortImageUrls, setShortImageUrls] = useState<string[]>([]);
+  const [shortDuration, setShortDuration] = useState<number>(0);
 
   // Project tags state
   const [projectTags, setProjectTags] = useState<string[]>([]);
@@ -2591,13 +2603,58 @@ const Index = () => {
 
   // YouTube upload handlers
   const handleYouTubeComplete = () => {
+    // Go to Short Hook selection
+    disableAutoAndGoTo("review-short-hook");
+  };
+
+  const handleYouTubeSkip = () => {
+    // Go to Short Hook selection
+    disableAutoAndGoTo("review-short-hook");
+  };
+
+  // Short handlers
+  const handleShortHookConfirm = (hookStyle: string, script: string) => {
+    setShortHookStyle(hookStyle);
+    setShortScript(script);
+    setViewState("review-short-generate");
+  };
+
+  const handleShortGenerationComplete = (result: {
+    shortUrl: string;
+    audioUrl: string;
+    srtContent: string;
+    imageUrls: string[];
+    duration: number;
+  }) => {
+    setShortUrl(result.shortUrl);
+    setShortAudioUrl(result.audioUrl);
+    setShortSrtContent(result.srtContent);
+    setShortImageUrls(result.imageUrls);
+    setShortDuration(result.duration);
+    setViewState("review-short-preview");
+  };
+
+  const handleShortPreviewComplete = () => {
     // Go to results
     handleImagesConfirmWithImages(pendingImages);
   };
 
-  const handleYouTubeSkip = () => {
-    // Go to results
+  const handleShortSkipToResults = () => {
+    // Go directly to results
     handleImagesConfirmWithImages(pendingImages);
+  };
+
+  const handleBackToYouTube = () => {
+    disableAutoAndGoTo("review-youtube");
+  };
+
+  const handleBackToShortHook = () => {
+    disableAutoAndGoTo("review-short-hook");
+  };
+
+  const handleShortRegenerate = () => {
+    // Go back to hook selection to regenerate with different hook
+    disableAutoAndGoTo("review-short-hook");
   };
 
   const resetPendingState = () => {
@@ -2632,6 +2689,14 @@ const Index = () => {
     setYoutubeTags("");
     setYoutubeCategoryId("27");
     setYoutubePlaylistId(null);
+    // Reset Short state
+    setShortHookStyle("");
+    setShortScript("");
+    setShortUrl("");
+    setShortAudioUrl("");
+    setShortSrtContent("");
+    setShortImageUrls([]);
+    setShortDuration(0);
   };
 
   const handleCancelRequest = () => {
@@ -4621,6 +4686,49 @@ const Index = () => {
         }}
         autoUpload={settings.fullAutomation && !!youtubePublishAt}
         initialPublishAt={youtubePublishAt || undefined}
+      />
+
+      {/* Short Hook Modal - Step 1: Select hook style */}
+      <ShortHookModal
+        isOpen={viewState === "review-short-hook"}
+        projectId={projectId}
+        script={confirmedScript}
+        onConfirm={handleShortHookConfirm}
+        onCancel={handleCancelRequest}
+        onBack={handleBackToYouTube}
+        onSkip={handleShortSkipToResults}
+      />
+
+      {/* Short Generation Modal - Step 2: Generate Short with progress */}
+      <ShortGenerationModal
+        isOpen={viewState === "review-short-generate"}
+        projectId={projectId}
+        hookStyle={shortHookStyle}
+        shortScript={shortScript}
+        voiceSampleUrl={settings.voiceSampleUrl || "https://autoaigen.com/voices/clone_voice.wav"}
+        settings={{
+          ttsEmotionMarker: settings.ttsEmotionMarker,
+          ttsTemperature: settings.ttsTemperature,
+          ttsTopP: settings.ttsTopP,
+          ttsRepetitionPenalty: settings.ttsRepetitionPenalty,
+        }}
+        onComplete={handleShortGenerationComplete}
+        onCancel={handleCancelRequest}
+        onBack={handleBackToShortHook}
+      />
+
+      {/* Short Preview Modal - Step 3: Preview and upload */}
+      <ShortPreviewModal
+        isOpen={viewState === "review-short-preview"}
+        projectId={projectId}
+        shortUrl={shortUrl}
+        duration={shortDuration}
+        hookStyle={shortHookStyle}
+        onComplete={handleShortPreviewComplete}
+        onCancel={handleCancelRequest}
+        onBack={handleBackToShortHook}
+        onSkip={handleShortSkipToResults}
+        onRegenerate={handleShortRegenerate}
       />
 
       {/* Auto Poster Modal */}
