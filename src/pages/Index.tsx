@@ -3861,9 +3861,22 @@ const Index = () => {
             setImagePrompts([]);
             autoSave("complete", { imagePrompts: [] });
           }}
-          onDeleteImages={() => {
+          onDeleteImages={async () => {
+            // Delete from storage FIRST (permanently removes files)
+            if (projectId) {
+              const { deleteProjectImages } = await import('@/lib/api');
+              const result = await deleteProjectImages(projectId);
+              if (result.success) {
+                toast({
+                  title: "Images Deleted",
+                  description: `Removed ${result.deleted} images from storage`,
+                });
+              } else {
+                console.error('[onDeleteImages] Storage deletion failed:', result.error);
+              }
+            }
+            // Then clear local state
             setPendingImages([]);
-            // Keep prompts unchanged - only clear the generated image URLs
             setGeneratedAssets(prev => prev.filter(a => !a.id.startsWith('image-')));
             autoSave("complete", { imageUrls: [] });
           }}

@@ -2673,6 +2673,45 @@ export async function fetchProjectCosts(projectId: string): Promise<ProjectCosts
     };
   }
 }
+
+/**
+ * Delete all images from Supabase storage for a project
+ * This permanently removes files, not just database references
+ */
+export async function deleteProjectImages(projectId: string): Promise<{ success: boolean; deleted?: number; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured' };
+  }
+
+  try {
+    console.log(`[deleteProjectImages] Deleting all images for project ${projectId}`);
+
+    const response = await fetch(`${renderUrl}/delete-project-images/${projectId}`, {
+      method: 'DELETE',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[deleteProjectImages] Error:', response.status, errorText);
+      return { success: false, error: `Failed to delete images: ${response.status}` };
+    }
+
+    const result = await response.json();
+    console.log(`[deleteProjectImages] Deleted ${result.deleted} images`);
+    return result;
+
+  } catch (error) {
+    console.error('[deleteProjectImages] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete images'
+    };
+  }
+}
+
 /**
  * Reconnect orphaned images from Supabase storage
  * Scans storage for images matching projectId and saves URLs to project
