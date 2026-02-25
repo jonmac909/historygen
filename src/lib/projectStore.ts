@@ -239,7 +239,7 @@ export async function getProject(id: string): Promise<Project | null> {
 export async function getAllProjects(): Promise<Project[]> {
   const { data, error } = await supabase
     .from('generation_projects')
-    .select('*')
+    .select(LISTING_FIELDS)
     .neq('status', 'archived')
     .order('updated_at', { ascending: false });
 
@@ -248,7 +248,7 @@ export async function getAllProjects(): Promise<Project[]> {
     return [];
   }
 
-  return (data || []).map(rowToProject);
+  return (data || []).map(rowToProjectListing);
 }
 
 export async function upsertProject(project: Partial<Project> & { id: string }): Promise<Project> {
@@ -313,7 +313,7 @@ export async function archiveProject(id: string): Promise<void> {
 export async function getInProgressProjects(): Promise<Project[]> {
   const { data, error } = await supabase
     .from('generation_projects')
-    .select('*')
+    .select(LISTING_FIELDS)
     .eq('status', 'in_progress')
     .order('updated_at', { ascending: false });
 
@@ -322,13 +322,13 @@ export async function getInProgressProjects(): Promise<Project[]> {
     return [];
   }
 
-  return (data || []).map(rowToProject);
+  return (data || []).map(rowToProjectListing);
 }
 
 export async function getCompletedProjects(): Promise<Project[]> {
   const { data, error } = await supabase
     .from('generation_projects')
-    .select('*')
+    .select(LISTING_FIELDS)
     .eq('status', 'completed')
     .order('updated_at', { ascending: false });
 
@@ -337,7 +337,7 @@ export async function getCompletedProjects(): Promise<Project[]> {
     return [];
   }
 
-  return (data || []).map(rowToProject);
+  return (data || []).map(rowToProjectListing);
 }
 
 export async function getArchivedProjects(): Promise<Project[]> {
