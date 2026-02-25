@@ -22,12 +22,12 @@ router.delete('/:projectId', async (req: Request, res: Response) => {
   const supabase = createClient(supabaseUrl, supabaseKey);
 
   try {
-    console.log(`[DeleteProjectImages] Listing files in generated-assets/${projectId}/`);
+    console.log(`[DeleteProjectImages] Listing files in generated-assets/${projectId}/images/`);
 
-    // List all files in the project folder
+    // List all files in the project's images folder (where images are actually stored)
     const { data: files, error: listError } = await supabase.storage
       .from('generated-assets')
-      .list(projectId, { limit: 1000 });
+      .list(`${projectId}/images`, { limit: 1000 });
 
     if (listError) {
       console.error('[DeleteProjectImages] List error:', listError);
@@ -39,10 +39,16 @@ router.delete('/:projectId', async (req: Request, res: Response) => {
       return res.json({ success: true, deleted: 0, message: 'No files to delete' });
     }
 
-    console.log(`[DeleteProjectImages] Found ${files.length} files to delete`);
+    // Filter to only image files (not folders)
+    const imageFiles = files.filter(file => file.name && !file.name.endsWith('/'));
+    console.log(`[DeleteProjectImages] Found ${imageFiles.length} image files to delete`);
 
-    // Build array of file paths to delete
-    const filePaths = files.map(file => `${projectId}/${file.name}`);
+    if (imageFiles.length === 0) {
+      return res.json({ success: true, deleted: 0, message: 'No image files to delete' });
+    }
+
+    // Build array of file paths to delete (images are in projectId/images/)
+    const filePaths = imageFiles.map(file => `${projectId}/images/${file.name}`);
 
     // Delete all files
     const { data: deleteData, error: deleteError } = await supabase.storage
@@ -54,12 +60,12 @@ router.delete('/:projectId', async (req: Request, res: Response) => {
       return res.status(500).json({ error: `Failed to delete files: ${deleteError.message}` });
     }
 
-    console.log(`[DeleteProjectImages] Successfully deleted ${filePaths.length} files`);
+    console.log(`[DeleteProjectImages] Successfully deleted ${imageFiles.length} images`);
 
     return res.json({
       success: true,
-      deleted: filePaths.length,
-      message: `Deleted ${filePaths.length} images from storage`
+      deleted: imageFiles.length,
+      message: `Deleted ${imageFiles.length} images from storage`
     });
 
   } catch (error) {
