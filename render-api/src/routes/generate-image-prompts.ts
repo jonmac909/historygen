@@ -732,13 +732,22 @@ CLOTHING REQUIREMENTS:
 - WOMEN must wear feminine period dresses (gowns, empire waists, petticoats, robes)
 
 AESTHETIC PRIORITY (SLEEPY HISTORY STYLE - COZY BEDTIME VIEWING):
-- Every image should feel WARM, COZY, and ROMANTIC - like a beautiful bedtime story
-- Use NATURAL LIGHTING appropriate to the scene: soft daylight for outdoor scenes, gentle interior light for indoor scenes, golden hour for romantic moments
-- Create INTIMATE ATMOSPHERE: cozy chambers, warm parlors, romantic gardens
-- Focus on TENDER MOMENTS: courtship, quiet conversations, peaceful domestic scenes
+- Every image should feel WARM, COZY, and BEAUTIFUL - like a museum painting
+- Use NATURAL LIGHTING: soft daylight, gentle interior light, golden hour
+- Create ATMOSPHERIC SETTINGS: elegant chambers, peaceful gardens, grand architecture
+- Focus on COMPOSITIONAL BEAUTY: architecture, landscapes, single figures, period details
 - Use CINEMATIC COMPOSITION: beautiful framing, depth, elegant arrangement
-- Evoke HEARTWARMING EMOTIONS: love, tenderness, serenity, gentle joy
-- Avoid anything harsh, scary, dark, or unsettling - keep everything soothing and romantic
+- Evoke SERENE EMOTIONS: peace, dignity, beauty, wonder
+- Avoid anything harsh, scary, dark, or unsettling
+
+⚠️ ABSOLUTELY NO ROMANTIC POSES IN IMAGES:
+- NEVER show couples kissing, embracing, holding hands, or in romantic poses
+- NEVER show two people gazing lovingly at each other or leaning close
+- NEVER put a romantic couple in the foreground of other scenes (NO "ship with couple kissing")
+- If story is about a couple: show them SEPARATELY or in formal GROUP settings
+- A stormy ship scene = JUST the ship, the storm, the sailors - NO couple in foreground
+- A palace scene = the architecture, the room, maybe ONE person - NOT lovers embracing
+- Show the WORLD of the story, not just "couple being romantic" over and over
 
 SUBJECT MATCHING (CRITICAL - MATCH WHO THE NARRATION IS ABOUT):
 - Read the narration and ask: "WHO is this about?" Then show THAT person/group
