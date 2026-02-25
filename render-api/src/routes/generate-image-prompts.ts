@@ -672,18 +672,23 @@ WHAT TO WRITE:
 - ONE moment in time (not a sequence of events)
 - Simple, clear description that an AI image generator can render
 
+STRICT LENGTH LIMIT: Each prompt MUST be 30-50 words maximum. Count your words. If over 50 words, you MUST shorten it.
+
 WHAT NOT TO WRITE:
 ❌ Multiple locations ("in the kitchen... meanwhile in the ballroom...")
 ❌ Multiple simultaneous actions ("servants cook while maids polish")
 ❌ Narrative sequences ("she enters, then sits, then speaks")
-❌ Long, complex descriptions with many details
+❌ Long, complex descriptions with many details - KEEP IT SHORT
 ❌ Abstract concepts that can't be visualized
+❌ "Meanwhile", "In distant apartments", "Beyond the windows" - NO CUTAWAYS
+❌ Multiple people doing different things - focus on ONE focal point
 
 EXAMPLES:
-❌ BAD (too complex): "Prince in bath while servants attend, kitchen fires roar, weavers smash looms in Manchester, riots spread through the countryside"
-✅ GOOD (simple): "Elegant Regency drawing room at golden hour, gentleman in tailcoat reading by window light"
-✅ GOOD (simple): "Georgian kitchen at dawn, cook in cotton dress stirring pot, warm morning atmosphere"
-✅ GOOD (simple): "Misty English countryside, stone cottage with smoking chimney, sheep grazing"
+❌ BAD (too complex, 80+ words): "Duke stands before table pressing signet into wax. Earl adjusts wig watching the seal. Footmen stand against walls. Gardens stretch toward lake. In distant apartments, ladies fold gowns while princess sits contemplating the sea crossing."
+✅ GOOD (30 words): "Ducal palace withdrawing room, Duke pressing signet ring into red wax on parchment, formal morning light through tall windows, elegant Regency interior"
+✅ GOOD (25 words): "Elegant Regency drawing room at golden hour, gentleman in tailcoat reading by window light"
+✅ GOOD (20 words): "Georgian kitchen at dawn, cook in cotton dress stirring pot, warm morning atmosphere"
+✅ GOOD (15 words): "Misty English countryside, stone cottage with smoking chimney, sheep grazing"
 
 EXAMPLE - Ptolemaic Egypt (Cleopatra's era, 69-30 BCE):
 - GOOD: "Ptolemaic Alexandria harbor, merchant ships with square sails, Greek and Egyptian traders, limestone lighthouse, Mediterranean sea, golden sunset"
