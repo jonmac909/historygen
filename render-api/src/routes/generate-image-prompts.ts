@@ -649,19 +649,18 @@ YOUR TASK: Create VISUALLY STUNNING scene descriptions that showcase the BEAUTY 
 - VARIED: Mix exteriors (palaces, gardens, countryside) with interiors (ballrooms, chambers, throne rooms)
 - DYNAMIC: Some wide establishing shots, some intimate moments, some action
 
-IMPORTANT: Generate scenes that are INSPIRED BY THE TOPIC more than the literal narration.
-For example, if the topic is "Regency Debutante Season", focus on TYPICAL DEBUTANTE SCENES:
-- Grand balls with dancing (being asked to dance, waltzing couples, dance cards)
-- Morning calls in elegant drawing rooms
-- Promenading in Hyde Park
-- Tea parties and card games
-- Grand Georgian townhouses and country estates
-- Ladies being presented at court
-- Intimate parlor conversations about suitors
-- Garden parties and picnics
+IMPORTANT: Generate scenes that MATCH THE ACTUAL STORY being told in the narration.
+Read the narration carefully and visualize THAT specific moment:
+- If narration says "Charlotte meets George" → show Charlotte meeting George
+- If narration says "they walk in the garden" → show them walking in a garden
+- If narration says "the wedding ceremony" → show the wedding ceremony
 
-The narration provides MOOD and TIMING, but the TOPIC provides the VISUAL CONTENT.
-Do NOT try to literally visualize abstract script passages - show BEAUTIFUL SCENES from the topic's world instead.
+The NARRATION tells you WHAT TO SHOW. The TOPIC/ERA tells you HOW IT SHOULD LOOK.
+Your images should illustrate the ACTUAL STORY, not generic scenes from the era.
+
+For a love story: Show the KEY MOMENTS - first meeting, courtship, tender moments, challenges, reunions.
+For a biography: Show the KEY EVENTS in that person's life as described in the narration.
+For historical events: Show THOSE SPECIFIC EVENTS, not generic period imagery.
 
 ⚠️ CRITICAL - SIMPLE, SINGLE SCENE PROMPTS (READ FIRST):
 Your prompts MUST be SIMPLE and SHORT (30-50 words max). Each prompt = ONE scene, ONE moment.
@@ -853,10 +852,10 @@ Output format:
 SCRIPT CONTEXT (for understanding the era and setting):
 ${script.substring(0, 12000)}
 
-TIME-CODED SEGMENTS (use as INSPIRATION, but prioritize ERA ACCURACY):
+TIME-CODED SEGMENTS (MATCH THESE - show what each segment describes):
 ${windowDescriptions}
 
-PRIORITY: Create images that are VISUALLY AUTHENTIC to ${timePeriod.era} in ${timePeriod.region}. The image doesn't need to literally match the narration - it should show scenes, architecture, clothing, and activities that ACTUALLY EXISTED during that era.
+PRIORITY: Illustrate THE ACTUAL STORY from the narration using visually authentic ${timePeriod.era} imagery. Each image should show the SPECIFIC MOMENT described in that time segment - the people, places, and events being discussed. Use era-appropriate clothing, architecture, and settings.
 ${batchStart === 0 ? `
 CRITICAL FOR THIS BATCH: Images 1-2 MUST be ESTABLISHING SHOTS - grand panoramic views of palaces, cities, or landscapes that set the scene. NO close-ups of people in the first 2 images. Show the WORLD first before showing the people in it.` : ''}
 Remember: Output ONLY a JSON array with ${batchSize} items, starting with index ${batchStart + 1}. No explanations.`
