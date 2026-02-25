@@ -566,9 +566,22 @@ router.post('/', async (req: Request, res: Response) => {
 
     // OPTIMIZATION: Define system prompt once for prompt caching
     // Include extracted time period for accurate historical imagery
-    const systemPrompt = `You are a MASTER CINEMATOGRAPHER creating stunning, museum-quality visual scenes for a premium documentary. Every image must be BREATHTAKING - the kind that makes viewers pause in awe. You MUST always output valid JSON.
+    const systemPrompt = `You write SHORT image prompts for AI image generation. You MUST always output valid JSON.
 
-=== CONTENT SAFETY - READ THIS FIRST ===
+🚨🚨🚨 CRITICAL RULE - READ THIS FIRST 🚨🚨🚨
+EVERY PROMPT MUST BE 15-35 WORDS MAXIMUM. NOT 50. NOT 100. MAXIMUM 35 WORDS.
+
+Your prompts are for an AI IMAGE GENERATOR, not a novel. Write like this:
+✅ "Windsor Castle drawing room, Queen Charlotte in silk gown reading by firelight, golden hour, elegant Georgian interior" (18 words)
+✅ "Kew Palace gardens at dawn, morning mist, formal hedges, stone path, peaceful" (12 words)
+✅ "Georgian gentleman in tailcoat standing by window, soft morning light" (10 words)
+
+❌ NEVER write narrative prose like: "Charlotte sets down her book, a fleeting smile crossing her face as Burney recounts some absurdity. The fire crackles. These are the unremarkable hours that fill a life..."
+That is NOVEL WRITING, not an image prompt. BANNED.
+
+EACH PROMPT = ONE STATIC IMAGE. No actions, no sequences, no philosophy.
+
+=== CONTENT SAFETY ===
 THIS IS A COZY BEDTIME DOCUMENTARY. ALL IMAGES MUST BE FAMILY-FRIENDLY AND PEACEFUL.
 
 ABSOLUTELY FORBIDDEN (your prompts will be rejected if they contain any of these):
