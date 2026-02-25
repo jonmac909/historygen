@@ -77,11 +77,11 @@ async function startVideoTask(
   duration: number = CLIP_DURATION,
   resolution: string = CLIP_RESOLUTION
 ): Promise<string> {
-  // IMPORTANT: For I2V (image-to-video), use MINIMAL motion-only prompts
-  // The image already contains the scene - we just need to animate it subtly
-  // Complex scene descriptions cause the AI to generate multiple shots instead of animating the source image
-  const motionPrompt = `Nearly static image. Minimal parallax effect only. No camera movement, no zoom, no pan. Extremely subtle atmospheric drift - barely perceptible flickering candlelight or dust motes. Single frozen moment, like a painting coming slightly alive. No character movement, no walking, no gestures.`;
-  console.log(`[I2V] Starting task for clip ${clipIndex + 1} with MINIMAL motion prompt (ignoring scene description for I2V)`);
+  // IMPORTANT: For I2V (image-to-video), use motion prompts that bring the scene to life
+  // The image already contains the scene - we add gentle but visible animation
+  // Keep camera mostly stable but allow natural character and environmental movement
+  const motionPrompt = `Cinematic gentle animation. Slow subtle camera drift or slight push-in. Natural character movement - gentle breathing, small gestures, hair or fabric swaying. Atmospheric elements - floating dust motes, flickering light, leaves rustling, smoke wisps. Bring the painting to life with graceful, dreamlike motion. Keep movement slow and elegant, not jarring.`;
+  console.log(`[I2V] Starting task for clip ${clipIndex + 1} with cinematic motion prompt`);
   console.log(`[I2V] Original prompt (not used): ${prompt.substring(0, 60)}...`);
 
   // v1-pro-fast-image-to-video: animates static images, supports 5s/10s
