@@ -1,4 +1,4 @@
-import { Check, X, Image as ImageIcon, RefreshCw, ZoomIn, Edit2, ChevronLeft, ChevronRight, Download, CheckSquare, Square, Loader2, Bug } from "lucide-react";
+import { X, Image as ImageIcon, RefreshCw, ZoomIn, Edit2, ChevronLeft, ChevronRight, Download, CheckSquare, Square, Loader2, Bug, ScanSearch, Film } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -758,17 +758,17 @@ export function ImagesPreviewModal({
             Exit
           </Button>
 
-          {onForward ? (
-            <Button onClick={onForward}>
-              Generate Video Clips
-              <ChevronRight className="w-4 h-4 ml-2" />
-            </Button>
-          ) : (
-            <Button onClick={onConfirm}>
-              <Check className="w-4 h-4 mr-2" />
-              Generate Video Clips
+          {onForward && (
+            <Button variant="outline" onClick={onForward}>
+              <ScanSearch className="w-4 h-4 mr-2" />
+              Scan Images
             </Button>
           )}
+          <Button onClick={onConfirm}>
+            <Film className="w-4 h-4 mr-2" />
+            Generate Video Clips
+            <ChevronRight className="w-4 h-4 ml-2" />
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
