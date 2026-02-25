@@ -4527,6 +4527,10 @@ const Index = () => {
         forwardLabel="Image Prompts"
         imageCount={settings.imageCount}
         onImageCountChange={(count) => setSettings(prev => ({ ...prev, imageCount: count }))}
+        topic={settings.topic}
+        onTopicChange={(topic) => setSettings(prev => ({ ...prev, topic }))}
+        subjectFocus={settings.subjectFocus}
+        onSubjectFocusChange={(subjectFocus) => setSettings(prev => ({ ...prev, subjectFocus }))}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}

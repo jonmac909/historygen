@@ -573,6 +573,7 @@ THIS IS A COZY BEDTIME DOCUMENTARY. ALL IMAGES MUST BE FAMILY-FRIENDLY AND PEACE
 
 ABSOLUTELY FORBIDDEN (your prompts will be rejected if they contain any of these):
 ❌ NO nudity, bare skin, bathing, revealing clothing
+❌ NO kissing, embracing romantically, or intimate physical contact
 ❌ NO surgery, medical procedures, amputations, wounds, blood, gore
 ❌ NO pain, agony, suffering, screaming, crying, distress
 ❌ NO violence, fighting, weapons in use, combat, death, corpses
@@ -649,18 +650,19 @@ YOUR TASK: Create VISUALLY STUNNING scene descriptions that showcase the BEAUTY 
 - VARIED: Mix exteriors (palaces, gardens, countryside) with interiors (ballrooms, chambers, throne rooms)
 - DYNAMIC: Some wide establishing shots, some intimate moments, some action
 
-IMPORTANT: Generate scenes that MATCH THE ACTUAL STORY being told in the narration.
-Read the narration carefully and visualize THAT specific moment:
-- If narration says "Charlotte meets George" → show Charlotte meeting George
-- If narration says "they walk in the garden" → show them walking in a garden
-- If narration says "the wedding ceremony" → show the wedding ceremony
+IMPORTANT: Generate scenes that are TOPICAL to the story being told.
+The images should be RELEVANT to the narrative theme, not literal scene-for-scene matching.
 
-The NARRATION tells you WHAT TO SHOW. The TOPIC/ERA tells you HOW IT SHOULD LOOK.
-Your images should illustrate the ACTUAL STORY, not generic scenes from the era.
+STORY FOCUS (use this to guide your scenes):
+${storySubjectFocus ? `This documentary focuses on: ${storySubjectFocus}` : 'Use the narration to understand the story being told.'}
 
-For a love story: Show the KEY MOMENTS - first meeting, courtship, tender moments, challenges, reunions.
-For a biography: Show the KEY EVENTS in that person's life as described in the narration.
-For historical events: Show THOSE SPECIFIC EVENTS, not generic period imagery.
+HOW TO BE TOPICAL:
+- For a LOVE STORY: Show courtship scenes, meaningful glances, walking together, formal introductions, elegant social gatherings, tender but modest moments (no kissing)
+- For a ROYAL BIOGRAPHY: Show palace life, formal ceremonies, audiences, council meetings, gardens, travel by carriage
+- For HISTORICAL EVENTS: Show the settings, the people involved, the atmosphere of the era
+
+The TOPIC/ERA tells you the visual style. The STORY FOCUS tells you what kinds of scenes to show.
+Don't try to literally illustrate every sentence - show scenes that FEEL RIGHT for the story.
 
 ⚠️ CRITICAL - SIMPLE, SINGLE SCENE PROMPTS (READ FIRST):
 Your prompts MUST be SIMPLE and SHORT (30-50 words max). Each prompt = ONE scene, ONE moment.
@@ -697,6 +699,7 @@ EXAMPLE - Ptolemaic Egypt (Cleopatra's era, 69-30 BCE):
 CONTENT SAFETY (CRITICAL - MUST BE FAMILY-FRIENDLY FOR BEDTIME VIEWING):
 ABSOLUTELY FORBIDDEN - NEVER INCLUDE ANY OF THESE:
 - NO nudity, partial nudity, bare skin, or sexually suggestive content
+- NO kissing, embracing romantically, or intimate physical contact
 - NO surgery, medical procedures, amputations, operations, dissections
 - NO blood, bleeding, wounds, injuries, gore, or bodily harm
 - NO pain, agony, suffering, screaming, crying, or distress

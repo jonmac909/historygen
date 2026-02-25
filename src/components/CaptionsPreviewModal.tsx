@@ -30,6 +30,10 @@ interface CaptionsPreviewModalProps {
   forwardLabel?: string;  // Label for forward button (e.g., "Video Prompts" or "Image Prompts")
   imageCount?: number;
   onImageCountChange?: (count: number) => void;
+  topic?: string;  // Era/topic for image generation (e.g., "Regency England 1810s")
+  onTopicChange?: (topic: string) => void;
+  subjectFocus?: string;  // Story focus (e.g., "Charlotte and George's love story")
+  onSubjectFocusChange?: (focus: string) => void;
 }
 
 // Parse SRT content into individual segments
@@ -71,6 +75,10 @@ export function CaptionsPreviewModal({
   forwardLabel = "Video Prompts",
   imageCount,
   onImageCountChange,
+  topic = "",
+  onTopicChange,
+  subjectFocus = "",
+  onSubjectFocusChange,
 }: CaptionsPreviewModalProps) {
   const [editedSrt, setEditedSrt] = useState(srtContent);
   const [isEditing, setIsEditing] = useState(false);
@@ -121,7 +129,8 @@ export function CaptionsPreviewModal({
 
         {/* Image Generation Settings */}
         {imageCount !== undefined && onImageCountChange && (
-          <div className="border rounded-lg p-4 bg-muted/30">
+          <div className="border rounded-lg p-4 bg-muted/30 space-y-3">
+            {/* Image Count */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <ImageIcon className="w-4 h-4 text-primary" />
@@ -161,6 +170,35 @@ export function CaptionsPreviewModal({
                 </Button>
               </div>
             </div>
+
+            {/* Era/Topic */}
+            {onTopicChange && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Era / Historical Period</label>
+                <Input
+                  value={topic}
+                  onChange={(e) => onTopicChange(e.target.value)}
+                  placeholder="e.g., Regency England 1810s, Georgian era, 18th century court life"
+                  className="h-9"
+                />
+              </div>
+            )}
+
+            {/* Story Focus */}
+            {onSubjectFocusChange && (
+              <div className="space-y-1">
+                <label className="text-sm font-medium">Story Focus</label>
+                <Input
+                  value={subjectFocus}
+                  onChange={(e) => onSubjectFocusChange(e.target.value)}
+                  placeholder="e.g., Charlotte and George's love story, royal courtship"
+                  className="h-9"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Images will be topical to this story theme
+                </p>
+              </div>
+            )}
           </div>
         )}
 
