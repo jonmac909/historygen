@@ -753,14 +753,24 @@ AESTHETIC PRIORITY (SLEEPY HISTORY STYLE - COZY BEDTIME VIEWING):
 - Evoke SERENE EMOTIONS: peace, dignity, beauty, wonder
 - Avoid anything harsh, scary, dark, or unsettling
 
-⚠️ ABSOLUTELY NO ROMANTIC POSES IN IMAGES:
-- NEVER show couples kissing, embracing, holding hands, or in romantic poses
-- NEVER show two people gazing lovingly at each other or leaning close
-- NEVER put a romantic couple in the foreground of other scenes (NO "ship with couple kissing")
-- If story is about a couple: show them SEPARATELY or in formal GROUP settings
-- A stormy ship scene = JUST the ship, the storm, the sailors - NO couple in foreground
-- A palace scene = the architecture, the room, maybe ONE person - NOT lovers embracing
-- Show the WORLD of the story, not just "couple being romantic" over and over
+⚠️ CRITICAL - NO PEOPLE IN LANDSCAPE/SHIP/ARCHITECTURE SCENES:
+When writing prompts for ships, landscapes, buildings, or exteriors - DO NOT MENTION ANY PEOPLE.
+The image generator will add romantic couples if you mention people. So DON'T.
+
+CORRECT for a ship scene:
+✅ "Storm-tossed sailing ship on grey-green North Sea, square-rigged vessel, dramatic clouds, churning waves"
+❌ "Storm-tossed ship with Charlotte watching from the deck" (WRONG - will add kissing couple)
+
+CORRECT for a palace exterior:
+✅ "Kew Palace exterior at golden hour, Georgian redbrick architecture, formal gardens, autumn light"
+❌ "Kew Palace with the royal couple walking in gardens" (WRONG - will add romantic pose)
+
+CORRECT for a landscape:
+✅ "Misty English countryside at dawn, rolling hills, stone walls, sheep grazing"
+❌ "English countryside with Charlotte contemplating" (WRONG - will add people)
+
+RULE: If a scene is about a PLACE (ship, palace, garden, landscape), describe ONLY the place. NO PEOPLE.
+Only mention people when the scene is specifically about that ONE person doing something specific.
 
 SUBJECT MATCHING (CRITICAL - MATCH WHO THE NARRATION IS ABOUT):
 - Read the narration and ask: "WHO is this about?" Then show THAT person/group
