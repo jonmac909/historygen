@@ -207,16 +207,16 @@ export function CaptionsPreviewModal({
           </div>
         )}
 
-        <div className="flex-1 min-h-0 py-4">
+        <div className="flex-1 min-h-0 py-4 overflow-hidden">
           {isEditing ? (
             <Textarea
               value={editedSrt}
               onChange={(e) => setEditedSrt(e.target.value)}
-              className="h-[55vh] font-mono text-sm resize-none"
+              className="h-full font-mono text-sm resize-none"
               placeholder="SRT content..."
             />
           ) : (
-            <ScrollArea className="h-[55vh] rounded-lg border border-border bg-muted/30">
+            <ScrollArea className="h-full rounded-lg border border-border bg-muted/30">
               <div className="p-4 space-y-4">
                 {segments.map((segment) => (
                   <div
