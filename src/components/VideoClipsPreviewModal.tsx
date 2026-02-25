@@ -96,10 +96,11 @@ function ClipCard({ clip, prompt, onRegenerate, isRegenerating, onOpenFullscreen
               key={clip.videoUrl}
               ref={videoRef}
               src={clip.videoUrl}
+              poster={prompt?.imageUrl}
               className="w-full h-full object-contain cursor-pointer"
               onEnded={handleEnded}
               onError={handleError}
-              preload="metadata"
+              preload="auto"
               onClick={handleFullscreen}
             />
             <div className="absolute inset-0 flex items-center justify-center bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
@@ -480,6 +481,7 @@ export function VideoClipsPreviewModal({
               key={fullscreenClip.videoUrl}
               ref={fullscreenVideoRef}
               src={fullscreenClip.videoUrl}
+              poster={getPromptForClip(fullscreenClip.index)?.imageUrl}
               className="max-w-full max-h-[80vh] rounded-lg"
               controls
               autoPlay

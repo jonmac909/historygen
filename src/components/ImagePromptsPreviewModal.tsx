@@ -47,6 +47,7 @@ interface ImagePromptsPreviewModalProps {
   onAddPrompts?: (count: number) => void;  // Add N more prompts to the end
   isAddingPrompts?: boolean;
   existingImageCount?: number;  // How many images already exist (to know which prompts need images)
+  audioDuration?: number;  // Total audio duration in seconds (to calculate images needed)
 }
 
 function formatTimecode(time: string | undefined): string {
@@ -154,12 +155,39 @@ export function ImagePromptsPreviewModal({
   onSubjectFocusChange,
   onAddPrompts,
   isAddingPrompts = false,
-  existingImageCount = 0
+  existingImageCount = 0,
+  audioDuration = 0
 }: ImagePromptsPreviewModalProps) {
   const [editedPrompts, setEditedPrompts] = useState<ImagePrompt[]>(prompts);
   const [editedTopic, setEditedTopic] = useState(topic);
   const [editedFocus, setEditedFocus] = useState(subjectFocus);
+
+  // Calculate how many more images are needed to reach the end of the audio
+  const imagesNeededForAudio = useMemo(() => {
+    if (!audioDuration || editedPrompts.length === 0) return 0;
+
+    // Get the last prompt's end time
+    const lastPrompt = editedPrompts[editedPrompts.length - 1];
+    const coveredTime = lastPrompt?.endSeconds || 0;
+    const remainingTime = audioDuration - coveredTime;
+
+    if (remainingTime <= 0) return 0;
+
+    // Calculate average seconds per image from existing prompts
+    const avgSecondsPerImage = coveredTime / editedPrompts.length;
+
+    // How many more images needed to cover remaining time
+    return Math.ceil(remainingTime / avgSecondsPerImage);
+  }, [audioDuration, editedPrompts]);
+
   const [promptsToAdd, setPromptsToAdd] = useState(12);  // Default to 12 (video clip count)
+
+  // Auto-update promptsToAdd when imagesNeededForAudio changes
+  useEffect(() => {
+    if (imagesNeededForAudio > 0) {
+      setPromptsToAdd(imagesNeededForAudio);
+    }
+  }, [imagesNeededForAudio]);
 
   // Pagination for large prompt lists (prevents stack overflow with 500+ items)
   const PROMPTS_PER_PAGE = 20;
@@ -479,9 +507,16 @@ export function ImagePromptsPreviewModal({
                 <div>
                   <span className="text-sm font-medium">Add More Prompts</span>
                   <p className="text-xs text-muted-foreground">
-                    {existingImageCount > 0
-                      ? `${existingImageCount} images exist, ${editedPrompts.length} prompts total`
-                      : 'Append additional image prompts to the end'}
+                    {imagesNeededForAudio > 0 ? (
+                      <>
+                        Need <span className="font-medium text-primary">{imagesNeededForAudio}</span> more to reach end of audio
+                        {existingImageCount > 0 && ` (${existingImageCount} images exist)`}
+                      </>
+                    ) : existingImageCount > 0 ? (
+                      `${existingImageCount} images exist, ${editedPrompts.length} prompts total`
+                    ) : (
+                      'Append additional image prompts to the end'
+                    )}
                   </p>
                 </div>
               </div>

@@ -681,8 +681,8 @@ WHAT NOT TO WRITE:
 
 EXAMPLES:
 ❌ BAD (too complex): "Prince in bath while servants attend, kitchen fires roar, weavers smash looms in Manchester, riots spread through the countryside"
-✅ GOOD (simple): "Elegant Regency drawing room at golden hour, gentleman in tailcoat reading by firelight"
-✅ GOOD (simple): "Georgian kitchen at dawn, cook in cotton dress stirring pot over hearth fire"
+✅ GOOD (simple): "Elegant Regency drawing room at golden hour, gentleman in tailcoat reading by window light"
+✅ GOOD (simple): "Georgian kitchen at dawn, cook in cotton dress stirring pot, warm morning atmosphere"
 ✅ GOOD (simple): "Misty English countryside, stone cottage with smoking chimney, sheep grazing"
 
 EXAMPLE - Ptolemaic Egypt (Cleopatra's era, 69-30 BCE):
@@ -718,7 +718,7 @@ CLOTHING REQUIREMENTS:
 
 AESTHETIC PRIORITY (SLEEPY HISTORY STYLE - COZY BEDTIME VIEWING):
 - Every image should feel WARM, COZY, and ROMANTIC - like a beautiful bedtime story
-- Emphasize SOFT LIGHTING: candlelight, golden hour, firelight, moonlight, gentle dawn
+- Use NATURAL LIGHTING appropriate to the scene: soft daylight for outdoor scenes, gentle interior light for indoor scenes, golden hour for romantic moments
 - Create INTIMATE ATMOSPHERE: cozy chambers, warm parlors, romantic gardens
 - Focus on TENDER MOMENTS: courtship, quiet conversations, peaceful domestic scenes
 - Use CINEMATIC COMPOSITION: beautiful framing, depth, elegant arrangement
@@ -739,7 +739,7 @@ RULES:
 2. MATCH THE SUBJECT: Show the people and places the narration actually discusses
 3. VARY your scenes: interiors → exteriors → landscapes → close-ups
 4. VARY your shots: wide establishing → medium scenes → intimate details
-5. Include WARM DETAILS: firelight, candlelight, morning mist, golden hour
+5. Include ATMOSPHERIC DETAILS appropriate to the setting and time of day
 6. Keep it SIMPLE: One clear scene, one moment, easy to visualize
 
 VISUAL VARIETY (CRITICAL - AVOID REPETITION):
@@ -774,8 +774,8 @@ FALLBACK RULE (for abstract/unclear narration):
   * Story about royalty? Show palace interiors, gardens
 - For emotions/abstract concepts, show:
   * Peaceful landscapes at golden hour
-  * Cozy interiors with warm firelight
-  * Simple figure by a window or hearth
+  * Cozy interiors with soft natural light
+  * Simple figure by a window, gazing thoughtfully
 - ALWAYS keep scenes WARM, COZY, and SIMPLE - never dark or scary
 
 PROMPT FORMAT (KEEP IT SIMPLE):
@@ -785,9 +785,9 @@ PROMPT FORMAT (KEEP IT SIMPLE):
 - NO narrative, NO actions sequences, NO "and then..."
 
 GOOD EXAMPLES (notice how SHORT and SIMPLE they are):
-- "Georgian kitchen at dawn, cook in cotton dress by hearth fire, copper pans, warm amber light"
-- "Village blacksmith at golden hour, smith in leather apron at glowing forge, orange firelight"
-- "English cottage interior, family by fireplace, candlelight, peaceful evening"
+- "Georgian kitchen at dawn, cook in cotton dress preparing breakfast, copper pans, soft morning light"
+- "Village blacksmith at work, smith in leather apron at forge, warm workshop atmosphere"
+- "English cottage interior, family gathered together, peaceful evening, soft lamplight"
 - "Rolling farmland at sunset, stone walls, grazing sheep, thatched cottage, golden light"
 - "Grand palace drawing room, afternoon light through tall windows, elegant figures in fine period dress"
 

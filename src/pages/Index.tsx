@@ -1869,7 +1869,7 @@ const Index = () => {
     }
   };
 
-  // Regenerate a single video clip (regenerates image first for a fresh video)
+  // Regenerate a single video clip (uses existing image from pendingImages if available)
   const handleRegenerateVideoClip = async (clipIndex: number, editedPrompt?: string) => {
     setRegeneratingClipIndex(clipIndex);
     try {
@@ -1896,36 +1896,46 @@ const Index = () => {
         autoSave("prompts", { clipPrompts: updatedPrompts });
       }
 
-      // Step 1: Regenerate the source image first
-      console.log(`Regenerating image for clip ${clipIndex} with prompt: ${sceneDescription.substring(0, 50)}...`);
-      const imagePrompt = {
-        index: clipPrompt.index,
-        startTime: formatSecondsToSrt(clipPrompt.startSeconds),
-        endTime: formatSecondsToSrt(clipPrompt.endSeconds),
-        startSeconds: clipPrompt.startSeconds,
-        endSeconds: clipPrompt.endSeconds,
-        prompt: `${getSelectedImageStyle()}. ${sceneDescription}`,
-        sceneDescription: sceneDescription,
-      };
+      // Check if we have an existing image in pendingImages for this clip
+      // Use the existing regenerated image instead of generating a new one
+      let newImageUrl: string;
+      const existingImage = pendingImages[clipIndex];
 
-      const imageResult = await generateImagesStreaming(
-        [imagePrompt],
-        "high",
-        "16:9",
-        (completed, total, message) => {
-          console.log(`Regenerating image: ${message}`);
-        },
-        projectId,
-        settings.topic,  // Era/period constraint
-        settings.subjectFocus  // Who the story focuses on
-      );
+      if (existingImage) {
+        console.log(`Using existing image for clip ${clipIndex}: ${existingImage.substring(0, 60)}...`);
+        newImageUrl = existingImage;
+      } else {
+        // No existing image, generate a new one
+        console.log(`Regenerating image for clip ${clipIndex} with prompt: ${sceneDescription.substring(0, 50)}...`);
+        const imagePrompt = {
+          index: clipPrompt.index,
+          startTime: formatSecondsToSrt(clipPrompt.startSeconds),
+          endTime: formatSecondsToSrt(clipPrompt.endSeconds),
+          startSeconds: clipPrompt.startSeconds,
+          endSeconds: clipPrompt.endSeconds,
+          prompt: `${getSelectedImageStyle()}. ${sceneDescription}`,
+          sceneDescription: sceneDescription,
+        };
 
-      if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
-        throw new Error(imageResult.error || "Failed to regenerate source image");
+        const imageResult = await generateImagesStreaming(
+          [imagePrompt],
+          "high",
+          "16:9",
+          (completed, total, message) => {
+            console.log(`Regenerating image: ${message}`);
+          },
+          projectId,
+          settings.topic,  // Era/period constraint
+          settings.subjectFocus  // Who the story focuses on
+        );
+
+        if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
+          throw new Error(imageResult.error || "Failed to regenerate source image");
+        }
+
+        newImageUrl = imageResult.images[0];
+        console.log(`Regenerated image: ${newImageUrl}`);
       }
-
-      const newImageUrl = imageResult.images[0];
-      console.log(`Regenerated image: ${newImageUrl}`);
 
       // Step 2: Update clip prompt with new image URL
       const updatedPrompt: ClipPrompt = {
@@ -4563,6 +4573,7 @@ const Index = () => {
         onAddPrompts={handleAddPrompts}
         isAddingPrompts={isAddingPrompts}
         existingImageCount={pendingImages.length}
+        audioDuration={pendingAudioDuration}
       />
 
       {/* Images Preview Modal */}
