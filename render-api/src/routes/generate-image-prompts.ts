@@ -656,13 +656,21 @@ The images should be RELEVANT to the narrative theme, not literal scene-for-scen
 STORY FOCUS (use this to guide your scenes):
 ${storySubjectFocus ? `This documentary focuses on: ${storySubjectFocus}` : 'Use the narration to understand the story being told.'}
 
+⚠️ CRITICAL: VARIETY IS ESSENTIAL - DON'T SHOW THE SAME THING EVERY SCENE!
+Even if the focus is a couple or person, you MUST vary your scenes:
+- Only 30-40% of images should show the main subjects TOGETHER
+- 20-30% should show INDIVIDUAL character moments (one person alone, contemplating, working)
+- 20-30% should show HISTORICAL CONTEXT (palaces, gardens, period street scenes, architecture)
+- 10-20% should show SUPPORTING ELEMENTS (servants, court life, landscapes, interiors without people)
+
 HOW TO BE TOPICAL:
-- For a LOVE STORY: Show courtship scenes, meaningful glances, walking together, formal introductions, elegant social gatherings, tender but modest moments (no kissing)
-- For a ROYAL BIOGRAPHY: Show palace life, formal ceremonies, audiences, council meetings, gardens, travel by carriage
-- For HISTORICAL EVENTS: Show the settings, the people involved, the atmosphere of the era
+- For a LOVE STORY: Mix courtship scenes WITH individual moments, palace settings, gardens, court life - NOT just the couple together every frame
+- For a ROYAL BIOGRAPHY: Mix formal scenes WITH private moments, palace exteriors, throne rooms, gardens
+- For HISTORICAL EVENTS: Show the settings, the atmosphere, the context - not just people
 
 The TOPIC/ERA tells you the visual style. The STORY FOCUS tells you what kinds of scenes to show.
 Don't try to literally illustrate every sentence - show scenes that FEEL RIGHT for the story.
+AVOID showing the main subjects together in every single image - that's boring and repetitive!
 
 ⚠️ CRITICAL - SIMPLE, SINGLE SCENE PROMPTS (READ FIRST):
 Your prompts MUST be SIMPLE and SHORT (30-50 words max). Each prompt = ONE scene, ONE moment.
