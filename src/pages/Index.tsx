@@ -4741,29 +4741,55 @@ const Index = () => {
           startSeconds: c.startSeconds,
           endSeconds: c.endSeconds
         })) : undefined}
+        onRefreshData={async () => {
+          // Fetch latest clips and images from database before rendering
+          const freshProject = await getProject(projectId);
+          if (!freshProject) {
+            console.warn('[Render] Could not fetch fresh project data');
+            return {
+              clips: generatedClips.map(c => ({
+                index: c.index,
+                url: c.videoUrl,
+                startSeconds: c.startSeconds,
+                endSeconds: c.endSeconds
+              })),
+              images: pendingImages.slice(generatedClips.length)
+            };
+          }
+
+          const freshClips = freshProject.clips || [];
+          const freshImages = freshProject.imageUrls || [];
+          const clipCount = freshClips.length;
+
+          console.log('[Render] Fetched fresh data from DB:', {
+            clips: freshClips.length,
+            images: freshImages.length,
+            usingImages: freshImages.slice(clipCount).length
+          });
+
+          // Also update local state so UI reflects latest data
+          if (freshClips.length > 0) {
+            setGeneratedClips(freshClips);
+          }
+          if (freshImages.length > 0) {
+            setPendingImages(freshImages);
+          }
+
+          return {
+            clips: freshClips.map(c => ({
+              index: c.index,
+              url: c.videoUrl,
+              startSeconds: c.startSeconds,
+              endSeconds: c.endSeconds
+            })),
+            images: freshImages.slice(clipCount)
+          };
+        }}
         existingBasicVideoUrl={videoUrl}
         existingEffectsVideoUrl={smokeEmbersVideoUrl}
         autoRender={settings.fullAutomation}
         segmentsNeedRecombine={segmentsNeedRecombine}
         onRecombineAudio={handleRecombineForRender}
-        onRefreshData={async () => {
-          // Fetch latest clips and images from database before rendering
-          console.log('[Render] Fetching latest data from database...');
-          const project = await getProject(projectId);
-          if (!project) {
-            throw new Error('Project not found');
-          }
-          const clips = (project.clips || []).map(c => ({
-            index: c.index,
-            url: c.videoUrl,
-            startSeconds: c.startSeconds,
-            endSeconds: c.endSeconds
-          }));
-          // Skip images used for clips
-          const images = (project.imageUrls || []).slice(clips.length);
-          console.log('[Render] Fresh from DB:', { clips: clips.length, images: images.length });
-          return { clips, images };
-        }}
         onConfirm={handleRenderConfirm}
         onCancel={handleCancelRequest}
         onBack={handleBackToImages}
