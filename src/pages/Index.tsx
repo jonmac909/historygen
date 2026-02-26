@@ -4690,20 +4690,32 @@ const Index = () => {
         projectTitle={videoTitle}
         audioUrl={pendingAudioUrl}
         imageUrls={(() => {
-          const allImages = pendingImages.slice(0, imagePrompts.length);
-          if (generatedClips.length === 0) return allImages;
-          // Skip images whose timings fall within the intro clip range
+          // Use ALL images - calculate timings dynamically from audio duration
+          const audioDuration = pendingAudioDuration || 0;
+          if (generatedClips.length === 0) return pendingImages;
+          // When there are intro clips, skip images that would fall within clip duration
           const clipEndTime = Math.max(...generatedClips.map(c => c.endSeconds));
-          return allImages.filter((_, i) => {
-            const prompt = imagePrompts[i];
-            return prompt && prompt.startSeconds >= clipEndTime;
-          });
+          const secondsPerImage = audioDuration / pendingImages.length;
+          const imagesToSkip = Math.floor(clipEndTime / secondsPerImage);
+          return pendingImages.slice(imagesToSkip);
         })()}
         imageTimings={(() => {
-          const allTimings = imagePrompts.slice(0, pendingImages.length).map(p => ({ startSeconds: p.startSeconds, endSeconds: p.endSeconds }));
-          if (generatedClips.length === 0) return allTimings;
-          const clipEndTime = Math.max(...generatedClips.map(c => c.endSeconds));
-          return allTimings.filter(t => t.startSeconds >= clipEndTime);
+          // Calculate timings dynamically from audio duration and image count
+          const audioDuration = pendingAudioDuration || 0;
+          const clipEndTime = generatedClips.length > 0
+            ? Math.max(...generatedClips.map(c => c.endSeconds))
+            : 0;
+          const secondsPerImage = audioDuration / pendingImages.length;
+          const imagesToSkip = generatedClips.length > 0
+            ? Math.floor(clipEndTime / secondsPerImage)
+            : 0;
+          const imagesToRender = pendingImages.slice(imagesToSkip);
+          const remainingDuration = audioDuration - clipEndTime;
+          const perImageTime = remainingDuration / imagesToRender.length;
+          return imagesToRender.map((_, i) => ({
+            startSeconds: clipEndTime + (i * perImageTime),
+            endSeconds: clipEndTime + ((i + 1) * perImageTime)
+          }));
         })()}
         srtContent={pendingSrtContent}
         introClips={generatedClips.length > 0 ? generatedClips.map(c => ({
