@@ -3927,7 +3927,8 @@ const Index = () => {
             setVideoUrlCaptioned(undefined);
             setEmbersVideoUrl(undefined);
             setSmokeEmbersVideoUrl(undefined);
-            autoSave("complete", { videoUrl: undefined, videoUrlCaptioned: undefined, embersVideoUrl: undefined, smokeEmbersVideoUrl: undefined });
+            // Use null to clear from Supabase (undefined is ignored)
+            autoSave("complete", { videoUrl: null as unknown as string, videoUrlCaptioned: null as unknown as string, embersVideoUrl: null as unknown as string, smokeEmbersVideoUrl: null as unknown as string });
           }}
         />
       ) : (
