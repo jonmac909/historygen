@@ -1792,7 +1792,7 @@ const Index = () => {
     return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
   };
 
-  // After clips reviewed, continue to image prompts
+  // After clips reviewed, continue to image prompts OR render (if images already exist)
   const handleClipsConfirm = async () => {
     // Save confirmed clips to project
     autoSave("prompts", {
@@ -1800,7 +1800,14 @@ const Index = () => {
       clips: generatedClips
     });
 
-    // Continue to image prompt generation
+    // If images already exist, go directly to render instead of regenerating prompts
+    if (pendingImages.length > 0 && imagePrompts.length > 0) {
+      console.log("[handleClipsConfirm] Images already exist, going directly to render");
+      handleGoToRender();
+      return;
+    }
+
+    // Otherwise, continue to image prompt generation (fresh pipeline flow)
     const srt = pendingSrtContent || srtContent || "";
     if (!srt) {
       setViewState("create");
