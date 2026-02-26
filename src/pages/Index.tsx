@@ -658,16 +658,13 @@ const Index = () => {
       projectData.srtUrl = pendingSrtUrl;
     }
 
-    // Images - handle explicit deletions (empty arrays) from overrides
+    // Images - ONLY save when explicitly provided in overrides
+    // This prevents stale closure state from overwriting regenerated images
     if (overrides?.imagePrompts !== undefined) {
       projectData.imagePrompts = overrides.imagePrompts;
-    } else if (imagePrompts && imagePrompts.length > 0) {
-      projectData.imagePrompts = imagePrompts;
     }
     if (overrides?.imageUrls !== undefined) {
       projectData.imageUrls = overrides.imageUrls;
-    } else if (pendingImages && pendingImages.length > 0) {
-      projectData.imageUrls = pendingImages;
     }
 
     // Videos - handle explicit deletions from overrides
