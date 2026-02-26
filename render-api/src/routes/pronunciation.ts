@@ -13,8 +13,10 @@ interface PronunciationFix {
 }
 
 // Default fixes (built-in)
+// NOTE: Many common words removed - Fish Speech often handles them better naturally
+// Only keep truly foreign/unusual words that Fish Speech consistently mangles
 const DEFAULT_FIXES: PronunciationFix[] = [
-  // Place names
+  // Foreign place names (Crusades project)
   { word: 'Clermont', phonetic: 'Clair-mont' },
   { word: 'Jerusalem', phonetic: 'Jeh-roo-sah-lem' },
   { word: 'Piacenza', phonetic: 'Pee-ah-chen-zah' },
@@ -22,38 +24,21 @@ const DEFAULT_FIXES: PronunciationFix[] = [
   { word: 'Nicaea', phonetic: 'Nye-see-ah' },
   { word: 'Dorylaeum', phonetic: 'Dor-ee-lay-um' },
   { word: 'Anatolia', phonetic: 'An-ah-toe-lee-ah' },
-  { word: 'Kew', phonetic: 'Kyoo' },
   { word: 'Versailles', phonetic: 'Vair-sigh' },
-  { word: 'Buckingham', phonetic: 'Buck-ing-um' },
-  { word: 'Windsor', phonetic: 'Wind-zer' },
   { word: 'Mecklenburg', phonetic: 'Meck-len-berg' },
   { word: 'Strelitz', phonetic: 'Strell-its' },
   // Historical terms
   { word: 'Byzantine', phonetic: 'Biz-an-tine' },
-  { word: 'Papal', phonetic: 'Pay-pal' },
   { word: 'Manzikert', phonetic: 'Man-zee-kert' },
-  { word: 'Crusade', phonetic: 'Crew-sade' },
   { word: 'ecclesiastical', phonetic: 'eh-klee-zee-as-ti-cal' },
   { word: 'Alexios', phonetic: 'Ah-lex-ee-os' },
   { word: 'Kerbogha', phonetic: 'Ker-bow-gah' },
-  // Titles and royalty
+  // Titles
   { word: 'archduchess', phonetic: 'arch-duch-ess' },
   { word: 'archduke', phonetic: 'arch-duke' },
-  // Common words that get garbled by Fish Speech TTS
-  { word: 'palace', phonetic: 'PAL-iss' },
-  { word: 'palaces', phonetic: 'PAL-iss-ez' },
-  { word: 'courts', phonetic: 'korts' },
-  { word: 'preachers', phonetic: 'pree-chers' },
-  { word: 'Jewish', phonetic: 'Jew-ish' },
-  { word: 'Armenian', phonetic: 'Ar-mee-nee-an' },
-  { word: 'dream', phonetic: 'dreem' },
-  { word: 'dreams', phonetic: 'dreems' },
-  { word: 'Charlotte', phonetic: 'Sharlot' },
-  { word: 'George', phonetic: 'Jorj' },
-  { word: 'Georgian', phonetic: 'Jorjun' },
-  { word: 'porphyria', phonetic: 'porfeereeah' },
-  { word: 'malady', phonetic: 'maladee' },
-  // 'regency' removed - TTS handles it naturally, phonetic was worse
+  // REMOVED: Kew, Buckingham, Windsor, palace, palaces, Charlotte, George, Georgian,
+  // porphyria, malady, Papal, Crusade, courts, preachers, Jewish, Armenian, dream, dreams
+  // - Let Fish Speech try these naturally first
 ];
 
 // Load fixes from file, falling back to defaults
