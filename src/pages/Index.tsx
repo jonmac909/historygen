@@ -1757,10 +1757,16 @@ const Index = () => {
       updateStep("clips", "completed", "Done");
       setGeneratedClips(clipsResult.clips || []);
 
+      // Clear existing video URLs since clips changed - user needs to re-render
+      setVideoUrl(undefined);
+      setSmokeEmbersVideoUrl(undefined);
+
       // Save clip prompts and generated clips to project
       autoSave("prompts", {
         clipPrompts: promptsWithImages,
-        clips: clipsResult.clips || []
+        clips: clipsResult.clips || [],
+        videoUrl: undefined,
+        smokeEmbersVideoUrl: undefined
       });
 
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -2521,10 +2527,16 @@ const Index = () => {
       setClipPrompts(clipPromptsForVideo);
       setGeneratedClips(clipsResult.clips || []);
 
+      // Clear existing video URLs since clips changed - user needs to re-render
+      setVideoUrl(undefined);
+      setSmokeEmbersVideoUrl(undefined);
+
       // Save clips to project
       autoSave("prompts", {
         clipPrompts: clipPromptsForVideo,
-        clips: clipsResult.clips || []
+        clips: clipsResult.clips || [],
+        videoUrl: undefined,
+        smokeEmbersVideoUrl: undefined
       });
 
       await new Promise(resolve => setTimeout(resolve, 300));
