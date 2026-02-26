@@ -629,33 +629,24 @@ const Index = () => {
       projectData.script = confirmedScript || pendingScript;
     }
 
-    // Audio - handle explicit deletions from overrides
+    // Audio - ONLY save when explicitly provided in overrides
+    // This prevents stale closure state from overwriting regenerated audio
     if (overrides?.audioUrl !== undefined) {
       projectData.audioUrl = overrides.audioUrl;
-    } else if (pendingAudioUrl) {
-      projectData.audioUrl = pendingAudioUrl;
     }
     if (overrides?.audioDuration !== undefined) {
       projectData.audioDuration = overrides.audioDuration;
-    } else if (pendingAudioDuration) {
-      projectData.audioDuration = pendingAudioDuration;
     }
     if (overrides?.audioSegments !== undefined) {
       projectData.audioSegments = overrides.audioSegments;
-    } else if (pendingAudioSegments && pendingAudioSegments.length > 0) {
-      projectData.audioSegments = pendingAudioSegments;
     }
 
-    // Captions - handle explicit deletions from overrides
+    // Captions - ONLY save when explicitly provided in overrides
     if (overrides?.srtContent !== undefined) {
       projectData.srtContent = overrides.srtContent;
-    } else if (pendingSrtContent) {
-      projectData.srtContent = pendingSrtContent;
     }
     if (overrides?.srtUrl !== undefined) {
       projectData.srtUrl = overrides.srtUrl;
-    } else if (pendingSrtUrl) {
-      projectData.srtUrl = pendingSrtUrl;
     }
 
     // Images - ONLY save when explicitly provided in overrides
@@ -667,26 +658,19 @@ const Index = () => {
       projectData.imageUrls = overrides.imageUrls;
     }
 
-    // Videos - handle explicit deletions from overrides
+    // Videos - ONLY save when explicitly provided in overrides
+    // This prevents stale closure state from overwriting rendered videos
     if (overrides?.videoUrl !== undefined) {
       projectData.videoUrl = overrides.videoUrl;
-    } else if (videoUrl) {
-      projectData.videoUrl = videoUrl;
     }
     if (overrides?.videoUrlCaptioned !== undefined) {
       projectData.videoUrlCaptioned = overrides.videoUrlCaptioned;
-    } else if (videoUrlCaptioned) {
-      projectData.videoUrlCaptioned = videoUrlCaptioned;
     }
     if (overrides?.embersVideoUrl !== undefined) {
       projectData.embersVideoUrl = overrides.embersVideoUrl;
-    } else if (embersVideoUrl) {
-      projectData.embersVideoUrl = embersVideoUrl;
     }
     if (overrides?.smokeEmbersVideoUrl !== undefined) {
       projectData.smokeEmbersVideoUrl = overrides.smokeEmbersVideoUrl;
-    } else if (smokeEmbersVideoUrl) {
-      projectData.smokeEmbersVideoUrl = smokeEmbersVideoUrl;
     }
 
     // Video clips - ONLY save when explicitly provided in overrides
