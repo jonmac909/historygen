@@ -2250,19 +2250,20 @@ const Index = () => {
       // Update the image at the specific index and save to database
       const newImageUrl = imageResult.images![0];
 
-      // Build updated array OUTSIDE state setter to avoid race conditions
-      // that can cause data loss if pendingImages state is stale/incomplete
-      const updatedImages = [...pendingImages];
-      updatedImages[index] = newImageUrl;
+      // Use functional update to get LATEST state (fixes race condition when regenerating multiple images)
+      // This ensures parallel regenerations don't overwrite each other
+      setPendingImages(prevImages => {
+        const updatedImages = [...prevImages];
+        updatedImages[index] = newImageUrl;
 
-      // Update state
-      setPendingImages(updatedImages);
+        // Save to database with the updated array (inside setter to ensure we have latest state)
+        // Include imagePrompts to persist edited prompts
+        autoSave("images", { imageUrls: updatedImages, imagePrompts: imagePrompts.map((p, i) =>
+          i === index ? promptToUse : p
+        ) });
 
-      // Save to database with complete array (not inside setter)
-      // Include imagePrompts to persist edited prompts
-      autoSave("images", { imageUrls: updatedImages, imagePrompts: imagePrompts.map((p, i) =>
-        i === index ? promptToUse : p
-      ) });
+        return updatedImages;
+      });
 
       // Clear existing video URLs since images changed - user needs to re-render
       setVideoUrl(undefined);
@@ -4691,26 +4692,21 @@ const Index = () => {
         projectTitle={videoTitle}
         audioUrl={pendingAudioUrl}
         imageUrls={(() => {
-          // Use ALL images - calculate timings dynamically from audio duration
-          const audioDuration = pendingAudioDuration || 0;
-          if (generatedClips.length === 0) return pendingImages;
-          // When there are intro clips, skip images that would fall within clip duration
-          const clipEndTime = Math.max(...generatedClips.map(c => c.endSeconds));
-          const secondsPerImage = audioDuration / pendingImages.length;
-          const imagesToSkip = Math.floor(clipEndTime / secondsPerImage);
-          return pendingImages.slice(imagesToSkip);
+          // Skip first N images that were used for video clips, use remaining images
+          const clipCount = generatedClips.length;
+          if (clipCount === 0) return pendingImages;
+          // Skip images that became clips (first 12), use the rest
+          return pendingImages.slice(clipCount);
         })()}
         imageTimings={(() => {
-          // Calculate timings dynamically from audio duration and image count
+          // Calculate timings dynamically from audio duration
           const audioDuration = pendingAudioDuration || 0;
-          const clipEndTime = generatedClips.length > 0
+          const clipCount = generatedClips.length;
+          const clipEndTime = clipCount > 0
             ? Math.max(...generatedClips.map(c => c.endSeconds))
             : 0;
-          const secondsPerImage = audioDuration / pendingImages.length;
-          const imagesToSkip = generatedClips.length > 0
-            ? Math.floor(clipEndTime / secondsPerImage)
-            : 0;
-          const imagesToRender = pendingImages.slice(imagesToSkip);
+          // Skip images that became clips, use the rest
+          const imagesToRender = pendingImages.slice(clipCount);
           const remainingDuration = audioDuration - clipEndTime;
           const perImageTime = remainingDuration / imagesToRender.length;
           return imagesToRender.map((_, i) => ({

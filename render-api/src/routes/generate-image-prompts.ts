@@ -600,6 +600,17 @@ INSTEAD, SHOW:
 ✅ Memorials or happier times when script mentions death
 ✅ ONE beautiful scene per prompt - single location, single moment
 
+⚠️ FOR ROMANTIC COUPLES - USE SPECIFIC POSES (CRITICAL):
+When showing a couple, NEVER say "romantic couple" or "embracing" - the image generator turns this into kissing!
+Instead, use SPECIFIC POSITIVE descriptions:
+✅ "holding hands while walking in the garden"
+✅ "sitting side by side on a bench"
+✅ "gazing at each other across the room"
+✅ "dancing together at arm's length"
+✅ "standing together looking at the sunset"
+✅ "sharing a quiet moment by the fireplace"
+❌ NEVER: "romantic couple", "embracing", "in each other's arms", "intimate moment"
+
 === TIME PERIOD ===
 ERA: ${timePeriod.era}
 REGION: ${timePeriod.region}
