@@ -1127,9 +1127,6 @@ async function postProcessAudio(audioBuffer: Buffer): Promise<Buffer> {
 // END POST-PROCESSING
 // ============================================================
 
-// Split script into N equal segments by word count
-const DEFAULT_SEGMENT_COUNT = 10; // Match Fish Speech RunPod worker allocation
-
 // Detect and remove repeated phrases in source text BEFORE TTS generation
 function removeTextRepetitions(text: string, minWords: number = 4): { cleaned: string; removedCount: number } {
   const sentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
@@ -1199,51 +1196,60 @@ function removeTextRepetitions(text: string, minWords: number = 4): { cleaned: s
   return { cleaned, removedCount: toRemove.size };
 }
 
-function splitIntoSegments(text: string, segmentCount: number = DEFAULT_SEGMENT_COUNT): string[] {
+function splitIntoSegments(text: string): string[] {
   // Split into sentences first (preserving sentence boundaries)
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length === 0) return [];
 
-  // Count total words to calculate target per segment
-  const totalWords = text.split(/\s+/).filter(Boolean).length;
-  const targetWordsPerSegment = Math.ceil(totalWords / segmentCount);
+  // Progressive distribution: MAXIMUM granularity at the start, less at the end
+  // The opening is most important - user wants to be able to fix any sentence cheaply
+  //
+  // Tier 1 (first 15%): 1 sentence per segment - maximum control for opening
+  // Tier 2 (next 15%): 2 sentences per segment - still very fine control
+  // Tier 3 (next 20%): 3 sentences per segment - good control
+  // Tier 4 (next 25%): 4 sentences per segment - moderate
+  // Tier 5 (last 25%): 5 sentences per segment - less critical
 
   const segments: string[] = [];
-  let currentSegment: string[] = [];
-  let currentWordCount = 0;
+  let i = 0;
+  const total = sentences.length;
 
-  for (let i = 0; i < sentences.length; i++) {
-    const sentence = sentences[i];
-    const sentenceWordCount = sentence.split(/\s+/).filter(Boolean).length;
-
-    // Add sentence to current segment
-    currentSegment.push(sentence);
-    currentWordCount += sentenceWordCount;
-
-    // Check if we should start a new segment
-    // Start new segment if we've reached target AND we haven't filled all segments yet
-    const segmentsRemaining = segmentCount - segments.length - 1;
-    const sentencesRemaining = sentences.length - i - 1;
-
-    if (currentWordCount >= targetWordsPerSegment &&
-        segmentsRemaining > 0 &&
-        sentencesRemaining >= segmentsRemaining) {
-      segments.push(currentSegment.join(' '));
-      currentSegment = [];
-      currentWordCount = 0;
-    }
+  // Tier 1: First 15% of sentences, 1 per segment (individual sentences!)
+  const tier1End = Math.floor(total * 0.15);
+  while (i < tier1End && i < total) {
+    segments.push(sentences[i]);
+    i += 1;
   }
 
-  // Add any remaining sentences to the last segment
-  if (currentSegment.length > 0) {
-    segments.push(currentSegment.join(' '));
+  // Tier 2: Next 15% (15%-30%), 2 per segment
+  const tier2End = Math.floor(total * 0.30);
+  while (i < tier2End && i < total) {
+    const chunk = sentences.slice(i, Math.min(i + 2, total));
+    if (chunk.length > 0) segments.push(chunk.join(' '));
+    i += 2;
   }
 
-  // If we have fewer segments than requested (rare), return what we have
-  // If we have more (shouldn't happen), merge last ones
-  while (segments.length > segmentCount && segments.length > 1) {
-    const last = segments.pop()!;
-    segments[segments.length - 1] += ' ' + last;
+  // Tier 3: Next 20% (30%-50%), 3 per segment
+  const tier3End = Math.floor(total * 0.50);
+  while (i < tier3End && i < total) {
+    const chunk = sentences.slice(i, Math.min(i + 3, total));
+    if (chunk.length > 0) segments.push(chunk.join(' '));
+    i += 3;
+  }
+
+  // Tier 4: Next 25% (50%-75%), 4 per segment
+  const tier4End = Math.floor(total * 0.75);
+  while (i < tier4End && i < total) {
+    const chunk = sentences.slice(i, Math.min(i + 4, total));
+    if (chunk.length > 0) segments.push(chunk.join(' '));
+    i += 4;
+  }
+
+  // Tier 5: Last 25% (75%-100%), 5 per segment
+  while (i < total) {
+    const chunk = sentences.slice(i, Math.min(i + 5, total));
+    if (chunk.length > 0) segments.push(chunk.join(' '));
+    i += 5;
   }
 
   return segments;
@@ -2252,8 +2258,8 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
     console.log(`  - First 200 chars: "${script.substring(0, 200)}..."`);
     console.log(`========================================\n`);
 
-    // Split script into 10 segments (uses all 10 RunPod workers)
-    const segments = splitIntoSegments(script, DEFAULT_SEGMENT_COUNT);
+    // Split script using progressive segmentation (more segments early, fewer later)
+    const segments = splitIntoSegments(script);
     const actualSegmentCount = segments.length;
 
     // Log segment breakdown
@@ -2948,8 +2954,8 @@ router.post('/segment', async (req: Request, res: Response) => {
     if (!segmentText) {
       return res.status(400).json({ error: 'segmentText is required' });
     }
-    if (!segmentIndex || segmentIndex < 1 || segmentIndex > DEFAULT_SEGMENT_COUNT) {
-      return res.status(400).json({ error: `segmentIndex must be between 1 and ${DEFAULT_SEGMENT_COUNT}` });
+    if (!segmentIndex || segmentIndex < 1) {
+      return res.status(400).json({ error: 'segmentIndex must be a positive integer' });
     }
     if (!voiceSampleUrl) {
       return res.status(400).json({ error: 'voiceSampleUrl is required' });
