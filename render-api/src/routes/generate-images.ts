@@ -505,11 +505,19 @@ async function handleStreamingImages(
 
     // Sort results by original index
     const sortedResults = [...allResults].sort((a, b) => a.index - b.index);
-    const successfulImages = sortedResults
-      .filter(r => r.state === 'success' && r.imageUrl)
-      .map(r => r.imageUrl!);
 
-    const failedCount = sortedResults.filter(r => r.state === 'fail').length;
+    // IMPORTANT: Preserve array positions - use null for failed images
+    // This ensures clip N always maps to image N, even if some images failed
+    const imagesWithPositions: (string | null)[] = new Array(total).fill(null);
+    for (const r of sortedResults) {
+      if (r.state === 'success' && r.imageUrl) {
+        imagesWithPositions[r.index] = r.imageUrl;
+      }
+    }
+
+    // For backward compatibility, also provide filtered array
+    const successfulImages = imagesWithPositions.filter((url): url is string => url !== null);
+    const failedCount = imagesWithPositions.filter(url => url === null).length;
 
     console.log(`\n=== Image generation complete ===`);
     console.log(`Success: ${successfulImages.length}/${total}`);
@@ -544,6 +552,7 @@ async function handleStreamingImages(
       type: 'complete',
       success: true,
       images: successfulImages,
+      imagesWithPositions,  // Array with nulls preserving indices - use this for clip mapping
       total: successfulImages.length,
       failed: failedCount
     });
@@ -618,6 +627,7 @@ async function handleNonStreamingImages(
     }
   }
 
+  // results array already preserves positions with null for failures
   const imageUrls = results.filter((url): url is string => url !== null);
   console.log(`Z-Image generated ${imageUrls.length} images`);
 
@@ -633,7 +643,11 @@ async function handleNonStreamingImages(
     }).catch(err => console.error('[cost-tracker] Failed to save images cost:', err));
   }
 
-  return res.json({ success: true, images: imageUrls });
+  return res.json({
+    success: true,
+    images: imageUrls,
+    imagesWithPositions: results,  // Array with nulls preserving indices
+  });
 }
 
 export default router;

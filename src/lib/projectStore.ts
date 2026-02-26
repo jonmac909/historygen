@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 
 // Helper to merge imageUrls array into imagePrompts
 // This fixes the issue where imageUrls are stored separately from imagePrompts
+// IMPORTANT: Uses prompt.index (1-based) to map to urls array (0-indexed)
+// So prompt with index=1 gets urls[0], prompt with index=6 gets urls[5], etc.
 function mergeImageUrlsIntoPrompts(
   prompts: ImagePromptWithTiming[] | undefined,
   urls: string[] | undefined
@@ -15,9 +17,10 @@ function mergeImageUrlsIntoPrompts(
   const needsMerge = prompts.some(p => !p.imageUrl);
   if (!needsMerge) return prompts;
 
-  return prompts.map((prompt, index) => ({
+  return prompts.map((prompt) => ({
     ...prompt,
-    imageUrl: prompt.imageUrl || urls[index] || undefined
+    // Use prompt.index (1-based) to get the correct url from 0-indexed array
+    imageUrl: prompt.imageUrl || urls[prompt.index - 1] || undefined
   }));
 }
 

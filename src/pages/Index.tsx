@@ -2498,14 +2498,15 @@ const Index = () => {
       updateStep("clips", "active", `0/${imagesToAnimate.length} (0%)`);
 
       // Create clip prompts from image prompts + image URLs
-      // IMPORTANT: index is 1-based (1-12), array position is 0-based (0-11)
-      const clipPromptsForVideo: ClipPrompt[] = promptsForClips.map((p, i) => ({
-        index: i + 1,  // 1-based index for clips
-        startSeconds: i * CLIP_DURATION,
-        endSeconds: (i + 1) * CLIP_DURATION,
+      // IMPORTANT: Use prompt.index (1-based) to get correct image from array (0-indexed)
+      // This ensures clip N uses image N, regardless of array order
+      const clipPromptsForVideo: ClipPrompt[] = promptsForClips.map((p) => ({
+        index: p.index,  // Use the prompt's actual index
+        startSeconds: (p.index - 1) * CLIP_DURATION,
+        endSeconds: p.index * CLIP_DURATION,
         prompt: p.prompt,
         sceneDescription: p.prompt, // Use image prompt as scene description
-        imageUrl: imagesToAnimate[i],  // Use array position to get corresponding image
+        imageUrl: imagesToAnimate[p.index - 1],  // Use prompt.index-1 to get correct image
       }));
 
       console.log(`[Video Generation] Created ${clipPromptsForVideo.length} clip prompts:`,

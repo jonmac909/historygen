@@ -81,12 +81,15 @@ async function startVideoTask(
   // The image already contains the scene - we add gentle but visible animation
   // Keep camera mostly stable but allow natural character and environmental movement
   const motionPrompt = `Cinematic gentle animation. Slow subtle camera drift or slight push-in. Natural character movement - gentle breathing, small gestures, hair or fabric swaying. Atmospheric elements - floating dust motes, flickering light, leaves rustling, smoke wisps. Bring the painting to life with graceful, dreamlike motion. Keep movement slow and elegant, not jarring.`;
+  // Negative prompt to prevent inappropriate animations
+  const negativePrompt = `kissing, romantic embrace, violence, fighting, blood, gore, nudity, modern elements, text, watermark, sudden movements, jarring motion`;
   console.log(`[I2V] Starting task for clip ${clipIndex + 1} with cinematic motion prompt`);
   console.log(`[I2V] Original prompt (not used): ${prompt.substring(0, 60)}...`);
 
   // v1-pro-fast-image-to-video: animates static images, supports 5s/10s
   const input = {
     prompt: motionPrompt,
+    negative_prompt: negativePrompt,
     image_url: imageUrl,
     resolution,
     duration: String(duration),
