@@ -698,14 +698,11 @@ const Index = () => {
       projectData.clips = overrides.clips;
     }
 
-    // Thumbnails - CRITICAL: only save if explicitly provided in overrides or has actual content
-    // This prevents state initialization (empty array) from overwriting saved thumbnails
+    // Thumbnails - ONLY save when explicitly provided in overrides
+    // This prevents stale closure state from overwriting regenerated thumbnails
     if (overrides?.thumbnails !== undefined) {
       projectData.thumbnails = overrides.thumbnails;
-      projectData.selectedThumbnailIndex = overrides.selectedThumbnailIndex ?? selectedThumbnailIndex;
-    } else if (generatedThumbnails && generatedThumbnails.length > 0) {
-      projectData.thumbnails = generatedThumbnails;
-      projectData.selectedThumbnailIndex = selectedThumbnailIndex;
+      projectData.selectedThumbnailIndex = overrides.selectedThumbnailIndex;
     }
 
     // YouTube metadata - handle explicit deletions from overrides
