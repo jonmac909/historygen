@@ -217,9 +217,10 @@ export function VideoRenderModal({
 
     let audioUrlToUse = actualAudioUrl;
 
-    // Always recombine audio before rendering to ensure we have the latest segments
-    // This handles the case where user refreshed and lost the "needsRecombine" state
-    if (onRecombineAudio) {
+    // Only recombine if explicitly needed (segmentsNeedRecombine flag)
+    // Skip recombine if we already have a valid audio URL - this saves time and avoids
+    // errors when segments are missing but combined audio exists
+    if (onRecombineAudio && segmentsNeedRecombine) {
       setCurrentPass('pass1');
       setRenderProgress({ stage: 'downloading', percent: 0, message: 'Recombining audio segments...' });
 
@@ -229,15 +230,27 @@ export function VideoRenderModal({
         console.log('Audio recombined before render:', audioUrlToUse);
       } catch (error) {
         console.error('Failed to recombine audio:', error);
-        toast({
-          title: "Audio Recombine Failed",
-          description: error instanceof Error ? error.message : "Failed to recombine audio",
-          variant: "destructive",
-        });
-        setCurrentPass('idle');
-        setRenderProgress(null);
-        return;
+        // If recombine fails but we have an existing audio URL, use that instead
+        if (actualAudioUrl) {
+          console.log('Using existing audio URL after recombine failed:', actualAudioUrl);
+          audioUrlToUse = actualAudioUrl;
+          toast({
+            title: "Using Existing Audio",
+            description: "Recombine failed, using previously saved audio.",
+          });
+        } else {
+          toast({
+            title: "Audio Recombine Failed",
+            description: error instanceof Error ? error.message : "Failed to recombine audio",
+            variant: "destructive",
+          });
+          setCurrentPass('idle');
+          setRenderProgress(null);
+          return;
+        }
       }
+    } else {
+      console.log('Skipping recombine, using existing audio URL:', actualAudioUrl?.substring(0, 60));
     }
 
     // Pass 1: Basic video (no effects)
@@ -336,8 +349,8 @@ export function VideoRenderModal({
   const handleRenderEffectsOnly = async () => {
     let audioUrlToUse = actualAudioUrl;
 
-    // Always recombine audio before rendering to ensure we have the latest segments
-    if (onRecombineAudio) {
+    // Only recombine if explicitly needed
+    if (onRecombineAudio && segmentsNeedRecombine) {
       setCurrentPass('pass2');
       setRenderProgress({ stage: 'downloading', percent: 0, message: 'Recombining audio segments...' });
 
@@ -346,14 +359,20 @@ export function VideoRenderModal({
         setActualAudioUrl(audioUrlToUse);
       } catch (error) {
         console.error('Failed to recombine audio:', error);
-        toast({
-          title: "Audio Recombine Failed",
-          description: error instanceof Error ? error.message : "Failed to recombine audio",
-          variant: "destructive",
-        });
-        setCurrentPass('idle');
-        setRenderProgress(null);
-        return;
+        // If recombine fails but we have an existing audio URL, use that instead
+        if (actualAudioUrl) {
+          console.log('Using existing audio URL after recombine failed:', actualAudioUrl);
+          audioUrlToUse = actualAudioUrl;
+        } else {
+          toast({
+            title: "Audio Recombine Failed",
+            description: error instanceof Error ? error.message : "Failed to recombine audio",
+            variant: "destructive",
+          });
+          setCurrentPass('idle');
+          setRenderProgress(null);
+          return;
+        }
       }
     }
 
@@ -441,6 +460,14 @@ export function VideoRenderModal({
 
   // Exit handler - save videos if they exist before closing
   const handleExit = () => {
+    // Warn user if render is in progress
+    if (isRendering) {
+      const confirmed = window.confirm(
+        'A render is still in progress. If you exit now, you may lose the current render.\n\nAre you sure you want to exit?'
+      );
+      if (!confirmed) return;
+    }
+
     // If videos were rendered, save them before exiting
     if (currentPass === 'complete' && (effectsVideoUrl || basicVideoUrl)) {
       console.log('[VideoRenderModal] Saving videos on exit');
@@ -664,7 +691,7 @@ export function VideoRenderModal({
           </div>
 
           {/* Right side: Exit + Continue */}
-          <Button variant="outline" onClick={handleExit} disabled={isRendering}>
+          <Button variant="outline" onClick={handleExit}>
             <X className="w-4 h-4 mr-2" />
             Exit
           </Button>
