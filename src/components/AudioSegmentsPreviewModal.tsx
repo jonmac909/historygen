@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-import { Check, X, Play, Pause, RefreshCw, Volume2, Loader2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, BookOpen } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { Check, X, Play, Pause, RefreshCw, Volume2, Loader2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, BookOpen, Square } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -621,10 +621,77 @@ export function AudioSegmentsPreviewModal({
   const [playbackRateAll, setPlaybackRateAll] = useState(1);
   const [editedTexts, setEditedTexts] = useState<Record<number, string>>({});
   const [isPronunciationModalOpen, setIsPronunciationModalOpen] = useState(false);
+  const [expandedGroup, setExpandedGroup] = useState<number | null>(0); // First group expanded by default
+  const [playingGroupIndex, setPlayingGroupIndex] = useState<number | null>(null);
+  const [playingSegmentInGroup, setPlayingSegmentInGroup] = useState<number>(0);
+  const groupAudioRef = useRef<HTMLAudioElement>(null);
   const combinedAudioRef = useRef<HTMLAudioElement>(null);
 
   const calculatedDuration = segments.reduce((sum, seg) => sum + seg.duration, 0);
   const totalDuration = propTotalDuration || calculatedDuration;
+
+  // Group segments into chunks of 10 for easier navigation
+  const SEGMENTS_PER_GROUP = 10;
+  const segmentGroups = useMemo(() => {
+    const groups: { groupIndex: number; segments: AudioSegment[]; startTime: number; duration: number }[] = [];
+    let accumulatedTime = 0;
+
+    for (let i = 0; i < segments.length; i += SEGMENTS_PER_GROUP) {
+      const groupSegments = segments.slice(i, i + SEGMENTS_PER_GROUP);
+      const groupDuration = groupSegments.reduce((sum, s) => sum + s.duration, 0);
+      groups.push({
+        groupIndex: Math.floor(i / SEGMENTS_PER_GROUP),
+        segments: groupSegments,
+        startTime: accumulatedTime,
+        duration: groupDuration,
+      });
+      accumulatedTime += groupDuration;
+    }
+    return groups;
+  }, [segments]);
+
+  // Play all segments in a group sequentially
+  const playGroup = (groupIndex: number) => {
+    const group = segmentGroups[groupIndex];
+    if (!group || group.segments.length === 0) return;
+
+    setPlayingGroupIndex(groupIndex);
+    setPlayingSegmentInGroup(0);
+
+    // Start playing first segment
+    if (groupAudioRef.current) {
+      groupAudioRef.current.src = group.segments[0].audioUrl;
+      groupAudioRef.current.play().catch(console.error);
+    }
+  };
+
+  const stopGroupPlayback = () => {
+    setPlayingGroupIndex(null);
+    setPlayingSegmentInGroup(0);
+    if (groupAudioRef.current) {
+      groupAudioRef.current.pause();
+      groupAudioRef.current.src = '';
+    }
+  };
+
+  const handleGroupAudioEnded = () => {
+    if (playingGroupIndex === null) return;
+
+    const group = segmentGroups[playingGroupIndex];
+    const nextSegmentIndex = playingSegmentInGroup + 1;
+
+    if (nextSegmentIndex < group.segments.length) {
+      // Play next segment in group
+      setPlayingSegmentInGroup(nextSegmentIndex);
+      if (groupAudioRef.current) {
+        groupAudioRef.current.src = group.segments[nextSegmentIndex].audioUrl;
+        groupAudioRef.current.play().catch(console.error);
+      }
+    } else {
+      // Group finished
+      stopGroupPlayback();
+    }
+  };
 
   // Initialize edited texts when segments change
   useEffect(() => {
@@ -795,9 +862,18 @@ export function AudioSegmentsPreviewModal({
             </div>
           )}
 
-          {/* Individual Segments */}
+          {/* Hidden audio element for group playback */}
+          <audio
+            ref={groupAudioRef}
+            onEnded={handleGroupAudioEnded}
+            style={{ display: 'none' }}
+          />
+
+          {/* Segment Groups */}
           <div className="flex items-center justify-between mt-4 mb-2">
-            <span className="text-sm font-medium text-muted-foreground">Individual Segments (expand to edit script, then regenerate)</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              {segmentGroups.length} Groups ({segments.length} segments) - Click to expand
+            </span>
             <Button
               variant="outline"
               size="sm"
@@ -808,21 +884,97 @@ export function AudioSegmentsPreviewModal({
               Pronunciation
             </Button>
           </div>
-          {segments.map((segment) => (
-            <AudioSegmentCard
-              key={segment.index}
-              segment={segment}
-              isRegenerating={regeneratingIndex === segment.index}
-              onRegenerate={(editedText) => handleSegmentRegenerate(segment.index, editedText)}
-              editedText={editedTexts[segment.index] || segment.text}
-              onTextChange={(text) => handleTextChange(segment.index, text)}
-              projectId={projectId}
-              voiceSampleUrl={voiceSampleUrl}
-              ttsSettings={ttsSettings}
-              segmentCount={segments.length}
-              onAudioUpdated={onAudioUpdated}
-            />
-          ))}
+
+          {segmentGroups.map((group) => {
+            const isExpanded = expandedGroup === group.groupIndex;
+            const isPlaying = playingGroupIndex === group.groupIndex;
+            const startTimeFormatted = formatTime(group.startTime);
+            const endTimeFormatted = formatTime(group.startTime + group.duration);
+
+            return (
+              <div key={group.groupIndex} className="border rounded-lg overflow-hidden">
+                {/* Group Header */}
+                <div
+                  className={`flex items-center justify-between p-3 cursor-pointer transition-colors ${
+                    isExpanded ? 'bg-primary/10 border-b' : 'hover:bg-muted/50'
+                  }`}
+                  onClick={() => setExpandedGroup(isExpanded ? null : group.groupIndex)}
+                >
+                  <div className="flex items-center gap-2">
+                    {isExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <span className="font-medium">
+                      Group {group.groupIndex + 1} ({startTimeFormatted} - {endTimeFormatted})
+                    </span>
+                    <span className="text-sm text-muted-foreground">
+                      {group.segments.length} segments
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Play Group Button */}
+                    <Button
+                      size="sm"
+                      variant={isPlaying ? "destructive" : "outline"}
+                      className="h-8 px-3"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isPlaying) {
+                          stopGroupPlayback();
+                        } else {
+                          playGroup(group.groupIndex);
+                        }
+                      }}
+                    >
+                      {isPlaying ? (
+                        <>
+                          <Square className="w-3 h-3 mr-1 fill-current" />
+                          Stop
+                        </>
+                      ) : (
+                        <>
+                          <Play className="w-3 h-3 mr-1" />
+                          Play
+                        </>
+                      )}
+                    </Button>
+                    <span className="text-sm text-muted-foreground w-14 text-right">
+                      {formatTime(group.duration)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Expanded Segments */}
+                {isExpanded && (
+                  <div className="p-2 space-y-2 bg-muted/20">
+                    {group.segments.map((segment, localIndex) => (
+                      <div key={segment.index} className="relative">
+                        {/* Playing indicator */}
+                        {isPlaying && playingSegmentInGroup === localIndex && (
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-l animate-pulse" />
+                        )}
+                        <AudioSegmentCard
+                          segment={segment}
+                          isRegenerating={regeneratingIndex === segment.index}
+                          onRegenerate={(editedText) => handleSegmentRegenerate(segment.index, editedText)}
+                          editedText={editedTexts[segment.index] || segment.text}
+                          onTextChange={(text) => handleTextChange(segment.index, text)}
+                          projectId={projectId}
+                          voiceSampleUrl={voiceSampleUrl}
+                          ttsSettings={ttsSettings}
+                          segmentCount={segments.length}
+                          onAudioUpdated={onAudioUpdated}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
