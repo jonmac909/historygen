@@ -1911,8 +1911,9 @@ const Index = () => {
 
       // Check if we have an existing image in pendingImages for this clip
       // Use the existing regenerated image instead of generating a new one
+      // IMPORTANT: clipIndex is 1-based, pendingImages is 0-indexed
       let newImageUrl: string;
-      const existingImage = pendingImages[clipIndex];
+      const existingImage = pendingImages[clipIndex - 1];
 
       if (existingImage) {
         console.log(`Using existing image for clip ${clipIndex}: ${existingImage.substring(0, 60)}...`);
