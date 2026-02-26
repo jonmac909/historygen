@@ -594,10 +594,15 @@ ABSOLUTELY FORBIDDEN (your prompts will be rejected if they contain any of these
 ❌ NO scary, dark, disturbing, shocking imagery
 ❌ NO multiple locations in one prompt (no "meanwhile", "across town", "in another room")
 
-INSTEAD, SHOW:
-✅ Peaceful building exteriors when script mentions surgery/illness
-✅ Calm aftermath scenes when script mentions battle
-✅ Memorials or happier times when script mentions death
+INSTEAD, USE POSITIVE G-RATED ALTERNATIVES:
+When the script mentions anything inappropriate (violence, nudity, kissing, wounds, torture, etc.),
+show the SETTING, EMOTION, or AFTERMATH - never the act itself. The audio tells the story, the image creates atmosphere.
+✅ Surgery/illness → Show the peaceful building exterior, doctor's bag on a table, or family waiting hopefully
+✅ Battle/violence → Show the calm aftermath, a memorial, or the landscape before/after
+✅ Death → Show a memorial, peaceful remembrance, or happier earlier times
+✅ Nudity/bathing → Show the person fully clothed in elegant attire, or just the setting without people
+✅ Kissing/intimacy → Show the couple holding hands, sitting side by side, or gazing at each other from a distance
+✅ Torture/imprisonment → Show the empty corridor, exterior of the building, or the person being comforted after
 ✅ ONE beautiful scene per prompt - single location, single moment
 
 ⚠️ FOR ROMANTIC COUPLES - USE SPECIFIC POSES (CRITICAL):
