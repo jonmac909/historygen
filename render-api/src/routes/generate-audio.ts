@@ -1197,59 +1197,76 @@ function removeTextRepetitions(text: string, minWords: number = 4): { cleaned: s
 }
 
 function splitIntoSegments(text: string): string[] {
-  // Split into sentences first (preserving sentence boundaries)
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length === 0) return [];
 
-  // Progressive distribution: MAXIMUM granularity at the start, less at the end
-  // The opening is most important - user wants to be able to fix any sentence cheaply
+  // Chunk-based subdivision:
+  // First divide into 10 equal chunks (like original 10-segment system)
+  // Then subdivide early chunks for finer control where it matters most
   //
-  // Tier 1 (first 15%): 1 sentence per segment - maximum control for opening
-  // Tier 2 (next 15%): 2 sentences per segment - still very fine control
-  // Tier 3 (next 20%): 3 sentences per segment - good control
-  // Tier 4 (next 25%): 4 sentences per segment - moderate
-  // Tier 5 (last 25%): 5 sentences per segment - less critical
+  // Chunk 1: 5 segments (~2 min each for 2-hour script)
+  // Chunk 2: 4 segments (~2.5 min each)
+  // Chunk 3: 2 segments (~5 min each)
+  // Chunk 4: 2 segments (~5 min each)
+  // Chunks 5-10: 1 segment each (~10 min each)
+  // Total: ~19 segments
+
+  const total = sentences.length;
+  const chunkSize = Math.ceil(total / 10);
+
+  // Create 10 chunks
+  const chunks: string[][] = [];
+  for (let c = 0; c < 10; c++) {
+    const start = c * chunkSize;
+    const end = Math.min(start + chunkSize, total);
+    if (start < total) {
+      chunks.push(sentences.slice(start, end));
+    }
+  }
 
   const segments: string[] = [];
-  let i = 0;
-  const total = sentences.length;
 
-  // Tier 1: First 15% of sentences, 1 per segment (individual sentences!)
-  const tier1End = Math.floor(total * 0.15);
-  while (i < tier1End && i < total) {
-    segments.push(sentences[i]);
-    i += 1;
+  // Chunk 1: subdivide into 5 segments
+  if (chunks[0]) {
+    const subSize = Math.ceil(chunks[0].length / 5);
+    for (let i = 0; i < chunks[0].length; i += subSize) {
+      const sub = chunks[0].slice(i, i + subSize);
+      if (sub.length > 0) segments.push(sub.join(' '));
+    }
   }
 
-  // Tier 2: Next 15% (15%-30%), 2 per segment
-  const tier2End = Math.floor(total * 0.30);
-  while (i < tier2End && i < total) {
-    const chunk = sentences.slice(i, Math.min(i + 2, total));
-    if (chunk.length > 0) segments.push(chunk.join(' '));
-    i += 2;
+  // Chunk 2: subdivide into 4 segments
+  if (chunks[1]) {
+    const subSize = Math.ceil(chunks[1].length / 4);
+    for (let i = 0; i < chunks[1].length; i += subSize) {
+      const sub = chunks[1].slice(i, i + subSize);
+      if (sub.length > 0) segments.push(sub.join(' '));
+    }
   }
 
-  // Tier 3: Next 20% (30%-50%), 3 per segment
-  const tier3End = Math.floor(total * 0.50);
-  while (i < tier3End && i < total) {
-    const chunk = sentences.slice(i, Math.min(i + 3, total));
-    if (chunk.length > 0) segments.push(chunk.join(' '));
-    i += 3;
+  // Chunk 3: subdivide into 2 segments
+  if (chunks[2]) {
+    const subSize = Math.ceil(chunks[2].length / 2);
+    for (let i = 0; i < chunks[2].length; i += subSize) {
+      const sub = chunks[2].slice(i, i + subSize);
+      if (sub.length > 0) segments.push(sub.join(' '));
+    }
   }
 
-  // Tier 4: Next 25% (50%-75%), 4 per segment
-  const tier4End = Math.floor(total * 0.75);
-  while (i < tier4End && i < total) {
-    const chunk = sentences.slice(i, Math.min(i + 4, total));
-    if (chunk.length > 0) segments.push(chunk.join(' '));
-    i += 4;
+  // Chunk 4: subdivide into 2 segments
+  if (chunks[3]) {
+    const subSize = Math.ceil(chunks[3].length / 2);
+    for (let i = 0; i < chunks[3].length; i += subSize) {
+      const sub = chunks[3].slice(i, i + subSize);
+      if (sub.length > 0) segments.push(sub.join(' '));
+    }
   }
 
-  // Tier 5: Last 25% (75%-100%), 5 per segment
-  while (i < total) {
-    const chunk = sentences.slice(i, Math.min(i + 5, total));
-    if (chunk.length > 0) segments.push(chunk.join(' '));
-    i += 5;
+  // Chunks 5-10: keep as single segments
+  for (let c = 4; c < chunks.length; c++) {
+    if (chunks[c] && chunks[c].length > 0) {
+      segments.push(chunks[c].join(' '));
+    }
   }
 
   return segments;
