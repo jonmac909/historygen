@@ -77,12 +77,12 @@ async function startVideoTask(
   duration: number = CLIP_DURATION,
   resolution: string = CLIP_RESOLUTION
 ): Promise<string> {
-  // IMPORTANT: For I2V (image-to-video), use motion prompts that bring the scene to life
-  // The image already contains the scene - we add gentle but visible animation
-  // Keep camera mostly stable but allow natural character and environmental movement
-  const motionPrompt = `Cinematic gentle animation. Slow subtle camera drift or slight push-in. Natural character movement - gentle breathing, small gestures, hair or fabric swaying. Atmospheric elements - floating dust motes, flickering light, leaves rustling, smoke wisps. Bring the painting to life with graceful, dreamlike motion. Keep movement slow and elegant, not jarring.`;
-  // Negative prompt to prevent inappropriate animations
-  const negativePrompt = `kissing, romantic embrace, violence, fighting, blood, gore, nudity, modern elements, text, watermark, sudden movements, jarring motion`;
+  // IMPORTANT: For I2V (image-to-video), use POSITIVE motion prompts
+  // Characters should remain in dignified, stationary poses - only environmental movement
+  // NO movement between characters - they stay where they are
+  const motionPrompt = `Cinematic gentle animation. Characters remain stationary in dignified formal poses, maintaining their exact positions. Only subtle environmental movement: floating dust motes, flickering candlelight, gentle fabric swaying in breeze, leaves rustling, smoke wisps drifting. Slow camera drift. Peaceful, museum-quality painting coming to life. Characters do NOT move toward each other.`;
+  // Negative prompt (may be ignored by some models)
+  const negativePrompt = `kissing, romantic embrace, characters moving toward each other, leaning in, violence, fighting, blood, gore, nudity, modern elements, text, watermark, sudden movements`;
   console.log(`[I2V] Starting task for clip ${clipIndex + 1} with cinematic motion prompt`);
   console.log(`[I2V] Original prompt (not used): ${prompt.substring(0, 60)}...`);
 
