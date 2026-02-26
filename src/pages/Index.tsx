@@ -1972,10 +1972,15 @@ const Index = () => {
 
       if (clipsResult.success && clipsResult.clips && clipsResult.clips.length > 0) {
         const newClip = clipsResult.clips[0];
-        console.log(`[Regenerate] Clip ${clipIndex} new URL:`, newClip.videoUrl);
+        console.log(`[Regenerate] ===== CLIP ${clipIndex} REGENERATED =====`);
+        console.log(`[Regenerate] OLD URL: ${generatedClips.find(c => c.index === clipIndex)?.videoUrl?.substring(0, 80) || 'none'}`);
+        console.log(`[Regenerate] NEW URL: ${newClip.videoUrl.substring(0, 80)}`);
 
         // Update the clip in our array and persist to database
         const updatedClips = generatedClips.map(c => c.index === clipIndex ? newClip : c);
+        console.log(`[Regenerate] Updated clips array:`);
+        updatedClips.forEach((c, i) => console.log(`[Regenerate]   Clip ${c.index}: ${c.videoUrl.substring(0, 60)}...`));
+        console.log(`[Regenerate] =====================================`);
         setGeneratedClips(updatedClips);
 
         // Clear existing video URLs since clips changed - user needs to re-render
@@ -1989,13 +1994,28 @@ const Index = () => {
         setClipPrompts(updatedClipPrompts);
 
         // CRITICAL: Persist to database so regenerated clip survives page refresh
-        console.log(`[Regenerate] Saving clip ${clipIndex} to database`);
-        autoSave("prompts", { clips: updatedClips, clipPrompts: updatedClipPrompts });
-
-        toast({
-          title: "Clip Regenerated",
-          description: `Clip ${clipIndex} has been regenerated with a new image`,
-        });
+        // Unlike autoSave (fire-and-forget), we MUST await this to ensure clips are saved
+        console.log(`[Regenerate] Saving clip ${clipIndex} to database (awaiting completion)...`);
+        try {
+          await upsertProject({
+            id: projectId,
+            clips: updatedClips,
+            clipPrompts: updatedClipPrompts,
+            currentStep: "prompts",
+          });
+          console.log(`[Regenerate] Clip ${clipIndex} saved to database successfully`);
+          toast({
+            title: "Clip Regenerated & Saved",
+            description: `Clip ${clipIndex} has been regenerated and saved`,
+          });
+        } catch (saveError) {
+          console.error(`[Regenerate] FAILED to save clip ${clipIndex} to database:`, saveError);
+          toast({
+            title: "Warning: Clip Not Saved",
+            description: "Clip regenerated but failed to save. Please try again or manually save.",
+            variant: "destructive",
+          });
+        }
       } else {
         toast({
           title: "Regeneration Failed",

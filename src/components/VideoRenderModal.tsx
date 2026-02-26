@@ -215,6 +215,15 @@ export function VideoRenderModal({
       description: `${clipInfo}${imageUrls.length} images`,
     });
 
+    // CRITICAL: Log clip URLs so we can verify correct clips are being rendered
+    if (introClips && introClips.length > 0) {
+      console.log('[VideoRenderModal] ===== CLIPS BEING RENDERED =====');
+      introClips.forEach((clip, i) => {
+        console.log(`[VideoRenderModal] Clip ${i}: ${clip.url.substring(0, 80)}...`);
+      });
+      console.log('[VideoRenderModal] =====================================');
+    }
+
     let audioUrlToUse = actualAudioUrl;
 
     // Only recombine if explicitly needed (segmentsNeedRecombine flag)
