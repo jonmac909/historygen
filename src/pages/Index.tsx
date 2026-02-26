@@ -692,16 +692,13 @@ const Index = () => {
       projectData.smokeEmbersVideoUrl = smokeEmbersVideoUrl;
     }
 
-    // Video clips - handle explicit deletions from overrides
+    // Video clips - ONLY save when explicitly provided in overrides
+    // This prevents stale closure state from overwriting regenerated clips
     if (overrides?.clipPrompts !== undefined) {
       projectData.clipPrompts = overrides.clipPrompts;
-    } else if (clipPrompts && clipPrompts.length > 0) {
-      projectData.clipPrompts = clipPrompts;
     }
     if (overrides?.clips !== undefined) {
       projectData.clips = overrides.clips;
-    } else if (generatedClips && generatedClips.length > 0) {
-      projectData.clips = generatedClips;
     }
 
     // Thumbnails - CRITICAL: only save if explicitly provided in overrides or has actual content
