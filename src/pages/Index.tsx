@@ -1964,6 +1964,10 @@ const Index = () => {
         const updatedClips = generatedClips.map(c => c.index === clipIndex ? newClip : c);
         setGeneratedClips(updatedClips);
 
+        // Clear existing video URLs since clips changed - user needs to re-render
+        setVideoUrl(undefined);
+        setSmokeEmbersVideoUrl(undefined);
+
         // Also update clipPrompts state with the new image URL
         const updatedClipPrompts = clipPrompts.map(p =>
           p.index === clipIndex ? { ...p, imageUrl: newImageUrl } : p
@@ -3892,7 +3896,10 @@ const Index = () => {
           }}
           onDeleteVideoClips={() => {
             setGeneratedClips([]);
-            autoSave("complete", { clips: [] });
+            // Clear video URLs since clips changed - user needs to re-render
+            setVideoUrl(undefined);
+            setSmokeEmbersVideoUrl(undefined);
+            autoSave("complete", { clips: [], videoUrl: undefined, smokeEmbersVideoUrl: undefined });
           }}
           onDeleteRender={() => {
             setVideoUrl(undefined);
