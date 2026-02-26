@@ -78,11 +78,10 @@ async function startVideoTask(
   resolution: string = CLIP_RESOLUTION
 ): Promise<string> {
   // IMPORTANT: For I2V (image-to-video), use POSITIVE motion prompts
-  // Characters should remain in dignified, stationary poses - only environmental movement
-  // NO movement between characters - they stay where they are
-  const motionPrompt = `Cinematic gentle animation. Characters remain stationary in dignified formal poses, maintaining their exact positions. Only subtle environmental movement: floating dust motes, flickering candlelight, gentle fabric swaying in breeze, leaves rustling, smoke wisps drifting. Slow camera drift. Peaceful, museum-quality painting coming to life. Characters do NOT move toward each other.`;
+  // Natural character movement allowed, but characters maintain respectful distance
+  const motionPrompt = `Cinematic gentle animation. Natural character movement: gentle breathing, small hand gestures, head turns, looking around, subtle expressions. Characters maintain their respectful distance from each other. Environmental movement: floating dust motes, flickering candlelight, fabric swaying, leaves rustling, smoke wisps. Slow camera drift. Peaceful, dreamlike painting coming to life.`;
   // Negative prompt (may be ignored by some models)
-  const negativePrompt = `kissing, romantic embrace, characters moving toward each other, leaning in, violence, fighting, blood, gore, nudity, modern elements, text, watermark, sudden movements`;
+  const negativePrompt = `kissing, lips touching, romantic embrace, leaning in to kiss, faces moving together, violence, fighting, blood, gore, nudity, modern elements, text, watermark`;
   console.log(`[I2V] Starting task for clip ${clipIndex + 1} with cinematic motion prompt`);
   console.log(`[I2V] Original prompt (not used): ${prompt.substring(0, 60)}...`);
 
