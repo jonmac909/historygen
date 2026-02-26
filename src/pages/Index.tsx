@@ -1996,14 +1996,22 @@ const Index = () => {
         // CRITICAL: Persist to database so regenerated clip survives page refresh
         // Unlike autoSave (fire-and-forget), we MUST await this to ensure clips are saved
         console.log(`[Regenerate] Saving clip ${clipIndex} to database (awaiting completion)...`);
+        console.log(`[Regenerate] Clips being saved:`, updatedClips.map(c => ({
+          index: c.index,
+          url: c.videoUrl?.substring(0, 80)
+        })));
         try {
-          await upsertProject({
+          const savedProject = await upsertProject({
             id: projectId,
             clips: updatedClips,
             clipPrompts: updatedClipPrompts,
             currentStep: "prompts",
           });
           console.log(`[Regenerate] Clip ${clipIndex} saved to database successfully`);
+          console.log(`[Regenerate] Clips returned from DB:`, savedProject.clips?.map(c => ({
+            index: c.index,
+            url: c.videoUrl?.substring(0, 80)
+          })));
           toast({
             title: "Clip Regenerated & Saved",
             description: `Clip ${clipIndex} has been regenerated and saved`,
@@ -4743,6 +4751,7 @@ const Index = () => {
         })) : undefined}
         onRefreshData={async () => {
           // Fetch latest clips and images from database before rendering
+          console.log('[Render] ===== FETCHING FRESH DATA FROM DATABASE =====');
           const freshProject = await getProject(projectId);
           if (!freshProject) {
             console.warn('[Render] Could not fetch fresh project data');
@@ -4760,6 +4769,13 @@ const Index = () => {
           const freshClips = freshProject.clips || [];
           const freshImages = freshProject.imageUrls || [];
           const clipCount = freshClips.length;
+
+          // Log EACH clip URL from database
+          console.log('[Render] CLIP URLs FROM DATABASE:');
+          freshClips.forEach((c, i) => {
+            console.log(`[Render] Clip ${c.index}: ${c.videoUrl?.substring(0, 100)}...`);
+          });
+          console.log('[Render] ==========================================');
 
           console.log('[Render] Fetched fresh data from DB:', {
             clips: freshClips.length,
