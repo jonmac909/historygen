@@ -434,9 +434,19 @@ export function VideoRenderModal({
   };
 
   const handleConfirm = () => {
-    if (effectsVideoUrl) {
-      onConfirm(basicVideoUrl || '', effectsVideoUrl);
+    if (effectsVideoUrl || basicVideoUrl) {
+      onConfirm(basicVideoUrl || '', effectsVideoUrl || '');
     }
+  };
+
+  // Exit handler - save videos if they exist before closing
+  const handleExit = () => {
+    // If videos were rendered, save them before exiting
+    if (currentPass === 'complete' && (effectsVideoUrl || basicVideoUrl)) {
+      console.log('[VideoRenderModal] Saving videos on exit');
+      onConfirm(basicVideoUrl || '', effectsVideoUrl || '');
+    }
+    onCancel();
   };
 
   const getStageLabel = (stage: string): string => {
@@ -654,7 +664,7 @@ export function VideoRenderModal({
           </div>
 
           {/* Right side: Exit + Continue */}
-          <Button variant="outline" onClick={onCancel} disabled={isRendering}>
+          <Button variant="outline" onClick={handleExit} disabled={isRendering}>
             <X className="w-4 h-4 mr-2" />
             Exit
           </Button>
