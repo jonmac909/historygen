@@ -4746,6 +4746,24 @@ const Index = () => {
         autoRender={settings.fullAutomation}
         segmentsNeedRecombine={segmentsNeedRecombine}
         onRecombineAudio={handleRecombineForRender}
+        onRefreshData={async () => {
+          // Fetch latest clips and images from database before rendering
+          console.log('[Render] Fetching latest data from database...');
+          const project = await getProject(projectId);
+          if (!project) {
+            throw new Error('Project not found');
+          }
+          const clips = (project.clips || []).map(c => ({
+            index: c.index,
+            url: c.videoUrl,
+            startSeconds: c.startSeconds,
+            endSeconds: c.endSeconds
+          }));
+          // Skip images used for clips
+          const images = (project.imageUrls || []).slice(clips.length);
+          console.log('[Render] Fresh from DB:', { clips: clips.length, images: images.length });
+          return { clips, images };
+        }}
         onConfirm={handleRenderConfirm}
         onCancel={handleCancelRequest}
         onBack={handleBackToImages}

@@ -34,6 +34,7 @@ interface VideoRenderModalProps {
   autoRender?: boolean;  // Auto-start rendering when modal opens (for full automation mode)
   segmentsNeedRecombine?: boolean;  // Whether audio segments need to be recombined
   onRecombineAudio?: () => Promise<string>;  // Callback to recombine audio, returns new URL
+  onRefreshData?: () => Promise<{ clips: IntroClip[]; images: string[] }>;  // Fetch latest clips/images from DB before render
   onConfirm: (basicVideoUrl: string, effectsVideoUrl: string) => void;
   onCancel: () => void;
   onBack?: () => void;
@@ -75,6 +76,7 @@ export function VideoRenderModal({
   autoRender = false,
   segmentsNeedRecombine = false,
   onRecombineAudio,
+  onRefreshData,
   onConfirm,
   onCancel,
   onBack,
@@ -179,10 +181,29 @@ export function VideoRenderModal({
 
   // Render both passes sequentially
   const handleRenderBothPasses = async () => {
+    // CRITICAL: Refresh data from database before rendering to get latest clips/images
+    let clipsToRender = introClips;
+    let imagesToRender = imageUrls;
+
+    if (onRefreshData) {
+      try {
+        console.log('[Render] Refreshing clips and images from database...');
+        const freshData = await onRefreshData();
+        clipsToRender = freshData.clips;
+        imagesToRender = freshData.images;
+        console.log('[Render] Got fresh data:', {
+          clips: clipsToRender?.length || 0,
+          images: imagesToRender?.length || 0
+        });
+      } catch (err) {
+        console.error('[Render] Failed to refresh data, using props:', err);
+      }
+    }
+
     // Log all render inputs for debugging
     console.log('[Render] Starting render with:', {
-      introClips: introClips?.length || 0,
-      images: imageUrls?.length || 0,
+      introClips: clipsToRender?.length || 0,
+      images: imagesToRender?.length || 0,
       audioUrl: actualAudioUrl?.substring(0, 50) + '...',
       hasRecombineCallback: !!onRecombineAudio
     });
@@ -197,7 +218,7 @@ export function VideoRenderModal({
       return;
     }
 
-    if (!imageUrls || imageUrls.length === 0) {
+    if (!imagesToRender || imagesToRender.length === 0) {
       toast({
         title: "Missing Images",
         description: "No images found. Please go back and generate images.",
@@ -207,18 +228,18 @@ export function VideoRenderModal({
     }
 
     // Info toast about what will be rendered
-    const clipInfo = introClips && introClips.length > 0
-      ? `${introClips.length} intro clips + `
+    const clipInfo = clipsToRender && clipsToRender.length > 0
+      ? `${clipsToRender.length} intro clips + `
       : '';
     toast({
       title: "Starting Render",
-      description: `${clipInfo}${imageUrls.length} images`,
+      description: `${clipInfo}${imagesToRender.length} images`,
     });
 
     // CRITICAL: Log clip URLs so we can verify correct clips are being rendered
-    if (introClips && introClips.length > 0) {
+    if (clipsToRender && clipsToRender.length > 0) {
       console.log('[VideoRenderModal] ===== CLIPS BEING RENDERED =====');
-      introClips.forEach((clip, i) => {
+      clipsToRender.forEach((clip, i) => {
         console.log(`[VideoRenderModal] Clip ${i}: ${clip.url.substring(0, 80)}...`);
       });
       console.log('[VideoRenderModal] =====================================');
@@ -270,7 +291,7 @@ export function VideoRenderModal({
       const pass1Result = await renderVideoStreaming(
         projectId,
         audioUrlToUse,
-        imageUrls,
+        imagesToRender,
         imageTimings,
         srtContent,
         projectTitle || 'HistoryGenAI Export',
@@ -293,7 +314,7 @@ export function VideoRenderModal({
         },
         { embers: false, smoke_embers: false },  // No effects for pass 1
         true,  // Use CPU rendering
-        introClips  // Include intro video clips
+        clipsToRender  // Include intro video clips (fresh from DB)
       );
 
       if (!pass1Result.success || !pass1Result.videoUrl) {
@@ -309,7 +330,7 @@ export function VideoRenderModal({
       const pass2Result = await renderVideoStreaming(
         projectId,
         audioUrlToUse,
-        imageUrls,
+        imagesToRender,
         imageTimings,
         srtContent,
         projectTitle || 'HistoryGenAI Export',
@@ -332,7 +353,7 @@ export function VideoRenderModal({
         },
         { embers: false, smoke_embers: true },  // Smoke + embers for pass 2
         true,  // Use CPU rendering
-        introClips  // Include intro video clips
+        clipsToRender  // Include intro video clips (fresh from DB)
       );
 
       if (pass2Result.success && pass2Result.videoUrl) {
