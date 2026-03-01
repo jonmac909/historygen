@@ -524,63 +524,64 @@ const Index = () => {
   }, [viewState]);
 
   // Full Automation: Auto-confirm script when ready
+  // CRITICAL: Require projectId to prevent stale data from triggering auto-confirm
   useEffect(() => {
-    if (settings.fullAutomation && viewState === "review-script" && pendingScript) {
+    if (settings.fullAutomation && projectId && viewState === "review-script" && pendingScript) {
       console.log("[Full Automation] Auto-confirming script...");
       const timer = setTimeout(() => {
         handleScriptConfirm(pendingScript);
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [settings.fullAutomation, viewState, pendingScript]);
+  }, [settings.fullAutomation, projectId, viewState, pendingScript]);
 
   // Full Automation: Auto-confirm audio when ready
   useEffect(() => {
-    if (settings.fullAutomation && viewState === "review-audio" && pendingAudioUrl) {
+    if (settings.fullAutomation && projectId && viewState === "review-audio" && pendingAudioUrl) {
       console.log("[Full Automation] Auto-confirming audio...");
       const timer = setTimeout(() => {
         handleAudioConfirm();
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [settings.fullAutomation, viewState, pendingAudioUrl]);
+  }, [settings.fullAutomation, projectId, viewState, pendingAudioUrl]);
 
   // Full Automation: Auto-confirm captions when ready
   useEffect(() => {
-    if (settings.fullAutomation && viewState === "review-captions" && pendingSrtContent) {
+    if (settings.fullAutomation && projectId && viewState === "review-captions" && pendingSrtContent) {
       console.log("[Full Automation] Auto-confirming captions...");
       const timer = setTimeout(() => {
         handleCaptionsConfirm(pendingSrtContent);
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [settings.fullAutomation, viewState, pendingSrtContent]);
+  }, [settings.fullAutomation, projectId, viewState, pendingSrtContent]);
 
   // Full Automation: Auto-confirm prompts when ready
   useEffect(() => {
-    if (settings.fullAutomation && viewState === "review-prompts" && imagePrompts.length > 0) {
+    if (settings.fullAutomation && projectId && viewState === "review-prompts" && imagePrompts.length > 0) {
       console.log("[Full Automation] Auto-confirming image prompts...");
       const timer = setTimeout(() => {
         handlePromptsConfirm(imagePrompts, getSelectedImageStyle());
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [settings.fullAutomation, viewState, imagePrompts]);
+  }, [settings.fullAutomation, projectId, viewState, imagePrompts]);
 
   // Full Automation: Auto-confirm images when ready
   useEffect(() => {
-    if (settings.fullAutomation && viewState === "review-images" && pendingImages.length > 0) {
+    if (settings.fullAutomation && projectId && viewState === "review-images" && pendingImages.length > 0) {
       console.log("[Full Automation] Auto-confirming images...");
       const timer = setTimeout(() => {
         handleImagesConfirm();
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [settings.fullAutomation, viewState, pendingImages]);
+  }, [settings.fullAutomation, projectId, viewState, pendingImages]);
 
   // Full Automation: Auto-confirm video clip prompts when ready
   useEffect(() => {
-    if (settings.fullAutomation && viewState === "review-clip-prompts" && clipPrompts.length > 0) {
+    if (settings.fullAutomation && projectId && viewState === "review-clip-prompts" && clipPrompts.length > 0) {
       console.log("[Full Automation] Auto-confirming clip prompts...");
       const timer = setTimeout(() => {
         // Pass clip prompts with the selected image style (Dutch Golden Age by default)
@@ -588,18 +589,18 @@ const Index = () => {
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [settings.fullAutomation, viewState, clipPrompts]);
+  }, [settings.fullAutomation, projectId, viewState, clipPrompts]);
 
   // Full Automation: Auto-confirm video clips when ready
   useEffect(() => {
-    if (settings.fullAutomation && viewState === "review-clips" && generatedClips.length > 0) {
+    if (settings.fullAutomation && projectId && viewState === "review-clips" && generatedClips.length > 0) {
       console.log("[Full Automation] Auto-confirming clips...");
       const timer = setTimeout(() => {
         handleClipsConfirm();
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [settings.fullAutomation, viewState, generatedClips]);
+  }, [settings.fullAutomation, projectId, viewState, generatedClips]);
 
   // Auto-save helper - uses unified project store (upsert by id)
   // Fire-and-forget async to avoid blocking UI
