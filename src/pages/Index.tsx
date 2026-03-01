@@ -1442,19 +1442,23 @@ const Index = () => {
 
   // Step 5: After prompts reviewed/edited, generate images
   // generateOnlyNew: true = only generate images for new prompts (keep existing), false = regenerate all
-  const handlePromptsConfirm = async (editedPrompts: ImagePromptWithTiming[], editedStylePrompt: string, _topic?: string, generateOnlyNew: boolean = false) => {
-    const existingImageCount = pendingImages.length;
+  const handlePromptsConfirm = async (editedPrompts: ImagePromptWithTiming[], editedStylePrompt: string, _topic?: string, generateOnlyNew: boolean = false, existingImages?: string[]) => {
+    // CRITICAL: Use passed-in existingImages if provided, otherwise check current state
+    // This prevents stale closure data from affecting image generation
+    const currentImages = existingImages ?? pendingImages;
+    const existingImageCount = currentImages.length;
 
     // Determine which prompts to generate images for
     let promptsToGenerate: ImagePromptWithTiming[];
     let isPartialGeneration: boolean;
 
-    if (generateOnlyNew && existingImageCount > 0 && existingImageCount < editedPrompts.length) {
+    // Only do partial generation if explicitly requested AND we have verified existing images
+    if (generateOnlyNew && existingImages && existingImageCount > 0 && existingImageCount < editedPrompts.length) {
       // Generate only NEW prompts (keep existing images)
       promptsToGenerate = editedPrompts.slice(existingImageCount);
       isPartialGeneration = true;
     } else {
-      // Regenerate ALL images
+      // Regenerate ALL images (default for new projects)
       promptsToGenerate = editedPrompts;
       isPartialGeneration = false;
     }
@@ -1549,7 +1553,7 @@ const Index = () => {
 
       // If partial generation, append new images to existing ones
       const allImages = isPartialGeneration
-        ? [...pendingImages, ...(imageResult.images || [])]
+        ? [...currentImages, ...(imageResult.images || [])]
         : (imageResult.images || []);
 
       console.log(`[handlePromptsConfirm] Final image count: ${allImages.length} (${isPartialGeneration ? 'appended' : 'fresh'})`);
