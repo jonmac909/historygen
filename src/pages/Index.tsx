@@ -1488,8 +1488,8 @@ const Index = () => {
         (completed, total) => {
           updateStep("images", "active", `${completed}/${total}`);
         },
-        projectId,
-        settings.topic  // Era/period constraint (subjectFocus used only in prompt creation, not image gen)
+        projectId
+        // topic removed - prompts already contain era info, no backend overrides
       );
 
       if (!imageResult.success) {
@@ -1693,8 +1693,8 @@ const Index = () => {
           const percent = Math.round((completed / total) * 100);
           updateStep("images", "active", `${completed}/${total} images (${percent}%)`);
         },
-        projectId,
-        settings.topic  // Era/period constraint (subjectFocus used only in prompt creation)
+        projectId
+        // topic removed - prompts already contain era info
       );
 
       if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -1918,8 +1918,8 @@ const Index = () => {
           (completed, total, message) => {
             console.log(`Regenerating image: ${message}`);
           },
-          projectId,
-          settings.topic  // Era/period constraint (subjectFocus used only in prompt creation)
+          projectId
+          // topic removed - prompts already contain era info
         );
 
         if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -2245,8 +2245,8 @@ const Index = () => {
         settings.quality,
         "16:9",
         () => {}, // No progress callback needed for single image
-        projectId,
-        settings.topic  // Era/period constraint (subjectFocus used only in prompt creation)
+        projectId
+        // topic removed - prompts already contain era info
       );
 
       if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -2346,8 +2346,8 @@ const Index = () => {
               settings.quality,
               "16:9",
               () => {},
-              projectId,
-              settings.topic  // Era/period constraint (subjectFocus used only in prompt creation)
+              projectId
+              // topic removed - prompts already contain era info
             );
 
             if (imageResult.success && imageResult.images && imageResult.images.length > 0) {

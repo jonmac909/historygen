@@ -1345,9 +1345,8 @@ export async function generateImages(
   prompts: string[] | ImagePromptWithTiming[],
   quality: string,
   aspectRatio: string = "16:9",
-  projectId?: string,
-  topic?: string  // Era/period constraint (e.g., "Regency England 1810s")
-  // subjectFocus removed - let prompts control who appears in images
+  projectId?: string
+  // topic and subjectFocus removed - prompts control everything, no backend overrides
 ): Promise<ImageGenerationResult> {
   const renderUrl = import.meta.env.VITE_RENDER_API_URL;
 
@@ -1364,7 +1363,7 @@ export async function generateImages(
       headers: withRenderAuth({
         'Content-Type': 'application/json',
       }),
-      body: JSON.stringify({ prompts, quality, aspectRatio, projectId, topic })
+      body: JSON.stringify({ prompts, quality, aspectRatio, projectId })
     });
 
     if (!response.ok) {
@@ -1386,9 +1385,8 @@ export async function generateImagesStreaming(
   quality: string,
   aspectRatio: string = "16:9",
   onProgress: (completed: number, total: number, message: string) => void,
-  projectId?: string,
-  topic?: string  // Era/period constraint (e.g., "Regency England 1810s")
-  // subjectFocus removed - let prompts control who appears in images
+  projectId?: string
+  // topic and subjectFocus removed - prompts contain all era/subject info, no backend overrides
 ): Promise<ImageGenerationResult> {
   const renderUrl = import.meta.env.VITE_RENDER_API_URL;
 
@@ -1404,7 +1402,7 @@ export async function generateImagesStreaming(
     headers: withRenderAuth({
       'Content-Type': 'application/json',
     }),
-    body: JSON.stringify({ prompts, quality, aspectRatio, stream: true, projectId, topic })
+    body: JSON.stringify({ prompts, quality, aspectRatio, stream: true, projectId })
   });
 
   if (!response.ok) {
