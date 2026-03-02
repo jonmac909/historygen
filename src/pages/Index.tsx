@@ -1489,8 +1489,7 @@ const Index = () => {
           updateStep("images", "active", `${completed}/${total}`);
         },
         projectId,
-        settings.topic,  // Era/period constraint
-        settings.subjectFocus  // Who the story focuses on
+        settings.topic  // Era/period constraint (subjectFocus used only in prompt creation, not image gen)
       );
 
       if (!imageResult.success) {
@@ -1695,8 +1694,7 @@ const Index = () => {
           updateStep("images", "active", `${completed}/${total} images (${percent}%)`);
         },
         projectId,
-        settings.topic,  // Era/period constraint
-        settings.subjectFocus  // Who the story focuses on
+        settings.topic  // Era/period constraint (subjectFocus used only in prompt creation)
       );
 
       if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -1921,8 +1919,7 @@ const Index = () => {
             console.log(`Regenerating image: ${message}`);
           },
           projectId,
-          settings.topic,  // Era/period constraint
-          settings.subjectFocus  // Who the story focuses on
+          settings.topic  // Era/period constraint (subjectFocus used only in prompt creation)
         );
 
         if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -2249,8 +2246,7 @@ const Index = () => {
         "16:9",
         () => {}, // No progress callback needed for single image
         projectId,
-        settings.topic,  // Era/period constraint
-        settings.subjectFocus  // Who the story focuses on
+        settings.topic  // Era/period constraint (subjectFocus used only in prompt creation)
       );
 
       if (!imageResult.success || !imageResult.images || imageResult.images.length === 0) {
@@ -2351,8 +2347,7 @@ const Index = () => {
               "16:9",
               () => {},
               projectId,
-              settings.topic,  // Era/period constraint
-              settings.subjectFocus  // Who the story focuses on
+              settings.topic  // Era/period constraint (subjectFocus used only in prompt creation)
             );
 
             if (imageResult.success && imageResult.images && imageResult.images.length > 0) {
