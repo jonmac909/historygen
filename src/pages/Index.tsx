@@ -272,7 +272,8 @@ const Index = () => {
   const [clipPrompts, setClipPrompts] = useState<ClipPrompt[]>([]);
   const [generatedClips, setGeneratedClips] = useState<GeneratedClip[]>([]);
   const [isRegeneratingClipPrompts, setIsRegeneratingClipPrompts] = useState(false);
-  const [regeneratingClipIndex, setRegeneratingClipIndex] = useState<number | undefined>();
+  const [regeneratingClipIndices, setRegeneratingClipIndices] = useState<Set<number>>(new Set());
+  const [selectedClipsForRegen, setSelectedClipsForRegen] = useState<Set<number>>(new Set());
   const [enableVideoClips, setEnableVideoClips] = useState(false); // Toggle for video clips feature
   const [showAutoPosterModal, setShowAutoPosterModal] = useState(false);
   const [entryMode, setEntryMode] = useState<EntryMode>("script");
@@ -1864,7 +1865,7 @@ const Index = () => {
 
   // Regenerate a single video clip (uses existing image from pendingImages if available)
   const handleRegenerateVideoClip = async (clipIndex: number, editedPrompt?: string) => {
-    setRegeneratingClipIndex(clipIndex);
+    setRegeneratingClipIndices(prev => new Set(prev).add(clipIndex));
     try {
       // Find the clip prompt for this index
       const clipPrompt = clipPrompts.find(p => p.index === clipIndex);
@@ -2018,7 +2019,102 @@ const Index = () => {
         variant: "destructive",
       });
     } finally {
-      setRegeneratingClipIndex(undefined);
+      setRegeneratingClipIndices(prev => {
+        const next = new Set(prev);
+        next.delete(clipIndex);
+        return next;
+      });
+    }
+  };
+
+  // Regenerate multiple video clips in parallel
+  const handleRegenerateMultipleClips = async (clipIndices: number[]) => {
+    if (clipIndices.length === 0) return;
+
+    // Mark all selected as regenerating
+    setRegeneratingClipIndices(new Set(clipIndices));
+    setSelectedClipsForRegen(new Set());
+
+    try {
+      // Build array of clip prompts with images
+      const clipsToRegenerate: ClipPrompt[] = clipIndices.map(idx => {
+        const prompt = clipPrompts.find(p => p.index === idx);
+        if (!prompt) throw new Error(`Could not find prompt for clip ${idx}`);
+
+        // Use existing image from pendingImages (clipIndex is 1-based, array is 0-indexed)
+        const existingImage = pendingImages[idx - 1];
+        return {
+          ...prompt,
+          imageUrl: existingImage || prompt.imageUrl,
+        };
+      });
+
+      // Generate all clips in parallel (backend handles concurrency up to 12)
+      const clipsResult = await generateVideoClipsStreaming(
+        projectId,
+        clipsToRegenerate,
+        (completed, total, message, latestClip) => {
+          console.log(`[MultiRegen] ${completed}/${total}: ${message}`);
+          if (latestClip) {
+            // Update individual clip as it completes
+            setGeneratedClips(prev => prev.map(c =>
+              c.index === latestClip.index ? latestClip : c
+            ));
+            // Remove from regenerating set
+            setRegeneratingClipIndices(prev => {
+              const next = new Set(prev);
+              next.delete(latestClip.index);
+              return next;
+            });
+          }
+        }
+      );
+
+      if (clipsResult.success && clipsResult.clips && clipsResult.clips.length > 0) {
+        // Final update with all clips
+        const newClipsMap = new Map(clipsResult.clips.map(c => [c.index, c]));
+        const updatedClips = generatedClips.map(c => newClipsMap.get(c.index) || c);
+        setGeneratedClips(updatedClips);
+
+        // Clear video URLs since clips changed
+        setVideoUrl(undefined);
+        setSmokeEmbersVideoUrl(undefined);
+
+        // Save to database
+        try {
+          await upsertProject({
+            id: projectId,
+            clips: updatedClips,
+            currentStep: "prompts",
+          });
+          toast({
+            title: "Clips Regenerated",
+            description: `${clipsResult.clips.length} clips regenerated successfully`,
+          });
+        } catch (saveError) {
+          console.error('[MultiRegen] Failed to save:', saveError);
+          toast({
+            title: "Warning",
+            description: "Clips regenerated but failed to save to database",
+            variant: "destructive",
+          });
+        }
+      } else {
+        toast({
+          title: "Regeneration Failed",
+          description: clipsResult.error || "Failed to regenerate clips",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('[MultiRegen] Error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to regenerate clips",
+        variant: "destructive",
+      });
+    } finally {
+      setRegeneratingClipIndices(new Set());
     }
   };
 
@@ -4589,8 +4685,10 @@ const Index = () => {
         onCancel={handleCancelRequest}
         onBack={() => setViewState("review-clip-prompts")}
         onRegenerate={handleRegenerateVideoClip}
-        isRegenerating={regeneratingClipIndex !== undefined}
-        regeneratingIndex={regeneratingClipIndex}
+        onRegenerateMultiple={handleRegenerateMultipleClips}
+        regeneratingIndices={regeneratingClipIndices}
+        selectedIndices={selectedClipsForRegen}
+        onSelectionChange={setSelectedClipsForRegen}
       />
 
       {/* Image Prompts Preview Modal */}

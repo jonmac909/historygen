@@ -21,8 +21,10 @@ interface VideoClipsPreviewModalProps {
   onCancel: () => void;
   onBack?: () => void;
   onRegenerate?: (clipIndex: number, editedPrompt?: string) => void;
-  isRegenerating?: boolean;
-  regeneratingIndex?: number;
+  onRegenerateMultiple?: (clipIndices: number[]) => void;
+  regeneratingIndices?: Set<number>;
+  selectedIndices?: Set<number>;
+  onSelectionChange?: (indices: Set<number>) => void;
 }
 
 function formatTime(seconds: number): string {
@@ -37,9 +39,12 @@ interface ClipCardProps {
   onRegenerate?: (editedPrompt?: string) => void;
   isRegenerating?: boolean;
   onOpenFullscreen?: () => void;
+  isSelected?: boolean;
+  onToggleSelect?: () => void;
+  showSelection?: boolean;
 }
 
-function ClipCard({ clip, prompt, onRegenerate, isRegenerating, onOpenFullscreen }: ClipCardProps) {
+function ClipCard({ clip, prompt, onRegenerate, isRegenerating, onOpenFullscreen, isSelected, onToggleSelect, showSelection }: ClipCardProps) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [hasError, setHasError] = useState(false);
@@ -83,8 +88,24 @@ function ClipCard({ clip, prompt, onRegenerate, isRegenerating, onOpenFullscreen
   };
 
   return (
-    <div className="border rounded-lg overflow-hidden bg-card">
+    <div className={`border rounded-lg overflow-hidden bg-card ${isSelected ? 'ring-2 ring-primary' : ''}`}>
       <div className="relative aspect-video bg-black group">
+        {/* Selection checkbox */}
+        {showSelection && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect?.();
+            }}
+            className={`absolute top-2 left-2 z-10 w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+              isSelected
+                ? 'bg-primary border-primary text-primary-foreground'
+                : 'bg-black/50 border-white/70 hover:border-white'
+            }`}
+          >
+            {isSelected && <Check className="w-4 h-4" />}
+          </button>
+        )}
         {hasError ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
             <AlertTriangle className="w-8 h-8 mb-2" />
@@ -222,9 +243,12 @@ export function VideoClipsPreviewModal({
   onCancel,
   onBack,
   onRegenerate,
-  isRegenerating = false,
-  regeneratingIndex
+  onRegenerateMultiple,
+  regeneratingIndices = new Set(),
+  selectedIndices = new Set(),
+  onSelectionChange,
 }: VideoClipsPreviewModalProps) {
+  const isRegenerating = regeneratingIndices.size > 0;
   const [isPlayingAll, setIsPlayingAll] = useState(false);
   const [fullscreenClip, setFullscreenClip] = useState<GeneratedClip | null>(null);
   const fullscreenVideoRef = useRef<HTMLVideoElement>(null);

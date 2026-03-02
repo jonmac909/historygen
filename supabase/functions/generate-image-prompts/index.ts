@@ -386,18 +386,18 @@ ${subject ? `
 === SUBJECT FOCUS ===
 The main subject/character of this story is: ${subject}
 
-CRITICAL: When including this character, ALWAYS use their FULL NAME "${subject}" in the scene description.
-- CORRECT: "${subject} seated at a writing desk, quill in hand..."
-- WRONG: "A young woman seated at a writing desk..." or "Jane seated at..."
+WHEN TO INCLUDE ${subject.toUpperCase()}:
+- ONLY when narration describes their specific actions ("${subject} wrote...", "${subject} walked...")
+- ONLY in character/dialogue scenes, NOT in establishing/landscape shots
+- When included, use FULL NAME "${subject}" - never generic terms
 
-GUIDELINES FOR INCLUDING ${subject.toUpperCase()}:
-- Include ${subject} BY NAME in scenes where the narration discusses their actions, thoughts, feelings, or experiences
-- Include them in interior scenes showing daily life (writing, reading, conversing, contemplating)
-- Do NOT include them in pure landscape/establishing shots unless the narration specifically mentions them there
-- Do NOT force them into every image - some scenes should be atmospheric or show other characters
-- When included, vary the composition: sometimes prominent, sometimes in the background, sometimes in profile
-- Show them naturally engaged in activities, not always posed or looking at the viewer
-- If the narration discusses what ${subject} is thinking or feeling, show a scene that reflects that emotion
+WHEN TO EXCLUDE ${subject.toUpperCase()} (NO PEOPLE AT ALL):
+- Opening/establishing shots showing locations
+- Landscape or architectural scenes
+- Scene transitions or mood-setting segments
+- Any segment that describes a PLACE rather than a PERSON
+
+IF IN DOUBT: Default to NO PEOPLE for the first 2-3 prompts to establish the setting.
 ` : ''}
 YOUR TASK: Create visual scene descriptions inspired by the topic and mood of the narration.
 
@@ -431,12 +431,12 @@ DO NOT MIX: If you decide it's an establishing shot, there should be ZERO people
 
 RULES:
 1. READ the script context to identify the EXACT historical time period and location
-2. For each image segment, create a scene that illustrates the narration content
-3. ALL scenes MUST be set IN the historical period - show events as they happened
-4. For war/conflict topics: show battlefields, armies, fortifications, commanders leading troops, military camps - NOT maps, museums, or artifacts
-5. For medical topics: show period-appropriate healers, apothecaries, patients - NOT modern research
-6. For abstract concepts: show period-appropriate scenes with settings and people from that era
-7. Include specific details: setting, lighting, objects, people, actions, atmosphere
+2. FIRST DECIDE: Is this segment ESTABLISHING (location/setting) or CHARACTER (action/dialogue)?
+3. For ESTABLISHING segments: ONLY describe landscape, architecture, or interiors. ZERO people, figures, or silhouettes.
+4. For CHARACTER segments: Include people engaged in period-appropriate activities
+5. ALL scenes MUST be set IN the historical period - show events as they happened
+6. For war/conflict topics: show battlefields, fortifications, camps - only include soldiers if narration describes specific action
+7. Include specific visual details: setting, lighting, atmosphere, textures, colors
 8. 50-100 words per description
 9. Do NOT include any text, titles, or words in the image
 
