@@ -1452,8 +1452,8 @@ const Index = () => {
     let promptsToGenerate: ImagePromptWithTiming[];
     let isPartialGeneration: boolean;
 
-    // Only do partial generation if explicitly requested AND we have verified existing images
-    if (generateOnlyNew && existingImages && existingImageCount > 0 && existingImageCount < editedPrompts.length) {
+    // Only do partial generation if explicitly requested by user clicking "Generate X" button
+    if (generateOnlyNew && existingImageCount > 0 && existingImageCount < editedPrompts.length) {
       // Generate only NEW prompts (keep existing images)
       promptsToGenerate = editedPrompts.slice(existingImageCount);
       isPartialGeneration = true;
