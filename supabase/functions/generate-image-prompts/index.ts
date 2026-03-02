@@ -412,25 +412,29 @@ CONTENT SAFETY:
 STEP 1 - ANALYZE THE SCRIPT:
 Before generating any prompts, read the FULL script and identify:
 - MAIN CHARACTER(S): Who is this story about? (e.g., "Jane Austen", "Queen Victoria and Prince Albert")
+- If characters are GROUP-BASED (e.g., "Regency debutantes", "Victorian servants"), the "main character" scenes should show typical activities of that group (dancing couples, servants working, etc.)
 - SETTING: Where and when? (e.g., "Hampshire countryside, Regency England")
 - KEY LOCATIONS: Places mentioned (estates, ballrooms, London streets, etc.)
 
-STEP 2 - MANDATORY FIRST SHOT:
-IMAGE 1 MUST ALWAYS be an ESTABLISHING shot with NO PEOPLE:
-- Either ESTABLISHING_LANDSCAPE (rolling hills, countryside, coastline)
-- Or ESTABLISHING_BUILDING (manor house exterior, church, estate gates)
-- NEVER include people in the first image - it sets the scene
+STEP 2 - SHOT DISTRIBUTION (MUST FOLLOW):
+For a typical 12-image set, aim for:
+- 40-50% (5-6 images): MAIN CHARACTER shots - protagonist actions, couples, group activities
+- 10-20% (1-2 images): ESTABLISHING shots - landscapes, buildings (NO people)
+- 30-40% (4-5 images): LIFESTYLE shots - servants, crowds, secondary characters, atmosphere
 
-STEP 3 - SHOT TYPES (pick one for each subsequent image):
+IMAGE 1 = ALWAYS ESTABLISHING (landscape or building, NO people)
+Then distribute remaining shots to hit the percentages above.
 
-| SHOT TYPE | PEOPLE? | USE WHEN |
-|-----------|---------|----------|
-| ESTABLISHING_LANDSCAPE | NO | Location transitions, mood shots, nature scenes |
-| ESTABLISHING_BUILDING | NO | Introducing buildings, architecture, interiors |
-| MAIN_CHARACTER_FOCUS | 1 person | "She wrote...", "He gazed...", protagonist action |
-| MAIN_CHARACTERS_PLURAL | 2+ protagonists | "They walked...", "The couple...", joint scenes |
-| MULTI_CHARACTER_SECONDARY | Many people | Balls, parties, markets, battlefield crowds |
-| SECONDARY_CHARACTERS | Supporting cast | Servants, maids, soldiers (protagonist NOT shown) |
+STEP 3 - SHOT TYPES:
+
+| SHOT TYPE | PEOPLE? | DISTRIBUTION |
+|-----------|---------|--------------|
+| ESTABLISHING_LANDSCAPE | NO | Part of 10-20% establishing |
+| ESTABLISHING_BUILDING | NO | Part of 10-20% establishing |
+| MAIN_CHARACTER_FOCUS | 1 person | Part of 40-50% main character |
+| MAIN_CHARACTERS_PLURAL | 2+ protagonists | Part of 40-50% main character |
+| MULTI_CHARACTER_SECONDARY | Many people | Part of 30-40% lifestyle |
+| SECONDARY_CHARACTERS | Supporting cast | Part of 30-40% lifestyle |
 
 SHOT TYPE EXAMPLES:
 - ESTABLISHING_LANDSCAPE: "Sweeping view of Hampshire countryside, rolling green hills, stone walls, morning mist, church spire on horizon"
@@ -440,14 +444,22 @@ SHOT TYPE EXAMPLES:
 - MULTI_CHARACTER_SECONDARY: "Crowded Regency ballroom, couples waltzing, chandeliers glittering, musicians in gallery"
 - SECONDARY_CHARACTERS: "Household servants preparing breakfast in manor kitchen, copper pots on range"
 
+GROUP-BASED SUBJECTS (when no specific named character):
+If the subject is a GROUP (e.g., "Regency debutantes", "Victorian factory workers", "Medieval peasants"):
+- MAIN CHARACTER shots should show TYPICAL ACTIVITIES of that group
+- Example: For "Regency debutantes" → show dancing couples, ladies at tea, promenading in parks
+- Example: For "Victorian servants" → show maids cleaning, footmen serving, cooks in kitchen
+- These count toward the 40-50% main character quota
+
 RULES:
 1. IMAGE 1 = ALWAYS establishing (landscape or building), NO people
-2. Read narration to determine appropriate shot type for images 2+
-3. Use FULL CHARACTER NAMES when including main characters (never "young woman" or "a man")
-4. Vary shot types - don't use same type for consecutive images
+2. 40-50% of images must feature the main subject/character(s)
+3. Only 10-20% should be pure establishing shots (no people)
+4. Use FULL CHARACTER NAMES when including specific named characters
 5. For establishing shots: ZERO people, figures, or silhouettes
 6. 50-100 words per description
 7. NO text, titles, or words in the image
+8. Vary shot types - don't use same type for 3+ consecutive images
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
 
