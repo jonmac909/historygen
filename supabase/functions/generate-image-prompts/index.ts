@@ -23,6 +23,7 @@ interface ImagePromptRequest {
   modernKeywordFilter?: boolean; // Filter anachronistic keywords (default true)
   audioDuration?: number; // Optional audio duration in seconds
   topic?: string; // User-specified era/topic to anchor images (e.g., "Regency England 1810s")
+  subjectFocus?: string; // Who the story focuses on (e.g., "Jane Austen")
 }
 
 interface ImagePrompt {
@@ -287,11 +288,13 @@ serve(async (req) => {
   }
 
   try {
-    const { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic }: ImagePromptRequest = await req.json();
+    const { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus }: ImagePromptRequest = await req.json();
     // Default to true for backward compatibility (filter enabled by default)
     const shouldFilterKeywords = modernKeywordFilter !== false;
     // Topic is used to anchor images to a specific historical era
     const eraTopic = topic || '';
+    // Subject focus is who the story is about (used to intelligently include them in relevant scenes)
+    const subject = subjectFocus || '';
 
     if (!script || !srtContent) {
       return new Response(
@@ -378,6 +381,19 @@ For example, if the topic is "Regency Debutante Season", focus on TYPICAL DEBUTA
 
 The narration provides MOOD and TIMING, but the TOPIC provides the VISUAL CONTENT.
 Do NOT try to literally visualize abstract script passages - show BEAUTIFUL SCENES from the topic's world instead.
+` : ''}
+${subject ? `
+=== SUBJECT FOCUS ===
+The main subject/character of this story is: ${subject}
+
+GUIDELINES FOR INCLUDING ${subject.toUpperCase()}:
+- Include ${subject} in scenes where the narration discusses their actions, thoughts, feelings, or experiences
+- Include them in interior scenes showing daily life (writing, reading, conversing, contemplating)
+- Do NOT include them in pure landscape/establishing shots unless the narration specifically mentions them there
+- Do NOT force them into every image - some scenes should be atmospheric or show other characters
+- When included, vary the composition: sometimes prominent, sometimes in the background, sometimes in profile
+- Show them naturally engaged in activities, not always posed or looking at the viewer
+- If the narration discusses what ${subject} is thinking or feeling, show a scene that reflects that emotion
 ` : ''}
 YOUR TASK: Create visual scene descriptions inspired by the topic and mood of the narration.
 
