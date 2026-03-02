@@ -34,7 +34,7 @@ interface ImagePromptsPreviewModalProps {
   prompts: ImagePrompt[];
   stylePrompt: string;
   imageTemplates: ImageTemplate[];  // Saved templates from settings
-  onConfirm: (editedPrompts: ImagePrompt[], editedStylePrompt: string, topic?: string, generateOnlyNew?: boolean) => void;
+  onConfirm: (editedPrompts: ImagePrompt[], editedStylePrompt: string, topic?: string, generateOnlyNew?: boolean, existingImages?: string[]) => void;
   onCancel: () => void;
   onBack?: () => void;
   onForward?: () => void;
@@ -47,6 +47,7 @@ interface ImagePromptsPreviewModalProps {
   onAddPrompts?: (count: number) => void;  // Add N more prompts to the end
   isAddingPrompts?: boolean;
   existingImageCount?: number;  // How many images already exist (to know which prompts need images)
+  existingImages?: string[];  // The actual existing image URLs (to pass back on confirm)
   audioDuration?: number;  // Total audio duration in seconds (to calculate images needed)
 }
 
@@ -156,6 +157,7 @@ export function ImagePromptsPreviewModal({
   onAddPrompts,
   isAddingPrompts = false,
   existingImageCount = 0,
+  existingImages = [],
   audioDuration = 0
 }: ImagePromptsPreviewModalProps) {
   const [editedPrompts, setEditedPrompts] = useState<ImagePrompt[]>(prompts);
@@ -342,7 +344,8 @@ export function ImagePromptsPreviewModal({
       ...p,
       prompt: `${editedStyle}. ${p.sceneDescription}`
     }));
-    onConfirm(finalPrompts, editedStyle, editedTopic, generateOnlyNew);
+    // Pass existingImages so handlePromptsConfirm doesn't rely on stale closure
+    onConfirm(finalPrompts, editedStyle, editedTopic, generateOnlyNew, existingImages);
   };
 
   // Handle style preset selection

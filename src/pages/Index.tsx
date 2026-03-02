@@ -560,9 +560,11 @@ const Index = () => {
   // Full Automation: Auto-confirm prompts when ready
   useEffect(() => {
     if (settings.fullAutomation && projectId && viewState === "review-prompts" && imagePrompts.length > 0) {
-      console.log("[Full Automation] Auto-confirming image prompts...");
+      console.log(`[Full Automation] Auto-confirming ${imagePrompts.length} image prompts... (pendingImages: ${pendingImages.length})`);
       const timer = setTimeout(() => {
-        handlePromptsConfirm(imagePrompts, getSelectedImageStyle());
+        // CRITICAL: For Full Auto, pass empty array to ensure we generate ALL images
+        // This prevents stale pendingImages from triggering partial generation
+        handlePromptsConfirm(imagePrompts, getSelectedImageStyle(), undefined, false, []);
       }, 500);
       return () => clearTimeout(timer);
     }
@@ -4615,6 +4617,7 @@ const Index = () => {
         onAddPrompts={handleAddPrompts}
         isAddingPrompts={isAddingPrompts}
         existingImageCount={pendingImages.length}
+        existingImages={pendingImages}
         audioDuration={pendingAudioDuration}
       />
 
