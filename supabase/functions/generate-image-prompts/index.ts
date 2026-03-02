@@ -407,46 +407,57 @@ CONTENT SAFETY:
 - NO disturbing, shocking, or traumatic imagery
 - You may depict dramatic historical scenes including warfare and conflict - avoid explicit gore
 
-CRITICAL DECISION FOR EACH SEGMENT - PEOPLE OR NO PEOPLE:
-For EACH narration segment, you MUST decide: should this be a LANDSCAPE/ESTABLISHING shot or a CHARACTER shot?
+=== SHOT TYPE SYSTEM ===
 
-ESTABLISHING SHOTS - NO PEOPLE, NO FIGURES, NO SILHOUETTES:
-Identify these by narration that:
-- Introduces a new location ("The countryside of Hampshire...", "In London...", "The estate...")
-- Describes settings/places ("rolling hills", "the village", "grand ballrooms")
-- Sets the scene or mood ("It was a time when...", "In this world...")
-- Discusses abstract concepts or context
-For these: Write ONLY landscape, architecture, or interior details. NO people. NO figures in the distance. NO silhouettes.
-Example: "Sweeping view of Hampshire countryside, rolling green hills, stone walls dividing fields, morning mist in the valleys, church spire visible on the horizon"
+STEP 1 - ANALYZE THE SCRIPT:
+Before generating any prompts, read the FULL script and identify:
+- MAIN CHARACTER(S): Who is this story about? (e.g., "Jane Austen", "Queen Victoria and Prince Albert")
+- SETTING: Where and when? (e.g., "Hampshire countryside, Regency England")
+- KEY LOCATIONS: Places mentioned (estates, ballrooms, London streets, etc.)
 
-CHARACTER SHOTS - INCLUDE PEOPLE:
-Identify these by narration that:
-- Describes specific actions ("She wrote...", "They danced...", "He spoke...")
-- Involves dialogue or interaction
-- Discusses feelings, thoughts, or experiences of specific people
-For these: Include people naturally engaged in activities.
-Example: "Young woman in white muslin dress seated at a writing desk, quill in hand, candlelight illuminating her focused expression"
+STEP 2 - MANDATORY FIRST SHOT:
+IMAGE 1 MUST ALWAYS be an ESTABLISHING shot with NO PEOPLE:
+- Either ESTABLISHING_LANDSCAPE (rolling hills, countryside, coastline)
+- Or ESTABLISHING_BUILDING (manor house exterior, church, estate gates)
+- NEVER include people in the first image - it sets the scene
 
-DO NOT MIX: If you decide it's an establishing shot, there should be ZERO people in the description.
+STEP 3 - SHOT TYPES (pick one for each subsequent image):
+
+| SHOT TYPE | PEOPLE? | USE WHEN |
+|-----------|---------|----------|
+| ESTABLISHING_LANDSCAPE | NO | Location transitions, mood shots, nature scenes |
+| ESTABLISHING_BUILDING | NO | Introducing buildings, architecture, interiors |
+| MAIN_CHARACTER_FOCUS | 1 person | "She wrote...", "He gazed...", protagonist action |
+| MAIN_CHARACTERS_PLURAL | 2+ protagonists | "They walked...", "The couple...", joint scenes |
+| MULTI_CHARACTER_SECONDARY | Many people | Balls, parties, markets, battlefield crowds |
+| SECONDARY_CHARACTERS | Supporting cast | Servants, maids, soldiers (protagonist NOT shown) |
+
+SHOT TYPE EXAMPLES:
+- ESTABLISHING_LANDSCAPE: "Sweeping view of Hampshire countryside, rolling green hills, stone walls, morning mist, church spire on horizon"
+- ESTABLISHING_BUILDING: "Grand Georgian manor house exterior, ivy-covered stone walls, manicured gardens, gravel drive"
+- MAIN_CHARACTER_FOCUS: "Jane Austen seated at small writing desk, quill in hand, candlelight illuminating her focused expression"
+- MAIN_CHARACTERS_PLURAL: "Queen Victoria and Prince Albert walking arm-in-arm through palace gardens"
+- MULTI_CHARACTER_SECONDARY: "Crowded Regency ballroom, couples waltzing, chandeliers glittering, musicians in gallery"
+- SECONDARY_CHARACTERS: "Household servants preparing breakfast in manor kitchen, copper pots on range"
 
 RULES:
-1. READ the script context to identify the EXACT historical time period and location
-2. FIRST DECIDE: Is this segment ESTABLISHING (location/setting) or CHARACTER (action/dialogue)?
-3. For ESTABLISHING segments: ONLY describe landscape, architecture, or interiors. ZERO people, figures, or silhouettes.
-4. For CHARACTER segments: Include people engaged in period-appropriate activities
-5. ALL scenes MUST be set IN the historical period - show events as they happened
-6. For war/conflict topics: show battlefields, fortifications, camps - only include soldiers if narration describes specific action
-7. Include specific visual details: setting, lighting, atmosphere, textures, colors
-8. 50-100 words per description
-9. Do NOT include any text, titles, or words in the image
+1. IMAGE 1 = ALWAYS establishing (landscape or building), NO people
+2. Read narration to determine appropriate shot type for images 2+
+3. Use FULL CHARACTER NAMES when including main characters (never "young woman" or "a man")
+4. Vary shot types - don't use same type for consecutive images
+5. For establishing shots: ZERO people, figures, or silhouettes
+6. 50-100 words per description
+7. NO text, titles, or words in the image
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
 
-Output format:
+Output format (include shotType for each):
 [
-  {"index": 1, "sceneDescription": "..."},
-  {"index": 2, "sceneDescription": "..."}
-]`,
+  {"index": 1, "shotType": "ESTABLISHING_LANDSCAPE", "sceneDescription": "..."},
+  {"index": 2, "shotType": "MAIN_CHARACTER_FOCUS", "sceneDescription": "..."}
+]
+
+Valid shotType values: ESTABLISHING_LANDSCAPE, ESTABLISHING_BUILDING, MAIN_CHARACTER_FOCUS, MAIN_CHARACTERS_PLURAL, MULTI_CHARACTER_SECONDARY, SECONDARY_CHARACTERS`,
         messages: [
           {
             role: 'user',
