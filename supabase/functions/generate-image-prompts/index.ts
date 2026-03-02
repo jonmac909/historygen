@@ -550,7 +550,7 @@ Remember:
         startSeconds: window.startSeconds,
         endSeconds: window.endSeconds,
         sceneDescription: sceneDesc,
-        prompt: `${stylePrompt}. ${sceneDesc}`,
+        prompt: `${eraTopic ? eraTopic + '. ' : ''}${stylePrompt}. ${sceneDesc}`,
       });
     }
 
