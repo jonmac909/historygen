@@ -352,7 +352,7 @@ ABSOLUTELY FORBIDDEN (these will cause the prompt to be rejected and regenerated
 - Any contemporary/academic environments or research settings
 - Anyone examining, studying, analyzing, or inspecting historical items
 
-REQUIRED: Every scene must show events AS THEY HAPPENED in the historical moment - people LIVING history, not studying it.
+REQUIRED: Every scene must be set IN the historical moment itself - NOT modern people studying history. Show the era as it was, whether that's landscapes, interiors, or people going about their lives.
 ${eraTopic ? `
 === USER-SPECIFIED ERA/TOPIC (HIGHEST PRIORITY) ===
 TOPIC: ${eraTopic}
@@ -402,6 +402,28 @@ CONTENT SAFETY:
 - NO gore, blood, graphic violence, or injury depictions
 - NO disturbing, shocking, or traumatic imagery
 - You may depict dramatic historical scenes including warfare and conflict - avoid explicit gore
+
+CRITICAL DECISION FOR EACH SEGMENT - PEOPLE OR NO PEOPLE:
+For EACH narration segment, you MUST decide: should this be a LANDSCAPE/ESTABLISHING shot or a CHARACTER shot?
+
+ESTABLISHING SHOTS - NO PEOPLE, NO FIGURES, NO SILHOUETTES:
+Identify these by narration that:
+- Introduces a new location ("The countryside of Hampshire...", "In London...", "The estate...")
+- Describes settings/places ("rolling hills", "the village", "grand ballrooms")
+- Sets the scene or mood ("It was a time when...", "In this world...")
+- Discusses abstract concepts or context
+For these: Write ONLY landscape, architecture, or interior details. NO people. NO figures in the distance. NO silhouettes.
+Example: "Sweeping view of Hampshire countryside, rolling green hills, stone walls dividing fields, morning mist in the valleys, church spire visible on the horizon"
+
+CHARACTER SHOTS - INCLUDE PEOPLE:
+Identify these by narration that:
+- Describes specific actions ("She wrote...", "They danced...", "He spoke...")
+- Involves dialogue or interaction
+- Discusses feelings, thoughts, or experiences of specific people
+For these: Include people naturally engaged in activities.
+Example: "Young woman in white muslin dress seated at a writing desk, quill in hand, candlelight illuminating her focused expression"
+
+DO NOT MIX: If you decide it's an establishing shot, there should be ZERO people in the description.
 
 RULES:
 1. READ the script context to identify the EXACT historical time period and location
