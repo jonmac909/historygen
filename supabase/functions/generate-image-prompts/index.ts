@@ -386,8 +386,12 @@ ${subject ? `
 === SUBJECT FOCUS ===
 The main subject/character of this story is: ${subject}
 
+CRITICAL: When including this character, ALWAYS use their FULL NAME "${subject}" in the scene description.
+- CORRECT: "${subject} seated at a writing desk, quill in hand..."
+- WRONG: "A young woman seated at a writing desk..." or "Jane seated at..."
+
 GUIDELINES FOR INCLUDING ${subject.toUpperCase()}:
-- Include ${subject} in scenes where the narration discusses their actions, thoughts, feelings, or experiences
+- Include ${subject} BY NAME in scenes where the narration discusses their actions, thoughts, feelings, or experiences
 - Include them in interior scenes showing daily life (writing, reading, conversing, contemplating)
 - Do NOT include them in pure landscape/establishing shots unless the narration specifically mentions them there
 - Do NOT force them into every image - some scenes should be atmospheric or show other characters
