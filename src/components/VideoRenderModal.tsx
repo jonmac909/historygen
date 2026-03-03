@@ -605,6 +605,12 @@ export function VideoRenderModal({
                   style={{ maxHeight: '400px' }}
                 />
               )}
+              {activeTab === 'basic' && !basicVideoUrl && !isRendering && (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <p>Basic video not available</p>
+                  <p className="text-sm mt-1">Only the effects version was saved for this project</p>
+                </div>
+              )}
             </div>
           )}
 

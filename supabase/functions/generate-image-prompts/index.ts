@@ -383,29 +383,49 @@ The narration provides MOOD and TIMING, but the TOPIC provides the VISUAL CONTEN
 Do NOT try to literally visualize abstract script passages - show BEAUTIFUL SCENES from the topic's world instead.
 ` : ''}
 ${subject ? `
-=== SUBJECT FOCUS ===
-The main subject/character of this story is: ${subject}
+=== SUBJECT FOCUS (INFORMATIONAL) ===
+This story is about: ${subject}
 
-WHEN TO INCLUDE ${subject.toUpperCase()}:
-- ONLY when narration describes their specific actions ("${subject} wrote...", "${subject} walked...")
-- ONLY in character/dialogue scenes, NOT in establishing/landscape shots
-- When included, use FULL NAME "${subject}" - never generic terms
+This tells you the THEME/WORLD of the story - use it for visual inspiration:
+- If "${subject}" is a named person → they should appear in 40-50% of character shots
+- If "${subject}" is a group (e.g., "Regency debutantes") → show typical activities of that group
+- If "${subject}" is a setting (e.g., "Regency ballrooms") → show scenes FROM that world
 
-WHEN TO EXCLUDE ${subject.toUpperCase()} (NO PEOPLE AT ALL):
-- Opening/establishing shots showing locations
-- Landscape or architectural scenes
-- Scene transitions or mood-setting segments
-- Any segment that describes a PLACE rather than a PERSON
-
-IF IN DOUBT: Default to NO PEOPLE for the first 2-3 prompts to establish the setting.
+This is GUIDANCE, not a rule. The story being "about ballrooms" doesn't mean every shot is a ballroom.
+Use your judgment to create visual variety while staying thematically connected.
 ` : ''}
 YOUR TASK: Create visual scene descriptions inspired by the topic and mood of the narration.
 
-CONTENT SAFETY:
-- NO nudity, partial nudity, or sexually suggestive content
-- NO gore, blood, graphic violence, or injury depictions
-- NO disturbing, shocking, or traumatic imagery
-- You may depict dramatic historical scenes including warfare and conflict - avoid explicit gore
+CONTENT SAFETY (STRICTLY ENFORCED - VIOLATIONS WILL BE REJECTED):
+
+BANNED WORDS - NEVER USE THESE IN ANY PROMPT:
+blood, bloody, bleeding, bloodstained, blood-soaked, crimson (when referring to blood)
+corpse, dead body, lifeless, motionless, dying, death, dies, deceased
+wound, wounded, injury, injured, scar, scarred, disfigured
+gore, gory, viscera, organs, flesh, entrails, innards
+pale, pallid, gaunt, wasted, skeletal, emaciated, sickly
+sweat, sweating, feverish, fever, coughing, vomiting
+stained, soaked, drenched (with bodily fluids)
+autopsy, dissection, surgery, operation, scalpel, anatomical
+suffering, agony, pain, torment, torture, execution
+collapsed, unconscious, barely breathing, chest barely rises
+
+REQUIRED APPROACH FOR DARK TOPICS:
+Instead of showing illness/death directly, show:
+- BEFORE: Healthy person in happier times
+- PERIPHERAL: Empty chair, closed door, waiting family, doctor arriving
+- SYMBOLIC: Wilting flowers, sunset, autumn leaves, extinguished candle
+- AFTERMATH: Memorial, gravestone in peaceful churchyard, mourning clothes
+
+EXAMPLES OF CORRECT ALTERNATIVES:
+❌ "Woman lies motionless, blood-soaked handkerchief beside her"
+✅ "Victorian bedroom at dusk, vase of white lilies, leather-bound Bible on nightstand"
+
+❌ "Patient's wasted frame, skin stretched over bones"
+✅ "Doctor in top hat departing townhouse, carriage waiting, housekeeper at door"
+
+❌ "Dying soldier on battlefield, wounds visible"
+✅ "Battlefield at dawn, morning mist over silent field, distant church spire"
 
 === SHOT TYPE SYSTEM ===
 
@@ -427,18 +447,25 @@ Then distribute remaining shots to hit the percentages above.
 
 STEP 3 - SHOT TYPES:
 
-| SHOT TYPE | PEOPLE? | DISTRIBUTION |
+| SHOT TYPE | SUBJECT | DISTRIBUTION |
 |-----------|---------|--------------|
-| ESTABLISHING_LANDSCAPE | NO | Part of 10-20% establishing |
-| ESTABLISHING_BUILDING | NO | Part of 10-20% establishing |
-| MAIN_CHARACTER_FOCUS | 1 person | Part of 40-50% main character |
-| MAIN_CHARACTERS_PLURAL | 2+ protagonists | Part of 40-50% main character |
-| MULTI_CHARACTER_SECONDARY | Many people | Part of 30-40% lifestyle |
-| SECONDARY_CHARACTERS | Supporting cast | Part of 30-40% lifestyle |
+| ESTABLISHING_LANDSCAPE | LOCATION is subject | Part of 10-20% establishing |
+| ESTABLISHING_BUILDING | BUILDING is subject | Part of 10-20% establishing |
+| MAIN_CHARACTER_FOCUS | PERSON is subject (1) | Part of 40-50% main character |
+| MAIN_CHARACTERS_PLURAL | PEOPLE are subject (2+) | Part of 40-50% main character |
+| MULTI_CHARACTER_SECONDARY | CROWD/GROUP is subject | Part of 30-40% lifestyle |
+| SECONDARY_CHARACTERS | SUPPORTING CAST is subject | Part of 30-40% lifestyle |
+
+ESTABLISHING SHOTS - WHAT MAKES THEM "ESTABLISHING":
+The LOCATION must be the subject, NOT the people. Background/contextual people are FINE:
+- GOOD: "Carriage pulling up to grand estate, footmen waiting at entrance" (estate is subject)
+- GOOD: "Busy London street, distant figures, Georgian townhouses" (street is subject)
+- GOOD: "Sweeping hills with shepherd and flock in distance" (landscape is subject)
+- BAD: "Jane Austen walking up to estate" (person is subject - this is MAIN_CHARACTER_FOCUS)
 
 SHOT TYPE EXAMPLES:
-- ESTABLISHING_LANDSCAPE: "Sweeping view of Hampshire countryside, rolling green hills, stone walls, morning mist, church spire on horizon"
-- ESTABLISHING_BUILDING: "Grand Georgian manor house exterior, ivy-covered stone walls, manicured gardens, gravel drive"
+- ESTABLISHING_LANDSCAPE: "Rolling Hampshire hills at dawn, morning mist in valleys, distant village church spire"
+- ESTABLISHING_BUILDING: "Grand Georgian manor exterior, carriage arriving on gravel drive, servants at entrance"
 - MAIN_CHARACTER_FOCUS: "Jane Austen seated at small writing desk, quill in hand, candlelight illuminating her focused expression"
 - MAIN_CHARACTERS_PLURAL: "Queen Victoria and Prince Albert walking arm-in-arm through palace gardens"
 - MULTI_CHARACTER_SECONDARY: "Crowded Regency ballroom, couples waltzing, chandeliers glittering, musicians in gallery"
@@ -452,11 +479,13 @@ If the subject is a GROUP (e.g., "Regency debutantes", "Victorian factory worker
 - These count toward the 40-50% main character quota
 
 RULES:
-1. IMAGE 1 = ALWAYS establishing (landscape or building), NO people
-2. 40-50% of images must feature the main subject/character(s)
-3. Only 10-20% should be pure establishing shots (no people)
+1. IMAGE 1 = ALWAYS establishing (landscape or building) - LOCATION must be the subject
+2. 40-50% of images must feature the main subject/character(s) as the focus
+3. Only 10-20% should be establishing shots (location as subject)
 4. Use FULL CHARACTER NAMES when including specific named characters
-5. For establishing shots: ZERO people, figures, or silhouettes
+5. ESTABLISHING vs CHARACTER distinction: What is the SUBJECT of the shot?
+   - ESTABLISHING: "Estate at sunset, carriage arriving" (estate is subject, carriage is background)
+   - CHARACTER: "Jane Austen stepping out of carriage" (person is subject)
 6. 50-100 words per description
 7. NO text, titles, or words in the image
 8. Vary shot types - don't use same type for 3+ consecutive images

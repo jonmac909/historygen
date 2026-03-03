@@ -2695,11 +2695,19 @@ export function ProjectResults({
           srtContent={srtContent}
           existingBasicVideoUrl={basicVideoUrl || undefined}
           existingEffectsVideoUrl={smokeEmbersVideoUrl || embersVideoUrl || undefined}
-          onConfirm={(videoUrl) => {
-            // Determine which effect was rendered based on URL pattern or just save to smoke_embers
-            setSmokeEmbersVideoUrl(videoUrl);
-            if (onSmokeEmbersVideoRendered) {
-              onSmokeEmbersVideoRendered(videoUrl);
+          onConfirm={(basicUrl, effectsUrl) => {
+            // Save both video URLs
+            if (basicUrl) {
+              setBasicVideoUrl(basicUrl);
+              if (onVideoRendered) {
+                onVideoRendered(basicUrl);
+              }
+            }
+            if (effectsUrl) {
+              setSmokeEmbersVideoUrl(effectsUrl);
+              if (onSmokeEmbersVideoRendered) {
+                onSmokeEmbersVideoRendered(effectsUrl);
+              }
             }
             setIsVideoRenderModalOpen(false);
           }}
