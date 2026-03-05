@@ -677,6 +677,9 @@ const Index = () => {
     if (overrides?.audioSegments !== undefined) {
       projectData.audioSegments = overrides.audioSegments;
     }
+    if (overrides?.segmentsNeedRecombine !== undefined) {
+      projectData.segmentsNeedRecombine = overrides.segmentsNeedRecombine;
+    }
 
     // Captions - ONLY save when explicitly provided in overrides
     if (overrides?.srtContent !== undefined) {
