@@ -164,10 +164,13 @@ function containsBannedWords(text: string): { hasBanned: boolean; foundWords: st
 }
 
 // Sanitize a prompt by asking Claude to rewrite it as PG family-friendly
+// IMPORTANT: The replacement must be CONTEXTUALLY APPROPRIATE - not random peaceful scenes
 async function sanitizePromptWithClaude(
   anthropic: Anthropic,
   prompt: string,
-  era: string
+  era: string,
+  subjectFocus?: string,
+  scriptContext?: string
 ): Promise<{ sanitized: string; inputTokens: number; outputTokens: number }> {
   const { hasBanned, foundWords } = containsBannedWords(prompt);
 
@@ -182,13 +185,34 @@ async function sanitizePromptWithClaude(
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 200,
-      system: `You rewrite image prompts to be PG family-friendly while keeping the same scene and intent.
-Remove any medical procedures, blood, death, illness, violence, or dark imagery.
-Replace with peaceful, cozy alternatives that fit the same moment in the story.
+      system: `You rewrite image prompts to be PG family-friendly while keeping them CONTEXTUALLY RELEVANT to the same story moment.
+
+ERA: ${era}
+${subjectFocus ? `SUBJECT FOCUS: ${subjectFocus}` : ''}
+${scriptContext ? `STORY CONTEXT: ${scriptContext.substring(0, 500)}` : ''}
+
+CRITICAL: The replacement must make SENSE for that scene. Do NOT create random peaceful landscapes or unrelated scenes.
+
+CONTEXT-AWARE REPLACEMENTS:
+- Medical procedure/bloodletting → Doctor arriving at house, or physician's study with medical bag on desk
+- Patient dying/illness → Family gathered in prayer, or patient resting peacefully in bed with visitor holding their hand
+- Surgery/operation → Doctor's carriage outside the house, or waiting room with concerned family
+- Death scene → Memorial with flowers, peaceful churchyard, or the person in happier earlier times
+- Battle/violence → Soldiers marching before battle, or peaceful aftermath with flags
+- Execution/torture → Empty courtyard, or exterior of the building
+
+RULES:
+1. Keep the SAME CHARACTERS if named (e.g., "the physician" stays "the physician")
+2. Keep the SAME LOCATION type (medical scene stays medical-related, just peaceful)
+3. Keep the SAME TIME OF DAY and atmosphere
+4. Keep it relevant to the ERA: ${era}
+5. Just remove the graphic element and show a related peaceful moment
+6. MAX 35 WORDS - keep it short like the original
+
 Output ONLY the rewritten prompt, nothing else.`,
       messages: [{
         role: 'user',
-        content: `Rewrite this ${era} image prompt as PG family-friendly:\n\n${prompt}`
+        content: `Rewrite this image prompt as PG family-friendly. Keep it contextually relevant:\n\n${prompt}`
       }]
     });
 
@@ -1342,7 +1366,7 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
       for (let i = 0; i < promptsNeedingSanitization.length; i += SANITIZE_BATCH_SIZE) {
         const batch = promptsNeedingSanitization.slice(i, i + SANITIZE_BATCH_SIZE);
         const results = await Promise.all(
-          batch.map(p => sanitizePromptWithClaude(anthropic, p.sceneDescription, timePeriod.era))
+          batch.map(p => sanitizePromptWithClaude(anthropic, p.sceneDescription, timePeriod.era, storySubjectFocus, script))
         );
 
         // Update the prompts with sanitized versions
