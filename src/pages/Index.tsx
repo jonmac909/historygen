@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Youtube, FileText, Sparkles, Scroll, Mic, Image, RotateCcw, TrendingUp, Zap, Bot, Video, Wand2 } from "lucide-react";
+import { Youtube, FileText, Sparkles, Scroll, Mic, Image, RotateCcw, TrendingUp, Zap, Bot, Video, Wand2, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -100,6 +100,38 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   ttsTopP: 0.85,
   ttsRepetitionPenalty: 1.1,
 };
+
+// TTS Sentence Length Analysis
+// Fish Speech TTS has a 250 character chunk limit - sentences longer than this
+// get split at commas, which can cause audio artifacts at the split points
+const MAX_TTS_SENTENCE_LENGTH = 250;
+
+interface LongSentence {
+  index: number;
+  text: string;
+  length: number;
+}
+
+function analyzeSentenceLengths(script: string): { longSentences: LongSentence[]; totalSentences: number } {
+  if (!script.trim()) return { longSentences: [], totalSentences: 0 };
+
+  // Split at sentence boundaries (. ! ?)
+  const sentences = script.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
+  const longSentences: LongSentence[] = [];
+
+  sentences.forEach((sentence, index) => {
+    const cleanSentence = sentence.trim();
+    if (cleanSentence.length > MAX_TTS_SENTENCE_LENGTH) {
+      longSentences.push({
+        index: index + 1, // 1-based for display
+        text: cleanSentence,
+        length: cleanSentence.length,
+      });
+    }
+  });
+
+  return { longSentences, totalSentences: sentences.length };
+}
 
 // Load last used settings from localStorage
 function loadLastSettings(): GenerationSettings {
@@ -415,6 +447,7 @@ const Index = () => {
       if (project.audioUrl) setPendingAudioUrl(project.audioUrl);
       if (project.audioDuration) setPendingAudioDuration(project.audioDuration);
       if (project.audioSegments) setPendingAudioSegments(project.audioSegments);
+      if (project.segmentsNeedRecombine) setSegmentsNeedRecombine(project.segmentsNeedRecombine);
       if (project.srtContent) setPendingSrtContent(project.srtContent);
       if (project.srtUrl) setPendingSrtUrl(project.srtUrl);
       if (project.imagePrompts) setImagePrompts(project.imagePrompts);
@@ -1236,6 +1269,7 @@ const Index = () => {
       autoSave("audio", {
         audioSegments: updatedSegments,
         audioDuration: newTotalDuration,
+        segmentsNeedRecombine: true,
       });
 
       toast({
@@ -1315,6 +1349,13 @@ const Index = () => {
         if (recombineResult.duration) setPendingAudioDuration(recombineResult.duration);
         if (recombineResult.size) setPendingAudioSize(recombineResult.size);
         setSegmentsNeedRecombine(false);
+
+        // Save recombined audio URL and clear the flag
+        autoSave("audio", {
+          audioUrl: audioUrlToUse,
+          audioDuration: recombineResult.duration,
+          segmentsNeedRecombine: false,
+        });
 
         updateStep("recombine", "completed");
         console.log(`Recombined audio: ${audioUrlToUse}`);
@@ -2759,6 +2800,13 @@ const Index = () => {
         if (recombineResult.size) setPendingAudioSize(recombineResult.size);
         setSegmentsNeedRecombine(false);
 
+        // Save recombined audio URL and clear the flag
+        autoSave("audio", {
+          audioUrl: recombineResult.audioUrl,
+          audioDuration: recombineResult.duration,
+          segmentsNeedRecombine: false,
+        });
+
         console.log(`Recombined audio ready: ${recombineResult.audioUrl}`);
 
         toast({
@@ -2794,6 +2842,13 @@ const Index = () => {
     if (recombineResult.duration) setPendingAudioDuration(recombineResult.duration);
     if (recombineResult.size) setPendingAudioSize(recombineResult.size);
     setSegmentsNeedRecombine(false);
+
+    // Save recombined audio URL and clear the flag
+    autoSave("audio", {
+      audioUrl: recombineResult.audioUrl,
+      audioDuration: recombineResult.duration,
+      segmentsNeedRecombine: false,
+    });
 
     console.log(`Recombined audio for render: ${recombineResult.audioUrl}`);
     return recombineResult.audioUrl;
@@ -3520,6 +3575,7 @@ const Index = () => {
     // Load audio segments - reconstruct from storage if missing
     if (project.audioSegments && project.audioSegments.length > 0) {
       setPendingAudioSegments(project.audioSegments);
+      if (project.segmentsNeedRecombine) setSegmentsNeedRecombine(project.segmentsNeedRecombine);
     } else if (project.audioUrl && project.script) {
       // Old project without segments - try to reconstruct from storage
       const reconstructed = await reconstructAudioSegments(project.id, project.script);
@@ -4378,11 +4434,47 @@ const Index = () => {
                     placeholder="Paste your script here..."
                     className="w-full h-40 p-3 text-sm border rounded-lg resize-none bg-background focus:outline-none focus:ring-2 focus:ring-primary/20"
                   />
-                  {settings.customScript?.trim() && (
-                    <p className="text-xs text-muted-foreground text-center">
-                      {settings.customScript.trim().split(/\s+/).length} words
-                    </p>
-                  )}
+                  {settings.customScript?.trim() && (() => {
+                    const wordCount = settings.customScript.trim().split(/\s+/).length;
+                    const { longSentences, totalSentences } = analyzeSentenceLengths(settings.customScript);
+                    const hasLongSentences = longSentences.length > 0;
+
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground text-center">
+                          {wordCount} words • {totalSentences} sentences
+                        </p>
+
+                        {hasLongSentences && (
+                          <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-3">
+                            <div className="flex items-center gap-2 text-yellow-500">
+                              <AlertTriangle className="w-4 h-4 shrink-0" />
+                              <span className="text-sm font-medium">
+                                {longSentences.length} sentence{longSentences.length > 1 ? 's' : ''} may cause audio glitches
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-1 ml-6">
+                              Sentences over 250 characters get split at commas during TTS, which can cause artifacts.
+                            </p>
+                            <details className="mt-2 ml-6">
+                              <summary className="text-xs text-yellow-500 cursor-pointer hover:underline">
+                                View long sentences
+                              </summary>
+                              <ul className="mt-2 space-y-2 text-xs">
+                                {longSentences.map((s) => (
+                                  <li key={s.index} className="p-2 bg-background/50 rounded border border-border">
+                                    <span className="text-yellow-500 font-medium">#{s.index}</span>
+                                    <span className="text-red-400 ml-2">({s.length} chars)</span>
+                                    <p className="text-muted-foreground mt-1 line-clamp-2">{s.text}</p>
+                                  </li>
+                                ))}
+                              </ul>
+                            </details>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <Button
                     onClick={() => {
                       if (settings.fullAutomation) {
@@ -4633,6 +4725,11 @@ const Index = () => {
             repetitionPenalty: settings.ttsRepetitionPenalty,
           }}
           onAudioUpdated={(newUrl) => setPendingAudioUrl(newUrl)}
+          segmentsNeedRecombine={segmentsNeedRecombine}
+          onRecombineAudio={async () => {
+            const newUrl = await handleRecombineForRender();
+            setPendingAudioUrl(newUrl);
+          }}
         />
       ) : (
         <AudioPreviewModal

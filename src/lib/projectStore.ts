@@ -47,6 +47,7 @@ export interface Project {
   audioUrl?: string;
   audioDuration?: number;
   audioSegments?: AudioSegment[];
+  segmentsNeedRecombine?: boolean;  // True if segments were regenerated and need to be recombined
   srtContent?: string;
   srtUrl?: string;
   imagePrompts?: ImagePromptWithTiming[];
@@ -141,6 +142,7 @@ function rowToProject(row: {
     audioUrl: row.audio_url || undefined,
     audioDuration: row.audio_duration || undefined,
     audioSegments: (row.audio_segments as AudioSegment[]) || undefined,
+    segmentsNeedRecombine: (row as Record<string, unknown>).segments_need_recombine as boolean || false,
     srtContent: row.srt_content || undefined,
     srtUrl: row.srt_url || undefined,
     imagePrompts: mergeImageUrlsIntoPrompts(
@@ -189,6 +191,7 @@ function projectToRow(project: Partial<Project> & { id: string }, isNew: boolean
   if (project.audioUrl !== undefined) row.audio_url = project.audioUrl || null;
   if (project.audioDuration !== undefined) row.audio_duration = project.audioDuration || null;
   if (project.audioSegments !== undefined) row.audio_segments = project.audioSegments || [];
+  if (project.segmentsNeedRecombine !== undefined) row.segments_need_recombine = project.segmentsNeedRecombine;
   if (project.srtUrl !== undefined) row.srt_url = project.srtUrl || null;
   if (project.srtContent !== undefined) row.srt_content = project.srtContent || null;
   if (project.imagePrompts !== undefined) row.image_prompts = project.imagePrompts || [];

@@ -456,7 +456,7 @@ export function VideoClipsPreviewModal({
                 clip={clip}
                 prompt={getPromptForClip(clip.index)}
                 onRegenerate={onRegenerate ? (editedPrompt) => onRegenerate(clip.index, editedPrompt) : undefined}
-                isRegenerating={isRegenerating && regeneratingIndex === clip.index}
+                isRegenerating={regeneratingIndices.has(clip.index)}
                 onOpenFullscreen={() => setFullscreenClip(clip)}
               />
             ))}
@@ -550,11 +550,11 @@ export function VideoClipsPreviewModal({
                 onClick={() => {
                   onRegenerate(fullscreenClip.index);
                 }}
-                disabled={isRegenerating && regeneratingIndex === fullscreenClip.index}
+                disabled={regeneratingIndices.has(fullscreenClip.index)}
                 className="mt-4"
               >
-                <RefreshCw className={`w-4 h-4 mr-1 ${isRegenerating && regeneratingIndex === fullscreenClip.index ? 'animate-spin' : ''}`} />
-                {isRegenerating && regeneratingIndex === fullscreenClip.index ? 'Regenerating...' : 'Regenerate This Clip'}
+                <RefreshCw className={`w-4 h-4 mr-1 ${regeneratingIndices.has(fullscreenClip.index) ? 'animate-spin' : ''}`} />
+                {regeneratingIndices.has(fullscreenClip.index) ? 'Regenerating...' : 'Regenerate This Clip'}
               </Button>
             )}
           </div>

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Check, X, Play, Pause, RefreshCw, Volume2, Loader2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, BookOpen, Square } from "lucide-react";
+import { Check, X, Play, Pause, RefreshCw, Volume2, Loader2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, BookOpen, Square, AlertTriangle } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -36,6 +36,9 @@ interface AudioSegmentsPreviewModalProps {
   voiceSampleUrl?: string;
   ttsSettings?: TTSSettings;  // Same TTS settings used for original audio
   onAudioUpdated?: (newUrl: string) => void;
+  // For stale audio detection
+  segmentsNeedRecombine?: boolean;
+  onRecombineAudio?: () => Promise<void>;
 }
 
 interface AudioSegmentCardProps {
@@ -614,6 +617,8 @@ export function AudioSegmentsPreviewModal({
   voiceSampleUrl,
   ttsSettings,
   onAudioUpdated,
+  segmentsNeedRecombine,
+  onRecombineAudio,
 }: AudioSegmentsPreviewModalProps) {
   const [isPlayingAll, setIsPlayingAll] = useState(false);
   const [allCurrentTime, setAllCurrentTime] = useState(0);
@@ -809,6 +814,39 @@ export function AudioSegmentsPreviewModal({
                 <span className="font-medium text-lg text-primary">Play All Segments</span>
                 <span className="text-sm text-muted-foreground">{formatTime(totalDuration)}</span>
               </div>
+
+              {/* Warning when combined audio is stale */}
+              {segmentsNeedRecombine && (
+                <div className="flex items-center gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-yellow-600 dark:text-yellow-400">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span className="text-sm">Combined audio is outdated. Individual segments have been updated.</span>
+                  {onRecombineAudio && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="ml-auto h-7 text-xs border-yellow-500/50 hover:bg-yellow-500/10"
+                      onClick={async () => {
+                        try {
+                          await onRecombineAudio();
+                          toast({
+                            title: "Audio Recombined",
+                            description: "The combined audio has been updated with your changes.",
+                          });
+                        } catch (error) {
+                          toast({
+                            title: "Recombine Failed",
+                            description: error instanceof Error ? error.message : "Failed to recombine audio",
+                            variant: "destructive",
+                          });
+                        }
+                      }}
+                    >
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                      Update Now
+                    </Button>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-3">
                 <Button
