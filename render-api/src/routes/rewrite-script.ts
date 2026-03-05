@@ -146,8 +146,8 @@ router.post('/', async (req: Request, res: Response) => {
     // Always use Sonnet 4.5 for best quality
     const selectedModel = model || 'claude-sonnet-4-5';
 
-    // Use topic if provided, otherwise fall back to title
-    const topicFocus = topic || title || 'Historical Documentary';
+    // Use title only - topic/era is for image prompts, not script generation
+    const topicFocus = title || 'Historical Documentary';
 
     console.log(`🚀 Rewriting script with ${selectedModel}...`);
     console.log(`📊 Max tokens: ${MAX_TOKENS} | Words/iteration: ${WORDS_PER_ITERATION}`);

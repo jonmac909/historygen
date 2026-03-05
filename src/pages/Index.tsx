@@ -1083,7 +1083,7 @@ const Index = () => {
           updateStep("script", "active", progressText);
         },
         undefined, // onToken - not used here
-        settings.topic || undefined // Topic for preventing drift
+        undefined // Topic not used for script generation (era/topic is for image prompts only)
       );
       
       if (!scriptResult.success || !scriptResult.script) {
