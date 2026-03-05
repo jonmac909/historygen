@@ -163,103 +163,53 @@ function containsBannedWords(text: string): { hasBanned: boolean; foundWords: st
   return { hasBanned: foundWords.length > 0, foundWords };
 }
 
-// Sanitize a prompt by replacing it with a safe alternative if it contains banned words
-function sanitizePrompt(prompt: string, era: string): string {
+// Sanitize a prompt by asking Claude to rewrite it as PG family-friendly
+async function sanitizePromptWithClaude(
+  anthropic: Anthropic,
+  prompt: string,
+  era: string
+): Promise<{ sanitized: string; inputTokens: number; outputTokens: number }> {
   const { hasBanned, foundWords } = containsBannedWords(prompt);
 
   if (!hasBanned) {
-    return prompt;
+    return { sanitized: prompt, inputTokens: 0, outputTokens: 0 };
   }
 
-  console.warn(`⚠️ CONTENT SAFETY: Prompt contained banned words: ${foundWords.join(', ')}`);
+  console.warn(`⚠️ CONTENT SAFETY: Found banned words: ${foundWords.join(', ')}`);
   console.warn(`   Original: ${prompt.substring(0, 100)}...`);
 
-  // Return a safe alternative based on the era
-  const safeAlternatives = [
-    `Peaceful ${era} countryside at golden hour, rolling hills, distant village church spire, soft morning mist`,
-    `Elegant ${era} drawing room interior, warm firelight, comfortable furnishings, leather-bound books on shelves`,
-    `${era} garden in bloom, manicured hedges, stone pathways, peaceful afternoon light`,
-    `Stately ${era} manor house exterior, grand entrance, well-maintained grounds, clear blue sky`,
-    `Cozy ${era} study, mahogany desk, quill and inkwell, afternoon sunlight through tall windows`
-  ];
+  try {
+    const response = await anthropic.messages.create({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 200,
+      system: `You rewrite image prompts to be PG family-friendly while keeping the same scene and intent.
+Remove any medical procedures, blood, death, illness, violence, or dark imagery.
+Replace with peaceful, cozy alternatives that fit the same moment in the story.
+Output ONLY the rewritten prompt, nothing else.`,
+      messages: [{
+        role: 'user',
+        content: `Rewrite this ${era} image prompt as PG family-friendly:\n\n${prompt}`
+      }]
+    });
 
-  const replacement = safeAlternatives[Math.floor(Math.random() * safeAlternatives.length)];
-  console.warn(`   Replaced with: ${replacement}`);
+    const sanitized = response.content[0].type === 'text' ? response.content[0].text.trim() : prompt;
+    console.warn(`   Rewritten: ${sanitized.substring(0, 100)}...`);
 
-  return replacement;
-}
-
-// SECOND CLAUDE PASS: Validate prompts for content safety
-// This catches subtle violations that keyword matching might miss
-async function validatePromptsWithClaude(
-  anthropic: Anthropic,
-  prompts: { index: number; sceneDescription: string }[],
-  era: string
-): Promise<{ validatedPrompts: { index: number; sceneDescription: string }[]; inputTokens: number; outputTokens: number }> {
-  // Batch prompts into groups for efficiency
-  const BATCH_SIZE = 20;
-  const allResults: { index: number; sceneDescription: string }[] = [];
-  let totalInputTokens = 0;
-  let totalOutputTokens = 0;
-
-  for (let i = 0; i < prompts.length; i += BATCH_SIZE) {
-    const batch = prompts.slice(i, i + BATCH_SIZE);
-    const promptList = batch.map(p => `${p.index}. ${p.sceneDescription}`).join('\n');
-
-    try {
-      const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-5-20250929',
-        max_tokens: 4000,
-        system: `You are a content safety validator for a cozy bedtime documentary.
-Review each prompt and flag any that contain:
-- Medical procedures, surgery, bloodletting, leeches
-- Death, dying, illness, suffering
-- Blood, wounds, gore, corpses
-- Violence, torture, pain
-
-For FLAGGED prompts, provide a SAFE ALTERNATIVE showing peripheral/symbolic content instead.
-
-Respond in JSON format:
-[
-  {"index": 1, "status": "ok"},
-  {"index": 2, "status": "flagged", "reason": "contains bloodletting", "alternative": "Georgian physician's study, leather bag on desk, morning light"}
-]`,
-        messages: [{
-          role: 'user',
-          content: `Review these ${era} image prompts for content safety:\n\n${promptList}`
-        }]
-      });
-
-      totalInputTokens += response.usage?.input_tokens || 0;
-      totalOutputTokens += response.usage?.output_tokens || 0;
-
-      const text = response.content[0].type === 'text' ? response.content[0].text : '';
-      const validationResults = extractJsonArray(text) as { index: number; status: string; alternative?: string }[] | null;
-
-      if (validationResults) {
-        for (const result of validationResults) {
-          const original = batch.find(p => p.index === result.index);
-          if (original) {
-            if (result.status === 'flagged' && result.alternative) {
-              console.warn(`⚠️ CLAUDE VALIDATOR flagged prompt ${result.index}: replaced with safe alternative`);
-              allResults.push({ index: result.index, sceneDescription: result.alternative });
-            } else {
-              allResults.push(original);
-            }
-          }
-        }
-      } else {
-        // If parsing fails, keep originals
-        allResults.push(...batch);
-      }
-    } catch (error) {
-      console.error('Claude validation error:', error);
-      // On error, keep original prompts
-      allResults.push(...batch);
+    return {
+      sanitized,
+      inputTokens: response.usage?.input_tokens || 0,
+      outputTokens: response.usage?.output_tokens || 0
+    };
+  } catch (error) {
+    console.error('Error sanitizing prompt with Claude:', error);
+    // On error, just remove the banned words as fallback
+    let sanitized = prompt;
+    for (const word of foundWords) {
+      const regex = new RegExp(`\\b${word}\\b`, 'gi');
+      sanitized = sanitized.replace(regex, '').replace(/\s+/g, ' ').trim();
     }
+    return { sanitized, inputTokens: 0, outputTokens: 0 };
   }
-
-  return { validatedPrompts: allResults, inputTokens: totalInputTokens, outputTokens: totalOutputTokens };
 }
 
 // Time period context extracted from script
@@ -1181,17 +1131,76 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
       }
     }
 
-    // Warn frontend about failed batches (non-fatal — we continue with partial results)
+    // RETRY FAILED BATCHES: Give them 2 more attempts
+    let retryAttempt = 0;
+    while (failedBatches.length > 0 && retryAttempt < 2) {
+      retryAttempt++;
+      console.log(`🔄 Retrying ${failedBatches.length} failed batch(es) (attempt ${retryAttempt}/2)...`);
+      sendEvent({ type: 'progress', progress: 82 + retryAttempt, message: `Retrying ${failedBatches.length} failed batches...` });
+
+      const retryResults = await Promise.allSettled(
+        failedBatches.map(async (batchNum) => {
+          const batchIndex = batchNum - 1;
+          const batchStart = batchIndex * BATCH_SIZE_PARALLEL;
+          const batchEnd = Math.min(batchStart + BATCH_SIZE_PARALLEL, windows.length);
+          const batchWindows = windows.slice(batchStart, batchEnd);
+          const batchSize = batchWindows.length;
+
+          const batchWindowDescriptions = batchWindows.map((w, i) =>
+            `IMAGE ${batchStart + i + 1}: "${w.text}"`
+          ).join('\n');
+
+          const response = await anthropic.messages.create({
+            model: selectedModel,
+            max_tokens: Math.min(MAX_TOKENS, batchSize * 150 + 500),
+            system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
+            messages: [{ role: 'user', content: `Generate prompts for images ${batchStart + 1} to ${batchEnd}:\n\n${batchWindowDescriptions}` }],
+          });
+
+          const text = response.content[0].type === 'text' ? response.content[0].text : '';
+          const batchDescriptions = extractJsonArray(text) as { index: number; sceneDescription: string }[] | null;
+
+          if (!batchDescriptions || batchDescriptions.length === 0) {
+            throw new Error('Empty or invalid response');
+          }
+
+          return { batchNum, batchStart, descriptions: batchDescriptions };
+        })
+      );
+
+      // Process retry results
+      const successfulRetries: number[] = [];
+      for (const result of retryResults) {
+        if (result.status === 'fulfilled') {
+          const { batchNum, batchStart, descriptions } = result.value;
+          const batchResults = descriptions.map((item, itemIndex) => ({
+            index: batchStart + itemIndex + 1,
+            sceneDescription: item.sceneDescription,
+          }));
+          sceneDescriptions.push(...batchResults);
+          successfulRetries.push(batchNum);
+          console.log(`✅ Batch ${batchNum} retry succeeded: ${descriptions.length} prompts`);
+        }
+      }
+
+      // Remove successful batches from failed list
+      for (const batchNum of successfulRetries) {
+        const idx = failedBatches.indexOf(batchNum);
+        if (idx !== -1) failedBatches.splice(idx, 1);
+      }
+    }
+
+    // Warn frontend about any remaining failed batches
     if (failedBatches.length > 0) {
       const failedImageRanges = failedBatches.map(b => {
         const start = (b - 1) * BATCH_SIZE_PARALLEL + 1;
         const end = Math.min(b * BATCH_SIZE_PARALLEL, imageCount);
         return `${start}-${end}`;
       });
-      console.warn(`[generate-image-prompts] ${failedBatches.length} batch(es) failed: images ${failedImageRanges.join(', ')}`);
+      console.warn(`[generate-image-prompts] ${failedBatches.length} batch(es) still failed after retries: images ${failedImageRanges.join(', ')}`);
       sendEvent({
         type: 'warning',
-        message: `${failedBatches.length} batch(es) failed after retries. Images ${failedImageRanges.join(', ')} will use fallback descriptions.`,
+        message: `${failedBatches.length} batch(es) failed after all retries. Images ${failedImageRanges.join(', ')} will use fallback descriptions.`,
       });
     }
 
@@ -1306,12 +1315,9 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
       const scene = sceneDescriptions.find(s => s.index === i + 1);
 
       // Use regenerated description if available, otherwise use original
-      let sceneDesc = regeneratedDescriptions.get(i)
+      const sceneDesc = regeneratedDescriptions.get(i)
         || scene?.sceneDescription
         || `Historical scene depicting: ${window.text.substring(0, 200)}`;
-
-      // CONTENT SAFETY: Sanitize any prompts that contain banned words
-      sceneDesc = sanitizePrompt(sceneDesc, timePeriod.era);
 
       imagePrompts.push({
         index: i + 1,
@@ -1324,27 +1330,36 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
       });
     }
 
-    console.log(`Generated ${imagePrompts.length} image prompts successfully (regenerated ${regenTasks.length} prompts with modern keywords)`);
+    // CONTENT SAFETY: Find prompts with banned words and ask Claude to rewrite them
+    const promptsNeedingSanitization = imagePrompts.filter(p => containsBannedWords(p.sceneDescription).hasBanned);
 
-    // SECOND PASS: Run Claude validation on all prompts
-    sendEvent({ type: 'progress', progress: 96, message: 'Validating content safety...' });
-    console.log('🔍 Running Claude content safety validation...');
+    if (promptsNeedingSanitization.length > 0) {
+      console.log(`🔍 Found ${promptsNeedingSanitization.length} prompts with banned words, asking Claude to rewrite...`);
+      sendEvent({ type: 'progress', progress: 96, message: `Sanitizing ${promptsNeedingSanitization.length} prompts...` });
 
-    const promptsToValidate = imagePrompts.map(p => ({ index: p.index, sceneDescription: p.sceneDescription }));
-    const validationResult = await validatePromptsWithClaude(anthropic, promptsToValidate, timePeriod.era);
+      // Process in parallel batches of 5
+      const SANITIZE_BATCH_SIZE = 5;
+      for (let i = 0; i < promptsNeedingSanitization.length; i += SANITIZE_BATCH_SIZE) {
+        const batch = promptsNeedingSanitization.slice(i, i + SANITIZE_BATCH_SIZE);
+        const results = await Promise.all(
+          batch.map(p => sanitizePromptWithClaude(anthropic, p.sceneDescription, timePeriod.era))
+        );
 
-    // Apply validated/replaced descriptions
-    for (const validated of validationResult.validatedPrompts) {
-      const prompt = imagePrompts.find(p => p.index === validated.index);
-      if (prompt && prompt.sceneDescription !== validated.sceneDescription) {
-        prompt.sceneDescription = validated.sceneDescription;
-        prompt.prompt = `${effectiveStylePrompt}. ${validated.sceneDescription}`;
+        // Update the prompts with sanitized versions
+        for (let j = 0; j < batch.length; j++) {
+          const prompt = batch[j];
+          const result = results[j];
+          prompt.sceneDescription = result.sanitized;
+          prompt.prompt = `${effectiveStylePrompt}. ${result.sanitized}`;
+          totalInputTokens += result.inputTokens;
+          totalOutputTokens += result.outputTokens;
+        }
       }
+
+      console.log(`✅ Sanitized ${promptsNeedingSanitization.length} prompts with Claude`);
     }
 
-    totalInputTokens += validationResult.inputTokens;
-    totalOutputTokens += validationResult.outputTokens;
-
+    console.log(`Generated ${imagePrompts.length} image prompts successfully (regenerated ${regenTasks.length} prompts with modern keywords)`);
     console.log(`Total tokens: ${totalInputTokens} input, ${totalOutputTokens} output`);
 
     // Save costs to Supabase if projectId provided
