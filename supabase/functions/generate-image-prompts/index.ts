@@ -449,22 +449,25 @@ Nudity/Romance:
 nude, naked, nudity, bare skin, unclothed, undressed, topless, revealing
 kissing, kiss, embracing, romantic embrace, passionate, sensual, seductive
 
-REQUIRED APPROACH FOR DARK TOPICS:
-Instead of showing illness/death directly, show:
-- BEFORE: Healthy person in happier times
-- PERIPHERAL: Empty chair, closed door, waiting family, doctor arriving
-- SYMBOLIC: Wilting flowers, sunset, autumn leaves, extinguished candle
-- AFTERMATH: Memorial, gravestone in peaceful churchyard, mourning clothes
+FOR DARK TOPICS (illness, death, tragedy):
+IF IT MAKES SENSE, show a living person who fits the context:
+- A mourning wife, mother, or family member
+- A doctor or physician attending
+- A servant or maid in the room
+- A friend or companion keeping vigil
+- The person BEFORE they became ill (in happier times)
+
+The figure should be realistic for the story - someone who would actually be there.
 
 EXAMPLES OF CORRECT ALTERNATIVES:
 ❌ "Woman lies motionless, blood-soaked handkerchief beside her"
-✅ "Victorian bedroom at dusk, vase of white lilies, leather-bound Bible on nightstand"
+✅ "Maid standing by the bedside, holding a tray of tea, soft afternoon light through curtains"
 
 ❌ "Patient's wasted frame, skin stretched over bones"
-✅ "Doctor in top hat departing townhouse, carriage waiting, housekeeper at door"
+✅ "Doctor in frock coat speaking gently to the patient's wife in the hallway"
 
 ❌ "Dying soldier on battlefield, wounds visible"
-✅ "Battlefield at dawn, morning mist over silent field, distant church spire"
+✅ "Nurse tending to soldiers in field hospital, lantern light, concerned expression"
 
 === SHOT TYPE SYSTEM ===
 

@@ -197,17 +197,17 @@ ERA: ${era}
 ${subjectFocus ? `SUBJECT FOCUS: ${subjectFocus}` : ''}
 ${scriptContext ? `STORY CONTEXT: ${scriptContext.substring(0, 500)}` : ''}
 
-CRITICAL: The replacement must make SENSE for that scene. Do NOT create random peaceful landscapes or unrelated scenes.
+The replacement should make sense for that scene. Keep people in the scene IF IT MAKES SENSE.
 
-CONTEXT-AWARE REPLACEMENTS (match the SCENE TYPE):
-- Medical procedure/bloodletting → Physician's study with medical bag on desk, or doctor at patient's bedside holding their hand gently
-- Patient dying/illness → Family gathered in prayer around the bed, or patient resting peacefully with a loved one beside them
-- Surgery/operation → Waiting room with concerned family, or exterior of the hospital/house
-- Death scene → Memorial with flowers, peaceful churchyard, or the person in happier earlier times
-- Battle/violence → Soldiers marching before battle, or peaceful aftermath landscape
-- Execution/torture → Empty courtyard, or exterior of the building
+CONTEXT-AWARE REPLACEMENTS (prefer keeping people visible):
+- Medical procedure → Doctor at patient's bedside, or family member keeping vigil
+- Patient dying/illness → Family gathered in prayer, or maid bringing tea to the room
+- Surgery/operation → Doctor speaking with concerned family in hallway
+- Death scene → Mourning wife/mother/family member, or the person in happier earlier times
+- Battle/violence → Soldiers preparing before battle, or nurse in field hospital
+- Execution/torture → Crowd watching from distance, or guard standing at doorway
 
-CRITICAL - STAY IN THE SCENE:
+STAY IN THE SCENE:
 The rewritten prompt must show the SAME SCENE, just without the graphic element.
 - If the original is INDOORS → stay indoors
 - If people are PRESENT → keep people present
