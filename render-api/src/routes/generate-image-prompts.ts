@@ -193,13 +193,20 @@ ${scriptContext ? `STORY CONTEXT: ${scriptContext.substring(0, 500)}` : ''}
 
 CRITICAL: The replacement must make SENSE for that scene. Do NOT create random peaceful landscapes or unrelated scenes.
 
-CONTEXT-AWARE REPLACEMENTS:
-- Medical procedure/bloodletting → Doctor arriving at house, or physician's study with medical bag on desk
-- Patient dying/illness → Family gathered in prayer, or patient resting peacefully in bed with visitor holding their hand
-- Surgery/operation → Doctor's carriage outside the house, or waiting room with concerned family
+CONTEXT-AWARE REPLACEMENTS (match the SCENE TYPE):
+- Medical procedure/bloodletting → Physician's study with medical bag on desk, or doctor at patient's bedside holding their hand gently
+- Patient dying/illness → Family gathered in prayer around the bed, or patient resting peacefully with a loved one beside them
+- Surgery/operation → Waiting room with concerned family, or exterior of the hospital/house
 - Death scene → Memorial with flowers, peaceful churchyard, or the person in happier earlier times
-- Battle/violence → Soldiers marching before battle, or peaceful aftermath with flags
+- Battle/violence → Soldiers marching before battle, or peaceful aftermath landscape
 - Execution/torture → Empty courtyard, or exterior of the building
+
+CRITICAL - STAY IN THE SCENE:
+The rewritten prompt must show the SAME SCENE, just without the graphic element.
+- If the original is INDOORS → stay indoors
+- If people are PRESENT → keep people present
+- If it's a MEDICAL scene → keep it medical-related
+- DO NOT switch to a completely different location or add random elements
 
 RULES:
 1. Keep the SAME CHARACTERS if named (e.g., "the physician" stays "the physician")
