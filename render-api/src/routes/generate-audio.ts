@@ -203,11 +203,21 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-// Apply pronunciation fixes for TTS - DISABLED
-// Fish Speech handles pronunciation better without interference
+// Minimal pronunciation fixes - ONLY for words Fish Speech genuinely struggles with
+// Keep this list VERY short - only add words that are consistently mispronounced
+const MINIMAL_PRONUNCIATION_FIXES: Record<string, string> = {
+  'regency': 'REE-jen-see',
+  'Regency': 'REE-jen-see',
+};
+
+// Apply minimal pronunciation fixes for TTS
 function applyPronunciationFixes(text: string): string {
-  // Pronunciation system disabled - let Fish Speech handle words naturally
-  return text;
+  let result = text;
+  for (const [word, phonetic] of Object.entries(MINIMAL_PRONUNCIATION_FIXES)) {
+    const regex = new RegExp(`\\b${word}\\b`, 'g');
+    result = result.replace(regex, phonetic);
+  }
+  return result;
 }
 
 // Phonetic dictionary for automatic pronunciation lookup
