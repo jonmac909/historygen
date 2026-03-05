@@ -127,6 +127,68 @@ interface ImagePrompt {
   sceneDescription: string;
 }
 
+// CONTENT SAFETY: Banned words list for post-generation validation
+const BANNED_WORDS = [
+  'blood', 'bloody', 'bleeding', 'bloodstained', 'blood-soaked', 'bloodletting',
+  'corpse', 'dead body', 'lifeless', 'motionless', 'dying', 'deceased',
+  'wound', 'wounded', 'injury', 'injured', 'scar', 'scarred', 'disfigured',
+  'gore', 'gory', 'viscera', 'organs', 'flesh', 'entrails', 'innards',
+  'pale', 'pallid', 'gaunt', 'wasted', 'skeletal', 'emaciated', 'sickly', 'clammy',
+  'sweat', 'sweating', 'feverish', 'fever', 'coughing', 'vomiting',
+  'autopsy', 'dissection', 'surgery', 'operation', 'scalpel', 'anatomical', 'lancet', 'leeches',
+  'suffering', 'agony', 'pain', 'torment', 'torture', 'execution',
+  'collapsed', 'unconscious', 'barely breathing',
+  'crimson blood', 'dark blood', 'basin of blood', 'drawing blood', 'purge', 'humours'
+];
+
+// Check if a prompt contains any banned words
+function containsBannedWords(text: string): { hasBanned: boolean; foundWords: string[] } {
+  const lowerText = text.toLowerCase();
+  const foundWords: string[] = [];
+
+  for (const word of BANNED_WORDS) {
+    // Use word boundary check for single words, direct check for phrases
+    if (word.includes(' ')) {
+      if (lowerText.includes(word)) {
+        foundWords.push(word);
+      }
+    } else {
+      const regex = new RegExp(`\\b${word}\\b`, 'i');
+      if (regex.test(text)) {
+        foundWords.push(word);
+      }
+    }
+  }
+
+  return { hasBanned: foundWords.length > 0, foundWords };
+}
+
+// Sanitize a prompt by replacing it with a safe alternative if it contains banned words
+function sanitizePrompt(prompt: string, era: string): string {
+  const { hasBanned, foundWords } = containsBannedWords(prompt);
+
+  if (!hasBanned) {
+    return prompt;
+  }
+
+  console.warn(`⚠️ CONTENT SAFETY: Prompt contained banned words: ${foundWords.join(', ')}`);
+  console.warn(`   Original: ${prompt.substring(0, 100)}...`);
+
+  // Return a safe alternative based on the era
+  const safeAlternatives = [
+    `Peaceful ${era} countryside at golden hour, rolling hills, distant village church spire, soft morning mist`,
+    `Elegant ${era} drawing room interior, warm firelight, comfortable furnishings, leather-bound books on shelves`,
+    `${era} garden in bloom, manicured hedges, stone pathways, peaceful afternoon light`,
+    `Stately ${era} manor house exterior, grand entrance, well-maintained grounds, clear blue sky`,
+    `Cozy ${era} study, mahogany desk, quill and inkwell, afternoon sunlight through tall windows`
+  ];
+
+  const replacement = safeAlternatives[Math.floor(Math.random() * safeAlternatives.length)];
+  console.warn(`   Replaced with: ${replacement}`);
+
+  return replacement;
+}
+
 // Time period context extracted from script
 interface TimePeriodContext {
   era: string;              // e.g., "10,000 BCE - Mesolithic Period"
@@ -423,19 +485,44 @@ function parseSrt(srtContent: string): SrtSegment[] {
 }
 
 // Group SRT segments into time windows for images
-function groupSegmentsForImages(segments: SrtSegment[], imageCount: number, audioDuration?: number): { startSeconds: number; endSeconds: number; text: string }[] {
+function groupSegmentsForImages(
+  segments: SrtSegment[],
+  imageCount: number,
+  audioDuration?: number,
+  clipCount: number = 12,
+  clipDuration: number = 5
+): { startSeconds: number; endSeconds: number; text: string }[] {
   if (segments.length === 0) return [];
 
   const totalDuration = audioDuration || segments[segments.length - 1].endSeconds;
-  const windowDuration = totalDuration / imageCount;
 
-  console.log(`Distributing ${imageCount} images across ${totalDuration.toFixed(2)}s`);
+  // CLIP-AWARE TIMING:
+  // First N images are video clips (5s each by default)
+  // Remaining images are static images distributed across the rest of the audio
+  const actualClipCount = Math.min(clipCount, imageCount);
+  const clipsTotalDuration = actualClipCount * clipDuration;
+  const staticImageCount = imageCount - actualClipCount;
+  const remainingDuration = Math.max(0, totalDuration - clipsTotalDuration);
+  const staticImageDuration = staticImageCount > 0 ? remainingDuration / staticImageCount : 0;
+
+  console.log(`Clip-aware timing: ${actualClipCount} clips × ${clipDuration}s = ${clipsTotalDuration}s, then ${staticImageCount} static images across ${remainingDuration.toFixed(2)}s`);
 
   const windows: { startSeconds: number; endSeconds: number; text: string }[] = [];
 
   for (let i = 0; i < imageCount; i++) {
-    const windowStart = i * windowDuration;
-    const windowEnd = (i + 1) * windowDuration;
+    let windowStart: number;
+    let windowEnd: number;
+
+    if (i < actualClipCount) {
+      // Video clips: each is exactly clipDuration seconds
+      windowStart = i * clipDuration;
+      windowEnd = (i + 1) * clipDuration;
+    } else {
+      // Static images: distributed across remaining audio duration
+      const staticIndex = i - actualClipCount;
+      windowStart = clipsTotalDuration + (staticIndex * staticImageDuration);
+      windowEnd = clipsTotalDuration + ((staticIndex + 1) * staticImageDuration);
+    }
 
     const overlappingSegments = segments.filter(seg =>
       seg.startSeconds < windowEnd && seg.endSeconds > windowStart
@@ -454,7 +541,7 @@ function groupSegmentsForImages(segments: SrtSegment[], imageCount: number, audi
 }
 
 router.post('/', async (req: Request, res: Response) => {
-  const { script, srtContent, imageCount, stylePrompt, masterStylePrompt, modernKeywordFilter, audioDuration, stream, projectId, topic, subjectFocus } = req.body;
+  const { script, srtContent, imageCount, stylePrompt, masterStylePrompt, modernKeywordFilter, audioDuration, stream, projectId, topic, subjectFocus, clipCount = 12, clipDuration = 5 } = req.body;
   // Accept both stylePrompt (from frontend) and masterStylePrompt (from pipeline) for compatibility
   const effectiveStylePrompt = stylePrompt || masterStylePrompt || '';
   // Default to true for backward compatibility (filter enabled by default)
@@ -523,7 +610,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Parse SRT and group into time windows
     const segments = parseSrt(srtContent);
-    const windows = groupSegmentsForImages(segments, imageCount, audioDuration);
+    const windows = groupSegmentsForImages(segments, imageCount, audioDuration, clipCount, clipDuration);
 
     console.log(`Parsed ${segments.length} SRT segments into ${windows.length} time windows`);
 
@@ -581,10 +668,23 @@ That is NOVEL WRITING, not an image prompt. BANNED.
 
 EACH PROMPT = ONE STATIC IMAGE. No actions, no sequences, no philosophy.
 
-=== CONTENT SAFETY ===
+=== CONTENT SAFETY (STRICTLY ENFORCED - VIOLATIONS WILL BE REJECTED) ===
 THIS IS A COZY BEDTIME DOCUMENTARY. ALL IMAGES MUST BE FAMILY-FRIENDLY AND PEACEFUL.
 
-ABSOLUTELY FORBIDDEN (your prompts will be rejected if they contain any of these):
+BANNED WORDS - NEVER USE THESE IN ANY PROMPT (your response will be rejected and regenerated):
+blood, bloody, bleeding, bloodstained, blood-soaked, crimson (when referring to blood)
+corpse, dead body, lifeless, motionless, dying, death, dies, deceased
+wound, wounded, injury, injured, scar, scarred, disfigured
+gore, gory, viscera, organs, flesh, entrails, innards
+pale, pallid, gaunt, wasted, skeletal, emaciated, sickly, clammy
+sweat, sweating, feverish, fever, coughing, vomiting
+stained, soaked, drenched (with bodily fluids)
+autopsy, dissection, surgery, operation, scalpel, anatomical, lancet, leeches, bloodletting
+suffering, agony, pain, torment, torture, execution
+collapsed, unconscious, barely breathing, chest barely rises
+basin of blood, dark blood, drawing blood, purge, humours
+
+ABSOLUTELY FORBIDDEN:
 ❌ NO nudity, bare skin, bathing, revealing clothing
 ❌ NO kissing, embracing romantically, or intimate physical contact
 ❌ NO surgery, medical procedures, amputations, wounds, blood, gore
@@ -594,9 +694,23 @@ ABSOLUTELY FORBIDDEN (your prompts will be rejected if they contain any of these
 ❌ NO scary, dark, disturbing, shocking imagery
 ❌ NO multiple locations in one prompt (no "meanwhile", "across town", "in another room")
 
-INSTEAD, USE POSITIVE G-RATED ALTERNATIVES:
-When the script mentions anything inappropriate (violence, nudity, kissing, wounds, torture, etc.),
-show the SETTING, EMOTION, or AFTERMATH - never the act itself. The audio tells the story, the image creates atmosphere.
+REQUIRED APPROACH FOR DARK TOPICS:
+Instead of showing illness/death/medical procedures directly, show:
+- BEFORE: Healthy person in happier times
+- PERIPHERAL: Empty chair, closed door, waiting family, doctor arriving at house exterior
+- SYMBOLIC: Wilting flowers, sunset, autumn leaves, extinguished candle
+- AFTERMATH: Memorial, gravestone in peaceful churchyard, mourning clothes
+
+EXAMPLES OF CORRECT ALTERNATIVES:
+❌ "Physician draws lancet across skin, blood streaming into basin"
+✅ "Georgian physician's study, leather medical bag on mahogany desk, morning light through tall windows"
+
+❌ "Patient lies motionless, skin clammy, leeches on neck"
+✅ "Elegant townhouse exterior at dusk, physician's carriage departing, housekeeper at door"
+
+❌ "Woman lies dying, blood-soaked handkerchief beside her"
+✅ "Victorian bedroom at dusk, vase of white lilies, leather-bound Bible on nightstand"
+
 ✅ Surgery/illness → Show the peaceful building exterior, doctor's bag on a table, or family waiting hopefully
 ✅ Battle/violence → Show the calm aftermath, a memorial, or the landscape before/after
 ✅ Death → Show a memorial, peaceful remembrance, or happier earlier times
@@ -1119,9 +1233,12 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
       const scene = sceneDescriptions.find(s => s.index === i + 1);
 
       // Use regenerated description if available, otherwise use original
-      const sceneDesc = regeneratedDescriptions.get(i)
+      let sceneDesc = regeneratedDescriptions.get(i)
         || scene?.sceneDescription
         || `Historical scene depicting: ${window.text.substring(0, 200)}`;
+
+      // CONTENT SAFETY: Sanitize any prompts that contain banned words
+      sceneDesc = sanitizePrompt(sceneDesc, timePeriod.era);
 
       imagePrompts.push({
         index: i + 1,

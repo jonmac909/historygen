@@ -24,6 +24,8 @@ interface ImagePromptRequest {
   audioDuration?: number; // Optional audio duration in seconds
   topic?: string; // User-specified era/topic to anchor images (e.g., "Regency England 1810s")
   subjectFocus?: string; // Who the story focuses on (e.g., "Jane Austen")
+  clipCount?: number; // Number of images that will become video clips (default 12)
+  clipDuration?: number; // Duration of each video clip in seconds (default 5)
 }
 
 interface ImagePrompt {
@@ -250,20 +252,46 @@ function parseSrt(srtContent: string): SrtSegment[] {
 }
 
 // Group SRT segments into time windows for images
-function groupSegmentsForImages(segments: SrtSegment[], imageCount: number, audioDuration?: number): { startSeconds: number; endSeconds: number; text: string }[] {
+// First N images are video clips with fixed duration, remaining are static images
+function groupSegmentsForImages(
+  segments: SrtSegment[],
+  imageCount: number,
+  audioDuration?: number,
+  clipCount: number = 12,
+  clipDuration: number = 5
+): { startSeconds: number; endSeconds: number; text: string }[] {
   if (segments.length === 0) return [];
 
   // Use provided audio duration if available, otherwise fall back to last SRT segment end time
   const totalDuration = audioDuration || segments[segments.length - 1].endSeconds;
-  const windowDuration = totalDuration / imageCount;
 
-  console.log(`Distributing ${imageCount} images across ${totalDuration.toFixed(2)}s (audio duration: ${audioDuration?.toFixed(2) || 'N/A'}s, SRT end: ${segments[segments.length - 1].endSeconds.toFixed(2)}s)`);
+  // Calculate timing: first N images are clips (5s each), rest are static images
+  const actualClipCount = Math.min(clipCount, imageCount);
+  const clipsTotalDuration = actualClipCount * clipDuration; // e.g., 12 * 5 = 60 seconds
+  const staticImageCount = imageCount - actualClipCount;
+  const remainingDuration = totalDuration - clipsTotalDuration;
+  const staticImageDuration = staticImageCount > 0 ? remainingDuration / staticImageCount : 0;
+
+  console.log(`Distributing ${imageCount} images across ${totalDuration.toFixed(2)}s`);
+  console.log(`  - First ${actualClipCount} images: video clips @ ${clipDuration}s each = ${clipsTotalDuration}s`);
+  console.log(`  - Remaining ${staticImageCount} images: static @ ${staticImageDuration.toFixed(2)}s each = ${remainingDuration.toFixed(2)}s`);
 
   const windows: { startSeconds: number; endSeconds: number; text: string }[] = [];
 
   for (let i = 0; i < imageCount; i++) {
-    const windowStart = i * windowDuration;
-    const windowEnd = (i + 1) * windowDuration;
+    let windowStart: number;
+    let windowEnd: number;
+
+    if (i < actualClipCount) {
+      // This is a video clip - fixed 5 second duration
+      windowStart = i * clipDuration;
+      windowEnd = (i + 1) * clipDuration;
+    } else {
+      // This is a static image - distributed across remaining duration
+      const staticIndex = i - actualClipCount;
+      windowStart = clipsTotalDuration + (staticIndex * staticImageDuration);
+      windowEnd = clipsTotalDuration + ((staticIndex + 1) * staticImageDuration);
+    }
 
     // Collect text from segments that overlap with this window
     const overlappingSegments = segments.filter(seg =>
@@ -288,13 +316,16 @@ serve(async (req) => {
   }
 
   try {
-    const { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus }: ImagePromptRequest = await req.json();
+    const { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, clipCount, clipDuration }: ImagePromptRequest = await req.json();
     // Default to true for backward compatibility (filter enabled by default)
     const shouldFilterKeywords = modernKeywordFilter !== false;
     // Topic is used to anchor images to a specific historical era
     const eraTopic = topic || '';
     // Subject focus is who the story is about (used to intelligently include them in relevant scenes)
     const subject = subjectFocus || '';
+    // Clip settings - default to 12 clips at 5 seconds each
+    const effectiveClipCount = clipCount ?? 12;
+    const effectiveClipDuration = clipDuration ?? 5;
 
     if (!script || !srtContent) {
       return new Response(
@@ -317,8 +348,9 @@ serve(async (req) => {
     }
 
     // Parse SRT and group into time windows
+    // First N images are video clips (5s each), remaining are static images
     const segments = parseSrt(srtContent);
-    const windows = groupSegmentsForImages(segments, imageCount, audioDuration);
+    const windows = groupSegmentsForImages(segments, imageCount, audioDuration, effectiveClipCount, effectiveClipDuration);
 
     console.log(`Parsed ${segments.length} SRT segments into ${windows.length} time windows`);
 
@@ -436,14 +468,23 @@ Before generating any prompts, read the FULL script and identify:
 - SETTING: Where and when? (e.g., "Hampshire countryside, Regency England")
 - KEY LOCATIONS: Places mentioned (estates, ballrooms, London streets, etc.)
 
-STEP 2 - SHOT DISTRIBUTION (MUST FOLLOW):
-For a typical 12-image set, aim for:
-- 40-50% (5-6 images): MAIN CHARACTER shots - protagonist actions, couples, group activities
-- 10-20% (1-2 images): ESTABLISHING shots - landscapes, buildings (NO people)
-- 30-40% (4-5 images): LIFESTYLE shots - servants, crowds, secondary characters, atmosphere
+STEP 2 - SHOT DISTRIBUTION (STRICTLY ENFORCED):
 
-IMAGE 1 = ALWAYS ESTABLISHING (landscape or building, NO people)
-Then distribute remaining shots to hit the percentages above.
+CRITICAL: 80-90% OF ALL IMAGES MUST HAVE PEOPLE AS THE SUBJECT.
+Only 10-20% can be pure landscape/building shots without people.
+
+For a 12-image set:
+- Image 1: ESTABLISHING (landscape or building) - this is the ONLY guaranteed no-people shot
+- Images 2-12: MUST be 80-90% people shots. Maximum 1-2 additional establishing shots allowed.
+
+CONCRETE EXAMPLE for 12 images:
+- 1 establishing (required first image)
+- 5-6 main character shots (protagonist doing things)
+- 4-5 lifestyle shots (crowds, servants, secondary characters)
+- 0-1 additional establishing shot (OPTIONAL, only if narratively needed)
+
+DO NOT generate multiple consecutive landscape/building shots.
+DO NOT exceed 2 establishing shots total for 12 images.
 
 STEP 3 - SHOT TYPES:
 

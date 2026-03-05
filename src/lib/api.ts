@@ -999,10 +999,13 @@ export async function generateImagePrompts(
   audioDuration?: number,
   topic?: string,
   subjectFocus?: string,
-  onProgress?: (progress: number, message: string) => void
+  onProgress?: (progress: number, message: string) => void,
+  clipCount: number = 12,
+  clipDuration: number = 5
 ): Promise<ImagePromptsResult> {
   console.log('Generating AI-powered image prompts from script and captions...');
   console.log(`Script length: ${script.length}, SRT length: ${srtContent.length}, imageCount: ${imageCount}`);
+  console.log(`Clip-aware timing: first ${clipCount} images = ${clipDuration}s clips, rest = static images`);
   if (topic) {
     console.log(`Topic/Era anchor: ${topic}`);
   }
@@ -1010,7 +1013,7 @@ export async function generateImagePrompts(
     console.log(`Subject focus: ${subjectFocus}`);
   }
   if (audioDuration) {
-    console.log(`Audio duration: ${audioDuration.toFixed(2)}s - images will be evenly distributed across full audio`);
+    console.log(`Audio duration: ${audioDuration.toFixed(2)}s`);
   }
 
   const renderUrl = import.meta.env.VITE_RENDER_API_URL;
@@ -1021,7 +1024,7 @@ export async function generateImagePrompts(
       const response = await fetch(`${renderUrl}/generate-image-prompts`, {
         method: 'POST',
         headers: withRenderAuth({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, stream: true })
+        body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, clipCount, clipDuration, stream: true })
       });
 
       if (!response.ok) {
@@ -1076,7 +1079,7 @@ export async function generateImagePrompts(
 
   // Fallback to Supabase Edge Function (no streaming)
   const { data, error } = await supabase.functions.invoke('generate-image-prompts', {
-    body: { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus }
+    body: { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, clipCount, clipDuration }
   });
 
   if (error) {

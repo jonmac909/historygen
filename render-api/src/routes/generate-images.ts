@@ -56,7 +56,8 @@ const isRunpodStatusResponse = (data: unknown): data is RunpodStatusResponse => 
 // Z-Image currently ignores negative_prompt but we keep it in case they add support
 // SCENE COMES FIRST for priority, then style suffix
 // ERA-AGNOSTIC: Works for Vikings, Regency, Ancient Egypt, etc.
-const STYLE_SUFFIX = ", cinematic historical oil painting style, natural period-appropriate lighting, peaceful cozy mood, museum-quality fine art, no modern vehicles, no electricity, no streetlights";
+// IMPORTANT: Since Z-Image ignores negative prompts, we MUST say what we WANT, not what we don't want
+const STYLE_SUFFIX = ", cinematic historical oil painting style, natural period-appropriate lighting, peaceful cozy mood, museum-quality fine art, horse-drawn carriages only, gas lamps and candles for lighting, cobblestone streets, period-accurate 19th century setting";
 const NEGATIVE_PROMPT = "kissing, kiss, embracing, romantic contact, nudity, nude, naked, bare skin, revealing clothing, violence, gore, blood, horror, scary, dark, car, cars, automobile, automobiles, modern vehicles, trucks, buses, motorcycles, streetlights, electric lights";
 
 // Detect placeholder prompts that should NOT be used for image generation
