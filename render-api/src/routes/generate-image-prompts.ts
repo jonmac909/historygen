@@ -189,6 +189,79 @@ function sanitizePrompt(prompt: string, era: string): string {
   return replacement;
 }
 
+// SECOND CLAUDE PASS: Validate prompts for content safety
+// This catches subtle violations that keyword matching might miss
+async function validatePromptsWithClaude(
+  anthropic: Anthropic,
+  prompts: { index: number; sceneDescription: string }[],
+  era: string
+): Promise<{ validatedPrompts: { index: number; sceneDescription: string }[]; inputTokens: number; outputTokens: number }> {
+  // Batch prompts into groups for efficiency
+  const BATCH_SIZE = 20;
+  const allResults: { index: number; sceneDescription: string }[] = [];
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+
+  for (let i = 0; i < prompts.length; i += BATCH_SIZE) {
+    const batch = prompts.slice(i, i + BATCH_SIZE);
+    const promptList = batch.map(p => `${p.index}. ${p.sceneDescription}`).join('\n');
+
+    try {
+      const response = await anthropic.messages.create({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 4000,
+        system: `You are a content safety validator for a cozy bedtime documentary.
+Review each prompt and flag any that contain:
+- Medical procedures, surgery, bloodletting, leeches
+- Death, dying, illness, suffering
+- Blood, wounds, gore, corpses
+- Violence, torture, pain
+
+For FLAGGED prompts, provide a SAFE ALTERNATIVE showing peripheral/symbolic content instead.
+
+Respond in JSON format:
+[
+  {"index": 1, "status": "ok"},
+  {"index": 2, "status": "flagged", "reason": "contains bloodletting", "alternative": "Georgian physician's study, leather bag on desk, morning light"}
+]`,
+        messages: [{
+          role: 'user',
+          content: `Review these ${era} image prompts for content safety:\n\n${promptList}`
+        }]
+      });
+
+      totalInputTokens += response.usage?.input_tokens || 0;
+      totalOutputTokens += response.usage?.output_tokens || 0;
+
+      const text = response.content[0].type === 'text' ? response.content[0].text : '';
+      const validationResults = extractJsonArray(text) as { index: number; status: string; alternative?: string }[] | null;
+
+      if (validationResults) {
+        for (const result of validationResults) {
+          const original = batch.find(p => p.index === result.index);
+          if (original) {
+            if (result.status === 'flagged' && result.alternative) {
+              console.warn(`⚠️ CLAUDE VALIDATOR flagged prompt ${result.index}: replaced with safe alternative`);
+              allResults.push({ index: result.index, sceneDescription: result.alternative });
+            } else {
+              allResults.push(original);
+            }
+          }
+        }
+      } else {
+        // If parsing fails, keep originals
+        allResults.push(...batch);
+      }
+    } catch (error) {
+      console.error('Claude validation error:', error);
+      // On error, keep original prompts
+      allResults.push(...batch);
+    }
+  }
+
+  return { validatedPrompts: allResults, inputTokens: totalInputTokens, outputTokens: totalOutputTokens };
+}
+
 // Time period context extracted from script
 interface TimePeriodContext {
   era: string;              // e.g., "10,000 BCE - Mesolithic Period"
@@ -1252,6 +1325,26 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
     }
 
     console.log(`Generated ${imagePrompts.length} image prompts successfully (regenerated ${regenTasks.length} prompts with modern keywords)`);
+
+    // SECOND PASS: Run Claude validation on all prompts
+    sendEvent({ type: 'progress', progress: 96, message: 'Validating content safety...' });
+    console.log('🔍 Running Claude content safety validation...');
+
+    const promptsToValidate = imagePrompts.map(p => ({ index: p.index, sceneDescription: p.sceneDescription }));
+    const validationResult = await validatePromptsWithClaude(anthropic, promptsToValidate, timePeriod.era);
+
+    // Apply validated/replaced descriptions
+    for (const validated of validationResult.validatedPrompts) {
+      const prompt = imagePrompts.find(p => p.index === validated.index);
+      if (prompt && prompt.sceneDescription !== validated.sceneDescription) {
+        prompt.sceneDescription = validated.sceneDescription;
+        prompt.prompt = `${effectiveStylePrompt}. ${validated.sceneDescription}`;
+      }
+    }
+
+    totalInputTokens += validationResult.inputTokens;
+    totalOutputTokens += validationResult.outputTokens;
+
     console.log(`Total tokens: ${totalInputTokens} input, ${totalOutputTokens} output`);
 
     // Save costs to Supabase if projectId provided
