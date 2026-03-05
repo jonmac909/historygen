@@ -2709,10 +2709,13 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       .from('generated-assets')
       .getPublicUrl(combinedFileName);
 
+    // Add cache-busting timestamp to prevent browser showing stale audio after regeneration
+    const cacheBustedAudioUrl = `${combinedUrlData.publicUrl}?t=${Date.now()}`;
+
     sendEvent({ type: 'progress', progress: 98 });
 
     console.log(`\n=== All ${segmentResults.length} segments complete ===`);
-    console.log(`Combined audio URL: ${combinedUrlData.publicUrl}`);
+    console.log(`Combined audio URL: ${cacheBustedAudioUrl}`);
     console.log(`Total duration: ${Math.round(totalDuration)}s`);
 
     // Save cost to Supabase (Fish Speech: $0.004/minute of audio output)
@@ -2739,7 +2742,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
     // Save to project database (fire-and-forget - allows user to close browser)
     if (projectId) {
-      saveAudioToProject(projectId, combinedUrlData.publicUrl, Math.round(combinedDuration), cleanedSegments)
+      saveAudioToProject(projectId, cacheBustedAudioUrl, Math.round(combinedDuration), cleanedSegments)
         .then(result => {
           if (result.success) {
             console.log(`[Audio] Saved to project ${projectId}`);
@@ -2753,7 +2756,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
     sendEvent({
       type: 'complete',
       success: true,
-      audioUrl: combinedUrlData.publicUrl, // Combined audio for playback
+      audioUrl: cacheBustedAudioUrl, // Combined audio for playback (cache-busted)
       duration: Math.round(combinedDuration),
       size: finalAudio.length,
       segments: cleanedSegments, // Individual segments for regeneration
