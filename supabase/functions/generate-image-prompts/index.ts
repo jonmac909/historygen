@@ -431,16 +431,23 @@ YOUR TASK: Create visual scene descriptions inspired by the topic and mood of th
 CONTENT SAFETY (STRICTLY ENFORCED - VIOLATIONS WILL BE REJECTED):
 
 BANNED WORDS - NEVER USE THESE IN ANY PROMPT:
-blood, bloody, bleeding, bloodstained, blood-soaked, crimson (when referring to blood)
+Violence/Gore/Death:
+blood, bloody, bleeding, bloodstained, blood-soaked, bloodletting, crimson blood, dark blood, basin of blood, drawing blood, purge, humours
 corpse, dead body, lifeless, motionless, dying, death, dies, deceased
 wound, wounded, injury, injured, scar, scarred, disfigured
 gore, gory, viscera, organs, flesh, entrails, innards
-pale, pallid, gaunt, wasted, skeletal, emaciated, sickly
-sweat, sweating, feverish, fever, coughing, vomiting
-stained, soaked, drenched (with bodily fluids)
-autopsy, dissection, surgery, operation, scalpel, anatomical
 suffering, agony, pain, torment, torture, execution
 collapsed, unconscious, barely breathing, chest barely rises
+
+Illness/Medical:
+pale, pallid, gaunt, wasted, skeletal, emaciated, sickly, clammy
+sweat, sweating, feverish, fever, coughing, vomiting
+stained, soaked, drenched (with bodily fluids)
+autopsy, dissection, surgery, operation, scalpel, anatomical, lancet, leeches
+
+Nudity/Romance:
+nude, naked, nudity, bare skin, unclothed, undressed, topless, revealing
+kissing, kiss, embracing, romantic embrace, passionate, sensual, seductive
 
 REQUIRED APPROACH FOR DARK TOPICS:
 Instead of showing illness/death directly, show:

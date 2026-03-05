@@ -129,16 +129,22 @@ interface ImagePrompt {
 
 // CONTENT SAFETY: Banned words list for post-generation validation
 const BANNED_WORDS = [
+  // Violence/Gore/Death
   'blood', 'bloody', 'bleeding', 'bloodstained', 'blood-soaked', 'bloodletting',
-  'corpse', 'dead body', 'lifeless', 'motionless', 'dying', 'deceased',
+  'corpse', 'dead body', 'lifeless', 'motionless', 'dying', 'death', 'dies', 'deceased',
   'wound', 'wounded', 'injury', 'injured', 'scar', 'scarred', 'disfigured',
   'gore', 'gory', 'viscera', 'organs', 'flesh', 'entrails', 'innards',
+  'suffering', 'agony', 'pain', 'torment', 'torture', 'execution',
+  'collapsed', 'unconscious', 'barely breathing', 'chest barely rises',
+  'crimson blood', 'dark blood', 'basin of blood', 'drawing blood', 'purge', 'humours',
+  // Illness/Medical
   'pale', 'pallid', 'gaunt', 'wasted', 'skeletal', 'emaciated', 'sickly', 'clammy',
   'sweat', 'sweating', 'feverish', 'fever', 'coughing', 'vomiting',
+  'stained', 'soaked', 'drenched',
   'autopsy', 'dissection', 'surgery', 'operation', 'scalpel', 'anatomical', 'lancet', 'leeches',
-  'suffering', 'agony', 'pain', 'torment', 'torture', 'execution',
-  'collapsed', 'unconscious', 'barely breathing',
-  'crimson blood', 'dark blood', 'basin of blood', 'drawing blood', 'purge', 'humours'
+  // Nudity/Romance
+  'nude', 'naked', 'nudity', 'bare skin', 'unclothed', 'undressed', 'topless', 'revealing',
+  'kissing', 'kiss', 'embracing', 'romantic embrace', 'passionate', 'sensual', 'seductive'
 ];
 
 // Check if a prompt contains any banned words
