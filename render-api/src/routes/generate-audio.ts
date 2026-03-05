@@ -203,20 +203,11 @@ function normalizeText(text: string): string {
     .trim();
 }
 
-// Apply pronunciation fixes for TTS - converts words to phonetic spellings
-// This should be called ONLY when passing text to TTS, not for display
+// Apply pronunciation fixes for TTS - DISABLED
+// Fish Speech handles pronunciation better without interference
 function applyPronunciationFixes(text: string): string {
-  let result = text;
-  const pronunciationFixes = getPronunciationFixesRecord();
-  for (const [word, phonetic] of Object.entries(pronunciationFixes)) {
-    const regex = new RegExp(`\\b${word}\\b`, 'gi');
-    const before = result;
-    result = result.replace(regex, phonetic);
-    if (before !== result) {
-      console.log(`[PRONUNCIATION FIX] "${word}" → "${phonetic}"`);
-    }
-  }
-  return result;
+  // Pronunciation system disabled - let Fish Speech handle words naturally
+  return text;
 }
 
 // Phonetic dictionary for automatic pronunciation lookup
