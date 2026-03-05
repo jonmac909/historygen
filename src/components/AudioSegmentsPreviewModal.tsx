@@ -632,6 +632,10 @@ export function AudioSegmentsPreviewModal({
   const groupAudioRef = useRef<HTMLAudioElement>(null);
   const combinedAudioRef = useRef<HTMLAudioElement>(null);
 
+  // Sequential playback state (used when segmentsNeedRecombine is true)
+  const [sequentialIndex, setSequentialIndex] = useState<number>(-1);
+  const sequentialAudioRef = useRef<HTMLAudioElement>(null);
+
   const calculatedDuration = segments.reduce((sum, seg) => sum + seg.duration, 0);
   const totalDuration = propTotalDuration || calculatedDuration;
 
@@ -712,12 +716,38 @@ export function AudioSegmentsPreviewModal({
     if (isOpen) {
       setIsPlayingAll(false);
       setAllCurrentTime(0);
-      setIsLoadingAll(true);
+      setSequentialIndex(-1);
+      // If using sequential playback (stale combined audio), don't wait for combined to load
+      setIsLoadingAll(!segmentsNeedRecombine);
       setPlaybackRateAll(1);
     }
-  }, [isOpen]);
+  }, [isOpen, segmentsNeedRecombine]);
 
   const togglePlayAll = () => {
+    // If segments need recombine, play sequentially instead of using stale combined audio
+    if (segmentsNeedRecombine && segments.length > 0) {
+      if (isPlayingAll) {
+        // Stop sequential playback
+        if (sequentialAudioRef.current) {
+          sequentialAudioRef.current.pause();
+        }
+        setIsPlayingAll(false);
+        setSequentialIndex(-1);
+      } else {
+        // Start sequential playback from beginning
+        setSequentialIndex(0);
+        setIsPlayingAll(true);
+        setAllCurrentTime(0);
+        if (sequentialAudioRef.current) {
+          sequentialAudioRef.current.src = segments[0].audioUrl;
+          sequentialAudioRef.current.playbackRate = playbackRateAll;
+          sequentialAudioRef.current.play().catch((err) => console.error('Failed to play segment:', err));
+        }
+      }
+      return;
+    }
+
+    // Normal combined audio playback
     if (!combinedAudioRef.current) return;
 
     if (isPlayingAll) {
@@ -730,11 +760,43 @@ export function AudioSegmentsPreviewModal({
     }
   };
 
+  // Handle sequential segment ending - play next segment
+  const handleSequentialEnded = () => {
+    const nextIndex = sequentialIndex + 1;
+    if (nextIndex < segments.length) {
+      // Calculate cumulative time up to this point
+      const cumulativeTime = segments.slice(0, nextIndex).reduce((sum, s) => sum + s.duration, 0);
+      setAllCurrentTime(cumulativeTime);
+      setSequentialIndex(nextIndex);
+      if (sequentialAudioRef.current) {
+        sequentialAudioRef.current.src = segments[nextIndex].audioUrl;
+        sequentialAudioRef.current.playbackRate = playbackRateAll;
+        sequentialAudioRef.current.play().catch(console.error);
+      }
+    } else {
+      // All segments finished
+      setIsPlayingAll(false);
+      setSequentialIndex(-1);
+      setAllCurrentTime(0);
+    }
+  };
+
+  // Update time during sequential playback
+  const handleSequentialTimeUpdate = () => {
+    if (sequentialAudioRef.current && sequentialIndex >= 0) {
+      const previousTime = segments.slice(0, sequentialIndex).reduce((sum, s) => sum + s.duration, 0);
+      setAllCurrentTime(previousTime + sequentialAudioRef.current.currentTime);
+    }
+  };
+
   const togglePlaybackRateAll = () => {
     const newRate = playbackRateAll === 1 ? 2 : 1;
     setPlaybackRateAll(newRate);
     if (combinedAudioRef.current) {
       combinedAudioRef.current.playbackRate = newRate;
+    }
+    if (sequentialAudioRef.current) {
+      sequentialAudioRef.current.playbackRate = newRate;
     }
   };
 
@@ -797,17 +859,29 @@ export function AudioSegmentsPreviewModal({
 
         <div className="py-4 space-y-4">
           {/* Combined Audio Player - Play All */}
-          {combinedAudioUrl && (
+          {(combinedAudioUrl || segments.length > 0) && (
             <div className="border-2 border-primary/30 rounded-lg p-4 space-y-3 bg-primary/5">
+              {/* Combined audio element (used when not stale) */}
+              {combinedAudioUrl && (
+                <audio
+                  key={combinedAudioUrl}
+                  ref={combinedAudioRef}
+                  src={combinedAudioUrl}
+                  preload="auto"
+                  onTimeUpdate={handleAllTimeUpdate}
+                  onCanPlay={handleAllCanPlay}
+                  onEnded={() => { setIsPlayingAll(false); setAllCurrentTime(0); }}
+                  onError={() => setIsLoadingAll(false)}
+                />
+              )}
+              {/* Sequential playback audio element (used when segments are stale) */}
               <audio
-                key={combinedAudioUrl}
-                ref={combinedAudioRef}
-                src={combinedAudioUrl}
+                ref={sequentialAudioRef}
                 preload="auto"
-                onTimeUpdate={handleAllTimeUpdate}
-                onCanPlay={handleAllCanPlay}
-                onEnded={() => { setIsPlayingAll(false); setAllCurrentTime(0); }}
-                onError={() => setIsLoadingAll(false)}
+                onTimeUpdate={handleSequentialTimeUpdate}
+                onEnded={handleSequentialEnded}
+                onCanPlay={() => setIsLoadingAll(false)}
+                style={{ display: 'none' }}
               />
 
               <div className="flex items-center justify-between">

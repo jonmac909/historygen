@@ -193,14 +193,16 @@ export function ThumbnailGeneratorModal({
             );
 
             if (result.success && result.thumbnails && result.thumbnails.length > 0) {
-              console.log("[Full Auto Thumbnails] Generated thumbnail:", result.thumbnails[0]);
-              setGeneratedThumbnails(result.thumbnails);
-              setSelectedThumbnail(result.thumbnails[0]);
+              // Deduplicate URLs in case the API returned duplicates
+              const uniqueThumbnails = [...new Set(result.thumbnails)];
+              console.log("[Full Auto Thumbnails] Generated thumbnail:", uniqueThumbnails[0]);
+              setGeneratedThumbnails(uniqueThumbnails);
+              setSelectedThumbnail(uniqueThumbnails[0]);
 
               // Auto-confirm after short delay
               setTimeout(() => {
                 console.log("[Full Auto Thumbnails] Auto-confirming...");
-                onConfirm(result.thumbnails, 0);
+                onConfirm(uniqueThumbnails, 0);
               }, 500);
             } else {
               console.error("[Full Auto Thumbnails] Generation failed:", result.error);
@@ -544,10 +546,12 @@ export function ThumbnailGeneratorModal({
       );
 
       if (result.success && result.thumbnails) {
-        setGeneratedThumbnails(result.thumbnails);
+        // Deduplicate URLs in case the API returned duplicates
+        const uniqueThumbnails = [...new Set(result.thumbnails)];
+        setGeneratedThumbnails(uniqueThumbnails);
         toast({
           title: "Thumbnails Generated",
-          description: `${result.thumbnails.length} thumbnails created successfully.`,
+          description: `${uniqueThumbnails.length} thumbnails created successfully.`,
         });
       } else {
         toast({
