@@ -485,7 +485,8 @@ Only 10-20% can be pure landscape/building shots without people.
 
 For a 12-image set:
 - Image 1: ESTABLISHING (landscape or building) - this is the ONLY guaranteed no-people shot
-- Images 2-12: MUST be 80-90% people shots. Maximum 1-2 additional establishing shots allowed.
+- Image 2 or 3: MUST show the main character/focus - no more than 2 establishing shots before introducing people
+- Images 2-12: 80-90% people shots. Maximum 1-2 additional establishing shots allowed.
 
 CONCRETE EXAMPLE for 12 images:
 - 1 establishing (required first image)
@@ -495,6 +496,7 @@ CONCRETE EXAMPLE for 12 images:
 
 DO NOT generate multiple consecutive landscape/building shots.
 DO NOT exceed 2 establishing shots total for 12 images.
+The main character/focus MUST appear by image 3 at the latest.
 
 STEP 3 - SHOT TYPES:
 
