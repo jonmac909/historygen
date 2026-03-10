@@ -263,7 +263,9 @@ Transform this transcript into ${wordLimit} words of polished documentary narrat
 - ONLY include content directly related to ${topicFocus}
 - If the transcript drifts to other topics, IGNORE those sections
 - Expand and elaborate on the on-topic content to reach the word count
-- Make the first ~3000 words especially well-crafted with rich sensory details`
+- Make the first ~3000 words especially well-crafted with rich sensory details
+
+CRITICAL FORMAT RULE: Start IMMEDIATELY with narration. NO titles, NO headers, NO "# Complete Histories", NO "---", NO markdown of any kind. First word must be spoken prose.`
             }];
           } else {
             // Continuation iterations - now in the "calm flow" section
@@ -549,14 +551,28 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
           const wordLimit = Math.min(WORDS_PER_ITERATION, targetWords);
           messages = [{
             role: 'user',
-            content: `Create a historical documentary script based on this content:\n\n${transcript}\n\nTitle: ${title || 'Historical Documentary'}\n\nIMPORTANT: Write EXACTLY ${wordLimit} words of pure narration. Do not exceed ${wordLimit} words. Stop writing when you reach ${wordLimit} words.`
+            content: `Transform this transcript into a documentary script about "${topicFocus || title || 'this historical topic'}":
+
+=== TRANSCRIPT ===
+${transcript}
+=== END TRANSCRIPT ===
+
+Write EXACTLY ${wordLimit} words of pure narration.
+
+CRITICAL FORMAT RULE: Start IMMEDIATELY with narration. NO titles, NO headers, NO "# Complete Histories", NO "---", NO markdown of any kind. First word must be spoken prose.`
           }];
         } else {
           const wordLimit = Math.min(WORDS_PER_ITERATION, wordsRemaining);
           messages = [
             {
               role: 'user',
-              content: `Create a historical documentary script based on this content:\n\n${transcript}\n\nTitle: ${title || 'Historical Documentary'}\n\nWrite ${wordLimit} words of pure narration.`
+              content: `Transform this transcript into a documentary script about "${topicFocus || title || 'this historical topic'}":
+
+=== TRANSCRIPT ===
+${transcript}
+=== END TRANSCRIPT ===
+
+Write ${wordLimit} words of pure narration. NO headers, NO markdown, NO titles - pure spoken prose only.`
             },
             {
               role: 'assistant',
@@ -699,6 +715,8 @@ WHAT IS BAD (flag these):
 - Short punchy sentences meant to excite
 - Modern slang or anachronisms
 - Questions that demand engagement
+- Direct viewer engagement questions in openings ('What was this era...?', 'Why does it still...?') - creates tension instead of calm contemplation
+- Meta-commentary or call-to-action phrases ('As always, I'd love to know...', 'Let me know in the comments...', 'Subscribe for more...') - breaks immersion
 
 TOPIC DRIFT DETECTION (CRITICAL):
 You MUST analyze the script for topic consistency. The title tells you the intended topic.
@@ -726,7 +744,7 @@ You must respond with valid JSON in this exact format:
 }
 
 SEVERITY RULES:
-- "major" (shown with !) = TTS-breaking issues: headers, markdown, titles, hashtags, TOPIC DRIFT, off-topic content
+- "major" (shown with !) = TTS-breaking issues: headers, markdown, titles, hashtags, TOPIC DRIFT, off-topic content, direct viewer engagement questions, meta-commentary/call-to-action
 - "minor" (shown with ?) = Quality suggestions: pacing, tone tweaks, missing sensory details, style improvements
 
 Example response with topic drift:

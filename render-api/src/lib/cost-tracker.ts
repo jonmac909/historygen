@@ -5,7 +5,7 @@
  * - Claude Sonnet 4.5: $3/1M input tokens, $15/1M output tokens
  * - Fish Speech (RunPod): ~$0.004/minute audio output
  * - Z-Image (RunPod): ~$0.035/image
- * - Seedance 1.5 Pro (Kie.ai): ~$0.21/12s clip
+ * - Seedance 1.5 Pro (Kie.ai): $0.08/clip
  * - Whisper (OpenAI): $0.006/minute audio
  * - RunPod CPU: $0.0003733/second
  */
@@ -19,7 +19,7 @@ export const PRICING = {
   claude_vision: 0.004,             // per image scanned with Claude Vision
   fish_speech: 0.004,               // per minute of audio output
   z_image: 0.035,                   // per image generated
-  seedance: 0.21,                   // per 12s clip (prorated for shorter clips)
+  seedance: 0.08,                   // per clip (flat rate)
   whisper: 0.006,                   // per minute of audio input
   runpod_cpu: 0.0003733,            // per second of processing
 };
@@ -81,8 +81,8 @@ export async function saveCost(params: CostRecord): Promise<number> {
       unitCost = PRICING.z_image;
       break;
     case 'seedance':
-      // Prorate for clip duration (units is duration in seconds)
-      unitCost = PRICING.seedance / 12; // cost per second
+      // Flat rate per clip
+      unitCost = PRICING.seedance;
       break;
     case 'whisper':
       unitCost = PRICING.whisper;

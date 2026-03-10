@@ -631,16 +631,15 @@ async function handleStreamingClips(
     console.log(`Success: ${successfulClips.length}/${total}`);
     console.log(`Failed: ${failedCount}/${total}`);
 
-    // Save cost to Supabase (Seedance: $0.21/12s clip, prorated by duration)
-    const totalClipDuration = successfulClips.length * duration;
-    if (projectId && totalClipDuration > 0) {
+    // Save cost to Supabase (Seedance: $0.08/clip flat rate)
+    if (projectId && successfulClips.length > 0) {
       saveCost({
         projectId,
         source: 'manual',
         step: 'video_clips',
         service: 'seedance',
-        units: totalClipDuration,
-        unitType: 'seconds',
+        units: successfulClips.length,
+        unitType: 'clips',
       }).catch(err => console.error('[cost-tracker] Failed to save video clips cost:', err));
     }
 
@@ -752,16 +751,15 @@ async function handleNonStreamingClips(
 
     console.log(`[I2V] Generated ${successfulClips.length}/${clips.length} video clips`);
 
-    // Save cost to Supabase (Seedance: $0.21/12s clip, prorated by duration)
-    const totalClipDuration = successfulClips.length * duration;
-    if (projectId && totalClipDuration > 0) {
+    // Save cost to Supabase (Seedance: $0.08/clip flat rate)
+    if (projectId && successfulClips.length > 0) {
       saveCost({
         projectId,
         source: 'manual',
         step: 'video_clips',
         service: 'seedance',
-        units: totalClipDuration,
-        unitType: 'seconds',
+        units: successfulClips.length,
+        unitType: 'clips',
       }).catch(err => console.error('[cost-tracker] Failed to save video clips cost:', err));
     }
 
@@ -932,16 +930,15 @@ async function handleSequentialClipsWithContinuity(
     console.log(`Success: ${successfulClips.length}/${total}`);
     console.log(`Failed: ${failedCount}/${total}`);
 
-    // Save cost to Supabase (Seedance: $0.21/12s clip, prorated by duration)
-    const totalClipDuration = successfulClips.length * duration;
-    if (projectId && totalClipDuration > 0) {
+    // Save cost to Supabase (Seedance: $0.08/clip flat rate)
+    if (projectId && successfulClips.length > 0) {
       saveCost({
         projectId,
         source: 'manual',
         step: 'video_clips',
         service: 'seedance',
-        units: totalClipDuration,
-        unitType: 'seconds',
+        units: successfulClips.length,
+        unitType: 'clips',
       }).catch(err => console.error('[cost-tracker] Failed to save video clips cost:', err));
     }
 

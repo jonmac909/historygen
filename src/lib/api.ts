@@ -2663,7 +2663,10 @@ export async function fetchProjectCosts(projectId: string): Promise<ProjectCosts
     const result = await response.json();
     return {
       success: true,
-      costs: result.costs
+      costs: {
+        steps: result.steps || [],
+        totalCost: result.totalCost || 0
+      }
     };
 
   } catch (error) {
