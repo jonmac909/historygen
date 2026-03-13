@@ -773,6 +773,12 @@ const LISTING_FIELDS = `
   created_at, updated_at
 `;
 
+// Ultra-minimal fields for drawer (just what's needed to render the list)
+const DRAWER_FIELDS = `
+  id, status, video_title, current_step, is_favorite,
+  parent_project_id, updated_at, audio_segments, image_urls
+`;
+
 // Convert minimal listing row to Project (with undefined for large fields)
 function rowToProjectListing(row: {
   id: string;
@@ -825,4 +831,50 @@ export async function getRootProjects(): Promise<Project[]> {
   }
 
   return (data || []).map(rowToProjectListing);
+}
+
+// Fast drawer loading - minimal fields only
+export async function getDrawerProjects(): Promise<Project[]> {
+  const { data, error } = await supabase
+    .from('generation_projects')
+    .select(DRAWER_FIELDS)
+    .is('parent_project_id', null)
+    .order('updated_at', { ascending: false });
+
+  if (error) {
+    console.error('[projectStore] Error fetching drawer projects:', error);
+    return [];
+  }
+
+  return (data || []).map(rowToDrawerProject);
+}
+
+// Convert minimal drawer row to Project
+function rowToDrawerProject(row: {
+  id: string;
+  status: string;
+  video_title: string | null;
+  current_step: string | null;
+  is_favorite: boolean | null;
+  parent_project_id: string | null;
+  updated_at: string;
+  audio_segments: unknown;
+  image_urls: unknown;
+}): Project {
+  return {
+    id: row.id,
+    createdAt: 0, // Not needed for drawer
+    updatedAt: new Date(row.updated_at).getTime(),
+    videoTitle: row.video_title || 'Untitled',
+    sourceUrl: '', // Not needed for drawer
+    settings: {} as GenerationSettings, // Not needed for drawer
+    status: (row.status as Project['status']) || 'in_progress',
+    currentStep: (row.current_step as Project['currentStep']) || 'script',
+    parentProjectId: row.parent_project_id || undefined,
+    versionNumber: 1,
+    isFavorite: row.is_favorite || false,
+    // Include counts for partial status display
+    audioSegments: row.audio_segments as any[] || undefined,
+    imageUrls: row.image_urls as string[] || undefined,
+  };
 }

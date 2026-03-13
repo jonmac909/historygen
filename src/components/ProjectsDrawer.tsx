@@ -30,10 +30,9 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  getRootProjects,
+  getDrawerProjects,
   getProjectVersions,
   deleteProject,
-  getArchivedProjects,
   toggleFavorite,
   upsertProject,
   formatDate,
@@ -87,24 +86,19 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
   const [serverRunningCount, setServerRunningCount] = useState(0);
   const [serverRunningIds, setServerRunningIds] = useState<Set<string>>(new Set());
 
-  // Function to load projects from database
+  // Function to load projects from database (fast - minimal fields)
   const loadProjects = async (showLoading = false) => {
     if (showLoading) setIsLoading(true);
     try {
-      const [rootProjects, archived] = await Promise.all([getRootProjects(), getArchivedProjects()]);
-      console.log('[ProjectsDrawer] Loaded', rootProjects.length, 'root projects,', archived.length, 'archived');
+      const projects = await getDrawerProjects();
+      console.log('[ProjectsDrawer] Loaded', projects.length, 'projects');
 
-      // Combine all projects, mapping 'completed' to 'live' for display
-      const allCombined = [
-        ...rootProjects.map(p => ({
-          ...p,
-          status: p.status === 'completed' ? 'live' as const : p.status
-        })),
-        ...archived
-      ];
-      // Sort by updatedAt descending
-      allCombined.sort((a, b) => b.updatedAt - a.updatedAt);
-      setAllProjects(allCombined);
+      // Map 'completed' to 'live' for display
+      const mapped = projects.map(p => ({
+        ...p,
+        status: p.status === 'completed' ? 'live' as const : p.status
+      }));
+      setAllProjects(mapped);
     } catch (err) {
       console.error('[ProjectsDrawer] Failed to load projects:', err);
     } finally {
