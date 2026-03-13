@@ -826,15 +826,22 @@ ${storySubjectFocus ? `
 === SUBJECT FOCUS (CRITICAL) ===
 This documentary focuses on: ${storySubjectFocus}
 
-IMPORTANT: Show THEIR world, THEIR perspective, THEIR daily life.
-- When royalty/nobility is mentioned, show how ${storySubjectFocus} experienced or viewed it
-- When palaces/mansions are mentioned, show the working areas (kitchens, stables, servants' quarters)
-- Focus on ${storySubjectFocus}, NOT aristocratic ballrooms or royal chambers
-- Show their work, their spaces, their relationships, their struggles
+CRITICAL: At least 70% of images MUST include ${storySubjectFocus} as VISIBLE PEOPLE in the scene.
+Do NOT just show empty rooms or places - SHOW THE PEOPLE doing things!
 
-Example: If topic is "Regency England" and subjectFocus is "servants, housemaids":
-- CORRECT: Housemaid polishing silver in the butler's pantry at dawn
-- WRONG: Lady in ballgown dancing at a grand ball
+IMPORTANT: Show THEIR world, THEIR perspective, THEIR daily life - WITH THEM IN IT.
+- When royalty/nobility is mentioned, show how ${storySubjectFocus} experienced or viewed it
+- When palaces/mansions are mentioned, show the working areas WITH ${storySubjectFocus} working in them
+- Focus on ${storySubjectFocus}, NOT aristocratic ballrooms or royal chambers
+- Show them at WORK, in ACTION, interacting - NOT empty rooms or landscapes
+
+Example: If topic is "Edwardian England" and subjectFocus is "servants, maids, butlers":
+- CORRECT: Housemaid in black dress and white apron polishing silver in butler's pantry at dawn
+- CORRECT: Butler in tailcoat supervising footmen setting elaborate dinner table
+- CORRECT: Cook in kitchen preparing breakfast, steam rising from pots
+- WRONG: Empty kitchen with copper pots (no people!)
+- WRONG: Servants' corridor with bells on wall (no people!)
+- WRONG: Lady in ballgown dancing at a grand ball (wrong subject!)
 ` : ''}
 #1 PRIORITY: VISUAL BEAUTY & CINEMATIC IMPACT
 Create images that would hang in a museum or win cinematography awards. Each scene should:
@@ -1573,8 +1580,9 @@ REGION: ${timePeriod.region}
 VISUAL CONSTRAINTS: ${timePeriod.visualConstraints}
 ${subjectFocus ? `
 SUBJECT FOCUS: This documentary focuses on ${subjectFocus}.
-Show THEIR world, THEIR perspective, THEIR daily life.
-When royalty/palaces are mentioned, show how ${subjectFocus} experienced it (kitchens, stables, servants' quarters).
+CRITICAL: Most images MUST include ${subjectFocus} as VISIBLE PEOPLE in the scene - not empty rooms!
+Show THEIR world WITH THEM IN IT - at work, in action, interacting.
+When royalty/palaces are mentioned, show ${subjectFocus} working in those spaces (kitchens, stables, servants' quarters).
 ` : ''}
 Create ${count} stunning scene descriptions that continue a documentary video. These are ADDITIONAL images being added to an existing set, so:
 - Do NOT include establishing shots (those exist at the start)
