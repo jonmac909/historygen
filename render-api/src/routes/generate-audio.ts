@@ -2789,20 +2789,8 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
   } catch (error) {
     console.error('Audio error:', error);
-
-    // Save completed segments on failure (if any were generated)
-    if (projectId && allSegmentResults && allSegmentResults.length > 0) {
-      console.log(`[Audio] Saving ${allSegmentResults.length} completed segments before failure...`);
-      saveAudioProgress(projectId, allSegmentResults.map(r => ({
-        index: r.index,
-        audioUrl: r.audioUrl,
-        duration: r.duration,
-        text: r.text,
-      })), 'failed').catch(err =>
-        console.warn('[Audio] Failed to save partial progress:', err)
-      );
-    }
-
+    // Note: Completed segments are already saved incrementally after each completion
+    // No need to save again here - the last successful save has the latest state
     sendEvent({ type: 'error', error: error instanceof Error ? error.message : 'Audio generation failed' });
     res.end();
   } finally {

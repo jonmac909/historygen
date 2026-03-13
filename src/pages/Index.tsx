@@ -788,9 +788,10 @@ const Index = () => {
       ...prev,
       fullAutomation: false,
       // Restore project-specific fields from saved project
-      projectTitle: savedProject.settings?.projectTitle || prev.projectTitle,
-      topic: savedProject.settings?.topic || prev.topic,
-      subjectFocus: savedProject.settings?.subjectFocus || prev.subjectFocus,
+      // IMPORTANT: Don't fallback to prev.* - causes flash of previous project's settings
+      projectTitle: savedProject.settings?.projectTitle || savedProject.videoTitle || "",
+      topic: savedProject.settings?.topic || "",
+      subjectFocus: savedProject.settings?.subjectFocus || "",
       expandWith: savedProject.settings?.expandWith || "",
     }));
 
@@ -3544,12 +3545,13 @@ const Index = () => {
     // Disable fullAutomation when manually opening a project
     // User wants to review/edit, not auto-skip steps
     // CRITICAL: Restore project-specific settings to prevent mixing between projects
+    // IMPORTANT: Don't fallback to prev.* - causes flash of previous project's settings
     setSettings(prev => ({
       ...prev,
       fullAutomation: false,
-      projectTitle: project.settings?.projectTitle || project.videoTitle || prev.projectTitle,
-      topic: project.settings?.topic || prev.topic,
-      subjectFocus: project.settings?.subjectFocus || prev.subjectFocus,
+      projectTitle: project.settings?.projectTitle || project.videoTitle || "",
+      topic: project.settings?.topic || "",
+      subjectFocus: project.settings?.subjectFocus || "",
       expandWith: project.settings?.expandWith || "",
     }));
 

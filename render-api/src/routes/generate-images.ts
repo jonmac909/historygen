@@ -575,20 +575,8 @@ async function handleStreamingImages(
 
   } catch (err) {
     console.error('Stream error:', err);
-
-    // Save completed images on failure (if any were generated)
-    if (projectId && allResults && allResults.length > 0) {
-      console.log(`[Images] Saving ${allResults.filter(r => r.state === 'success').length} completed images before failure...`);
-      const currentImages: (string | null)[] = new Array(total).fill(null);
-      for (const r of allResults) {
-        if (r.state === 'success' && r.imageUrl) {
-          currentImages[r.index] = r.imageUrl;
-        }
-      }
-      saveImageProgress(projectId, currentImages, 'failed')
-        .catch(saveErr => console.warn('[Images] Failed to save partial progress:', saveErr));
-    }
-
+    // Note: Completed images are already saved incrementally after each completion
+    // No need to save again here - the last successful save has the latest state
     sendEvent({
       type: 'error',
       error: err instanceof Error ? err.message : 'Generation failed'
