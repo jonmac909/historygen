@@ -52,11 +52,20 @@ export function AllProjectsView({
   };
 
   // Get status badge text and style info
-  const getStatusBadge = (project: Project): { text: string; isRunning: boolean } => {
+  const getStatusBadge = (project: Project): { text: string; isRunning: boolean; isPartial?: boolean } => {
     if (project.status === 'running') return { text: 'Running on Server', isRunning: true };
     if (project.status === 'failed') return { text: 'Failed', isRunning: false };
     if (project.status === 'cancelled') return { text: 'Cancelled', isRunning: false };
     if (project.status === 'completed') return { text: 'Complete', isRunning: false };
+    // Partial status - some work completed but generation failed mid-way
+    if (project.status === 'audio_partial') {
+      const segmentCount = project.audioSegments?.length || 0;
+      return { text: `Audio Partial (${segmentCount} segments)`, isRunning: false, isPartial: true };
+    }
+    if (project.status === 'images_partial') {
+      const imageCount = project.imageUrls?.length || 0;
+      return { text: `Images Partial (${imageCount} done)`, isRunning: false, isPartial: true };
+    }
     if (project.smokeEmbersVideoUrl || project.embersVideoUrl || project.videoUrl) return { text: 'Rendered', isRunning: false };
     if (project.imageUrls && project.imageUrls.length > 0) return { text: 'Images Ready', isRunning: false };
     if (project.srtContent) return { text: 'Captions Ready', isRunning: false };

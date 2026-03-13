@@ -14,7 +14,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { getPronunciationFixesRecord } from './pronunciation';
 import { saveCost } from '../lib/cost-tracker';
-import { saveAudioToProject } from '../lib/supabase-project';
+import { saveAudioToProject, saveAudioProgress } from '../lib/supabase-project';
 
 // Set FFmpeg and FFprobe paths
 if (ffmpegStatic) {
@@ -2425,6 +2425,18 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           progress: 10 + Math.round((completed / actualSegmentCount) * 75)
         });
 
+        // Save progress after each completed segment (fire-and-forget)
+        if (projectId && allSegmentResults.length > 0) {
+          saveAudioProgress(projectId, allSegmentResults.map(r => ({
+            index: r.index,
+            audioUrl: r.audioUrl,
+            duration: r.duration,
+            text: r.text,
+          })), 'generating').catch(err =>
+            console.warn('[Audio] Failed to save progress:', err)
+          );
+        }
+
       } catch (err) {
         logger.error(`Segment ${segmentNumber} failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
@@ -2777,6 +2789,20 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
   } catch (error) {
     console.error('Audio error:', error);
+
+    // Save completed segments on failure (if any were generated)
+    if (projectId && allSegmentResults && allSegmentResults.length > 0) {
+      console.log(`[Audio] Saving ${allSegmentResults.length} completed segments before failure...`);
+      saveAudioProgress(projectId, allSegmentResults.map(r => ({
+        index: r.index,
+        audioUrl: r.audioUrl,
+        duration: r.duration,
+        text: r.text,
+      })), 'failed').catch(err =>
+        console.warn('[Audio] Failed to save partial progress:', err)
+      );
+    }
+
     sendEvent({ type: 'error', error: error instanceof Error ? error.message : 'Audio generation failed' });
     res.end();
   } finally {

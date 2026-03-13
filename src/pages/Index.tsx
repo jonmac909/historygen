@@ -1180,6 +1180,15 @@ const Index = () => {
       );
 
       if (!audioRes.success) {
+        // Check if it's an interrupted connection (backend may still be running)
+        if ((audioRes as any).interrupted) {
+          toast({
+            title: "Connection Interrupted",
+            description: audioRes.error || "Audio generation may still be running. Check your project in a few minutes.",
+          });
+          // Don't throw - stay on current view, don't go back to create
+          return;
+        }
         throw new Error(audioRes.error || "Failed to generate audio");
       }
 

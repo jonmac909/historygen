@@ -649,12 +649,19 @@ function ProjectCard({
                 )}
               </Button>
             </div>
-          ) : project.status === 'failed' || project.status === 'cancelled' ? (
-            /* Failed/Cancelled status with resume button */
+          ) : project.status === 'failed' || project.status === 'cancelled' || project.status === 'audio_partial' || project.status === 'images_partial' ? (
+            /* Failed/Cancelled/Partial status with resume button */
             <div className="flex items-center gap-1">
-              <span className="flex items-center gap-1.5 text-xs px-2 py-1 bg-red-500/20 text-red-500 rounded-md">
+              <span className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-md ${
+                project.status === 'audio_partial' || project.status === 'images_partial'
+                  ? 'bg-amber-500/20 text-amber-600'
+                  : 'bg-red-500/20 text-red-500'
+              }`}>
                 <AlertCircle className="w-3 h-3" />
-                {project.status === 'failed' ? 'Failed' : 'Stopped'}
+                {project.status === 'failed' ? 'Failed' :
+                 project.status === 'cancelled' ? 'Stopped' :
+                 project.status === 'audio_partial' ? `Audio: ${project.audioSegments?.length || 0} segs` :
+                 `Images: ${project.imageUrls?.length || 0} done`}
               </span>
               <Button
                 variant="ghost"

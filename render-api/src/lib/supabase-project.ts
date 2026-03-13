@@ -260,3 +260,37 @@ export async function saveCaptionsToProject(
   }
   return updateProject(projectId, updates);
 }
+
+/**
+ * Save partial audio progress (call after each segment completes)
+ * This enables recovery of completed segments if generation fails mid-way
+ */
+export async function saveAudioProgress(
+  projectId: string,
+  segments: any[],
+  status: 'generating' | 'combining' | 'failed'
+): Promise<{ success: boolean; error?: string }> {
+  return updateProject(projectId, {
+    audio_segments: segments,
+    current_step: 'audio',
+    status: status === 'failed' ? 'audio_partial' : 'running',
+  });
+}
+
+/**
+ * Save partial image progress (call after each image completes)
+ * This enables recovery of completed images if generation fails mid-way
+ */
+export async function saveImageProgress(
+  projectId: string,
+  imageUrls: (string | null)[],
+  status: 'generating' | 'failed'
+): Promise<{ success: boolean; error?: string }> {
+  // Filter out null values (failed/pending slots)
+  const successfulUrls = imageUrls.filter((url): url is string => url !== null);
+  return updateProject(projectId, {
+    image_urls: successfulUrls,
+    current_step: 'images',
+    status: status === 'failed' ? 'images_partial' : 'running',
+  });
+}

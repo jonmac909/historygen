@@ -801,9 +801,20 @@ export async function generateAudioStreaming(
         };
       }
 
+      // Check for network errors (connection reset, etc.)
+      // Backend may still be running - don't scare the user
+      const errorMsg = streamError instanceof Error ? streamError.message : 'Stream reading failed';
+      if (errorMsg.includes('network') || errorMsg.includes('fetch') || errorMsg.includes('connection')) {
+        return {
+          success: false,
+          error: 'Connection interrupted. Audio generation may still be running on the server. Check your project in a few minutes - completed segments are being saved automatically.',
+          interrupted: true
+        };
+      }
+
       return {
         success: false,
-        error: streamError instanceof Error ? streamError.message : 'Stream reading failed'
+        error: errorMsg
       };
     } finally {
       // Always clear the timeout to prevent memory leaks
@@ -823,9 +834,20 @@ export async function generateAudioStreaming(
     }
 
     console.error('Audio generation fetch error:', error);
+
+    // Check for network/connection errors - backend may still be running
+    const errorMsg = error instanceof Error ? error.message : 'Failed to start audio generation';
+    if (errorMsg.includes('network') || errorMsg.includes('fetch') || errorMsg.includes('Failed to fetch')) {
+      return {
+        success: false,
+        error: 'Connection interrupted. Audio generation may still be running on the server. Check your project in a few minutes - completed segments are being saved automatically.',
+        interrupted: true
+      };
+    }
+
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Failed to start audio generation'
+      error: errorMsg
     };
   }
 }

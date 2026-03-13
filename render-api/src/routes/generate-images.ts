@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { saveCost } from '../lib/cost-tracker';
 import { imageGenerationConfig } from '../lib/runtime-config';
-import { saveImagesToProject } from '../lib/supabase-project';
+import { saveImagesToProject, saveImageProgress } from '../lib/supabase-project';
 
 const router = Router();
 
@@ -438,6 +438,18 @@ async function handleStreamingImages(
             message: `Batch ${batchNum}: ${completed}/${total} images done`
           });
 
+          // Save progress after each completed image (fire-and-forget)
+          if (projectId) {
+            const currentImages: (string | null)[] = new Array(total).fill(null);
+            for (const r of allResults) {
+              if (r.state === 'success' && r.imageUrl) {
+                currentImages[r.index] = r.imageUrl;
+              }
+            }
+            saveImageProgress(projectId, currentImages, 'generating')
+              .catch(err => console.warn('[Images] Failed to save progress:', err));
+          }
+
         } else if (status.state === 'fail') {
           console.error(`✗ Job ${jobData.index + 1}/${total} failed (attempt ${jobData.retryCount + 1}): ${status.error}`);
 
@@ -563,6 +575,20 @@ async function handleStreamingImages(
 
   } catch (err) {
     console.error('Stream error:', err);
+
+    // Save completed images on failure (if any were generated)
+    if (projectId && allResults && allResults.length > 0) {
+      console.log(`[Images] Saving ${allResults.filter(r => r.state === 'success').length} completed images before failure...`);
+      const currentImages: (string | null)[] = new Array(total).fill(null);
+      for (const r of allResults) {
+        if (r.state === 'success' && r.imageUrl) {
+          currentImages[r.index] = r.imageUrl;
+        }
+      }
+      saveImageProgress(projectId, currentImages, 'failed')
+        .catch(saveErr => console.warn('[Images] Failed to save partial progress:', saveErr));
+    }
+
     sendEvent({
       type: 'error',
       error: err instanceof Error ? err.message : 'Generation failed'
