@@ -133,7 +133,7 @@ async function generateScriptChunkStreaming(options: GenerateScriptChunkOptions)
 
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { transcript, template, title, topic, model, stream, wordCount, projectId } = req.body;
+    const { transcript, template, title, topic, model, stream, wordCount, projectId, expandWith } = req.body;
 
     if (!transcript) {
       return res.status(400).json({ error: 'Transcript is required' });
@@ -156,6 +156,9 @@ router.post('/', async (req: Request, res: Response) => {
     console.log(`📝 Transcript preview: ${transcript?.substring(0, 200)}...`);
     console.log(`📝 Title: ${title}`);
     console.log(`📝 Topic: ${topicFocus}`);
+    if (expandWith) {
+      console.log(`📝 Expand With: ${expandWith}`);
+    }
 
     const systemPrompt = template || `You are an expert scriptwriter specializing in historical documentary narration.
 Your task is to transform content into compelling, well-structured scripts suitable for history videos.
@@ -255,7 +258,18 @@ REMAINDER OF SCRIPT: Maintain quality, prioritize calm flow
 - Use a more meditative, flowing rhythm
 - Content can be simpler and more repetitive
 - Viewers are drifting to sleep - be their gentle companion
+${expandWith ? `
+=== CONTENT EXPANSION (CRITICAL) ===
+The source transcript is SHORT. You MUST expand the script by adding substantial content on these additional topics (staying within the same era/subject):
+${expandWith}
 
+For each expansion topic:
+- Spend 2-3 paragraphs exploring it in depth
+- Add sensory details, anecdotes, and historical context from your knowledge
+- Stay within the same era/subject - do NOT drift to unrelated topics
+- Never pad with repetition - each paragraph adds NEW information
+- Weave these topics naturally into the narrative flow
+` : ''}
 === TRANSCRIPT START ===
 ${transcript}
 === TRANSCRIPT END ===
@@ -286,7 +300,11 @@ We are now in the CALM FLOW section of this sleep-friendly documentary.
 - Use meditative, flowing rhythm
 - Content can be simpler and more repetitive
 - Viewers are drifting to sleep - be their gentle companion
-
+${expandWith ? `
+=== CONTENT EXPANSION ===
+Continue expanding on these topics (staying within the same era/subject):
+${expandWith}
+` : ''}
 === TRANSCRIPT START ===
 ${transcript}
 === TRANSCRIPT END ===
@@ -723,6 +741,7 @@ WHAT IS GOOD (don't flag these):
 - Slow, meandering narrative
 - Opening engagement questions ('What were these...?', 'Why did...?', 'How did...?') - these are GOOD for YouTube retention
 - Subscribe CTA and meta-commentary ('As always, I'd love to know where in the world are you listening from...') - this is REQUIRED for YouTube growth
+- References to popular media depicting the historical era (e.g., Bridgerton for Regency, Vikings for Norse, The Crown for modern British royalty) as opening hooks - these help viewers connect and are NOT topic drift
 
 WHAT IS BAD (flag these):
 - Dramatic tension, cliffhangers, urgency
@@ -738,6 +757,12 @@ You MUST analyze the script for topic consistency. The TOPIC field (not the titl
 - NOTE: The video title may be clickbait/attention-grabbing - ignore it. Only use the TOPIC for drift detection.
 
 Example: If topic is "Viking Winters" but script discusses Roman sanitation, Confederate America, or Medieval plagues - these are OFF-TOPIC sections that must be flagged.
+
+EXCEPTION: Mentioning modern TV shows/movies that depict the same historical era is NOT topic drift - it's a relatable hook. Examples:
+- Bridgerton reference in a Regency script = OK
+- Downton Abbey reference in an Edwardian script = OK
+- Game of Thrones reference in a medieval script = OK
+Only flag it if the script actually discusses the PLOT of the show instead of the historical period.
 
 RESPONSE FORMAT:
 You must respond with valid JSON in this exact format:
@@ -976,6 +1001,97 @@ Return the edited script with the issues fixed. Preserve the original as much as
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Quick edit failed'
+    });
+  }
+});
+
+// Generate expansion topics for a given topic/title (uses Haiku for speed/cost)
+router.post('/generate-expansion-topics', async (req: Request, res: Response) => {
+  try {
+    const { topic, title } = req.body;
+
+    if (!topic && !title) {
+      return res.status(400).json({ error: 'Topic or title is required' });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'API key not configured' });
+    }
+
+    const subject = topic || title;
+    console.log(`🔍 Generating expansion topics for: ${subject}`);
+
+    const anthropic = createAnthropicClient(apiKey);
+
+    const response = await anthropic.messages.create({
+      model: 'claude-3-5-haiku-20241022', // Fast and cheap
+      max_tokens: 500,
+      system: `You are an expert historian helping to expand documentary content. Given a historical topic, suggest 5-8 related subtopics that would enrich a documentary script.
+
+RULES:
+- Stay within the same era/subject - don't suggest unrelated historical periods
+- Focus on DEPTH (aspects of the same subject), not BREADTH (other subjects from the same era)
+- Suggestions should be complementary, not overlapping
+- Each topic should provide 2-3 paragraphs worth of content
+
+RESPONSE FORMAT:
+Return ONLY a JSON array of strings, no explanation. Example:
+["men's fashion of the era", "accessories and jewelry", "grooming and hygiene", "social etiquette", "daily routines"]`,
+      messages: [
+        {
+          role: 'user',
+          content: `Suggest expansion topics for a documentary about: "${subject}"
+
+These topics should add DEPTH to the subject (more detail about the same thing), not BREADTH (other unrelated topics from the same time period).
+
+Return only a JSON array of 5-8 topic strings.`
+        }
+      ]
+    });
+
+    const responseText = response.content[0]?.type === 'text' ? response.content[0].text : '';
+
+    // Parse JSON response
+    try {
+      // Extract JSON from response (handle markdown code blocks if present)
+      let jsonStr = responseText.trim();
+      const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        jsonStr = jsonMatch[1].trim();
+      }
+
+      const topics = JSON.parse(jsonStr);
+
+      if (!Array.isArray(topics)) {
+        throw new Error('Response is not an array');
+      }
+
+      console.log(`✅ Generated ${topics.length} expansion topics:`, topics);
+
+      res.json({
+        success: true,
+        topics: topics.slice(0, 8) // Limit to 8 max
+      });
+    } catch (parseError) {
+      console.error('Failed to parse expansion topics response:', responseText);
+      // Fallback - return some generic suggestions based on the topic
+      res.json({
+        success: true,
+        topics: [
+          `daily life during ${subject}`,
+          `fashion and clothing`,
+          `food and drink`,
+          `social customs and etiquette`,
+          `home and living spaces`
+        ]
+      });
+    }
+  } catch (error) {
+    console.error('Generate expansion topics error:', error);
+    res.status(500).json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate expansion topics'
     });
   }
 });

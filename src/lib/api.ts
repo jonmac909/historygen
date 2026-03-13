@@ -199,7 +199,8 @@ export async function rewriteScriptStreaming(
   wordCount: number,
   onProgress: (progress: number, wordCount: number) => void,
   onToken?: (token: string) => void, // Real-time token streaming callback
-  topic?: string // Specific topic focus to prevent drift (e.g., "Viking Winters")
+  topic?: string, // Specific topic focus to prevent drift (e.g., "Viking Winters")
+  expandWith?: string // Optional expansion topics for short source videos
 ): Promise<ScriptResult> {
   const CHUNK_SIZE = 30000; // Render has no timeout limit - can generate full scripts in one call!
 
@@ -248,7 +249,8 @@ Continue the narrative seamlessly from where this left off. DO NOT repeat any co
           onProgress(Math.round(overallProgress), overallWords);
         },
         onToken, // Pass through token callback
-        topic // Pass topic for drift prevention
+        topic, // Pass topic for drift prevention
+        expandWith // Pass expansion topics
       );
 
       if (!chunkResult.success) {
@@ -279,7 +281,7 @@ Continue the narrative seamlessly from where this left off. DO NOT repeat any co
   }
 
   // For scripts <= 5000 words, use single-chunk generation
-  return generateSingleChunk(transcript, template, title, aiModel, wordCount, onProgress, onToken, topic);
+  return generateSingleChunk(transcript, template, title, aiModel, wordCount, onProgress, onToken, topic, expandWith);
 }
 
 /**
@@ -294,7 +296,8 @@ async function generateSingleChunk(
   wordCount: number,
   onProgress: (progress: number, wordCount: number) => void,
   onToken?: (token: string) => void, // Real-time token streaming
-  topic?: string // Specific topic focus to prevent drift
+  topic?: string, // Specific topic focus to prevent drift
+  expandWith?: string // Optional expansion topics for short sources
 ): Promise<ScriptResult> {
   // Use Render API for script generation (no timeout limits!)
   const renderUrl = import.meta.env.VITE_RENDER_API_URL;
@@ -327,7 +330,7 @@ async function generateSingleChunk(
       headers: withRenderAuth({
         'Content-Type': 'application/json',
       }),
-      body: JSON.stringify({ transcript, template, title, topic, model: aiModel, wordCount, stream: true }),
+      body: JSON.stringify({ transcript, template, title, topic, expandWith, model: aiModel, wordCount, stream: true }),
       signal: controller.signal,
     });
 

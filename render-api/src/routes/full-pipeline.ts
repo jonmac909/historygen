@@ -97,6 +97,7 @@ interface PipelineRequest {
   title?: string;
   topic?: string;
   subjectFocus?: string;  // Visual focus for images (e.g., "servants, housemaids")
+  expandWith?: string;    // Optional expansion topics for short source videos
   template?: string;
   wordCount?: number;
   imageCount?: number;
@@ -357,6 +358,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     title,
     topic,
     subjectFocus,  // Visual focus for images
+    expandWith,    // Optional expansion topics for short sources
     template,
     wordCount = DEFAULT_WORD_COUNT,
     imageCount = DEFAULT_IMAGE_COUNT,
@@ -376,6 +378,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
   console.log(`   Word count: ${wordCount}`);
   console.log(`   Image count: ${imageCount}`);
   console.log(`   Generate clips: ${generateClips}`);
+  if (expandWith) console.log(`   Expand With: ${expandWith}`);
 
   // Register this pipeline as running
   runningPipelines.set(projectId, { aborted: false, currentStep: 'init' });
@@ -505,6 +508,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         wordCount,
         model: 'claude-sonnet-4-5',
         projectId,
+        expandWith,  // Pass expansion topics if provided
       }, 3600000); // 60 min for 20k+ word scripts
 
       if (!scriptResult.script) {

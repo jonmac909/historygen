@@ -85,6 +85,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   projectTitle: "",
   topic: "",  // Specific topic to prevent drift (e.g., "Viking Winters", "History of Bread")
   subjectFocus: "",  // Who the story focuses on (e.g., "servants, housemaids", "Viking farmers")
+  expandWith: "",  // Optional expansion topics for short source videos
   fullAutomation: false,
   modernKeywordFilter: true,  // Filter anachronistic keywords by default (turn off for modern videos)
   scriptTemplate: "template-a",
@@ -163,6 +164,7 @@ function loadLastSettings(): GenerationSettings {
         projectTitle: "",
         topic: "",
         subjectFocus: "",  // Reset subject focus for new projects
+        expandWith: "",  // Reset expansion topics for new projects
         // CRITICAL: fullAutomation must ALWAYS start as false
         // User must explicitly click "Full Auto Generate" each time
         fullAutomation: false,
@@ -1083,7 +1085,8 @@ const Index = () => {
           updateStep("script", "active", progressText);
         },
         undefined, // onToken - not used here
-        undefined // Topic not used for script generation (era/topic is for image prompts only)
+        settings.topic || undefined, // Topic for drift prevention
+        settings.expandWith || undefined // Expansion topics for short sources
       );
       
       if (!scriptResult.success || !scriptResult.script) {
@@ -4181,6 +4184,60 @@ const Index = () => {
                   />
                   <p className="text-xs text-muted-foreground/70">
                     Ideas: servants, maids, footmen, soldiers, monks, farmers, sailors, merchants, workers
+                  </p>
+                </div>
+              </div>
+
+              {/* Expand With - optional expansion topics for short source videos */}
+              <div className="flex items-center gap-3">
+                <div className="w-28 shrink-0">
+                  <label className="text-sm font-medium text-muted-foreground text-left block">Expand With</label>
+                  <span className="text-xs text-muted-foreground/70">Extra topics (optional)</span>
+                </div>
+                <div className="flex-1 space-y-1">
+                  <div className="flex gap-2">
+                    <Input
+                      value={settings.expandWith || ""}
+                      onChange={(e) => setSettings(prev => ({ ...prev, expandWith: e.target.value }))}
+                      placeholder="e.g., men's fashion, accessories, grooming..."
+                      className="flex-1"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        if (!settings.topic && !settings.projectTitle) {
+                          toast.error("Enter a Topic first to generate expansion ideas");
+                          return;
+                        }
+                        try {
+                          toast.loading("Generating expansion topics...", { id: "expand-topics" });
+                          const response = await fetch(`${API_BASE_URL}/rewrite-script/generate-expansion-topics`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              topic: settings.topic || settings.projectTitle,
+                              title: settings.projectTitle,
+                            }),
+                          });
+                          const data = await response.json();
+                          if (data.success && data.topics) {
+                            setSettings(prev => ({ ...prev, expandWith: data.topics.join(", ") }));
+                            toast.success(`Generated ${data.topics.length} expansion topics`, { id: "expand-topics" });
+                          } else {
+                            toast.error(data.error || "Failed to generate topics", { id: "expand-topics" });
+                          }
+                        } catch (error) {
+                          toast.error("Failed to generate expansion topics", { id: "expand-topics" });
+                        }
+                      }}
+                      disabled={!settings.topic && !settings.projectTitle}
+                    >
+                      ✨ Generate
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground/70">
+                    For short source videos: AI will add content on these topics
                   </p>
                 </div>
               </div>
