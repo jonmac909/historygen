@@ -990,6 +990,9 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
           imageCount: calculatedImageCount,
           masterStylePrompt: CLASSICAL_OIL_STYLE,  // Era-neutral classical oil painting technique
           modernKeywordFilter: input.modernKeywordFilter !== false,  // Default true
+          topic: input.originalTitle,  // Era/topic for images
+          clipCount: 12,  // First 12 images are Topic/Focus-driven intro clips
+          clipDuration: 5,  // Each intro clip is 5 seconds
           stream: true,
         }, (data) => {
           if (data.type === 'progress') {

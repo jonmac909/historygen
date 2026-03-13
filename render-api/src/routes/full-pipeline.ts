@@ -96,6 +96,7 @@ interface PipelineRequest {
   script?: string;      // Direct script input - skips transcript extraction and rewriting
   title?: string;
   topic?: string;
+  subjectFocus?: string;  // Visual focus for images (e.g., "servants, housemaids")
   template?: string;
   wordCount?: number;
   imageCount?: number;
@@ -355,6 +356,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
     script: providedScript,  // Direct script input (skips transcript + rewrite)
     title,
     topic,
+    subjectFocus,  // Visual focus for images
     template,
     wordCount = DEFAULT_WORD_COUNT,
     imageCount = DEFAULT_IMAGE_COUNT,
@@ -627,6 +629,10 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         imageCount,
         projectId,
         masterStylePrompt: customStylePrompt,  // Pass custom style prompt for image generation
+        topic: topic || videoTitle,  // Era for images
+        subjectFocus,  // Visual focus for images
+        clipCount,  // How many intro clips (first N images are Topic/Focus-driven)
+        clipDuration,  // Duration of each clip (default 5s)
       }, 1800000); // 30 min for 200+ prompts
 
       if (!promptsResult.prompts || promptsResult.prompts.length === 0) {
