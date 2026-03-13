@@ -4207,11 +4207,18 @@ const Index = () => {
                       size="sm"
                       onClick={async () => {
                         if (!settings.topic && !settings.projectTitle) {
-                          toast.error("Enter a Topic first to generate expansion ideas");
+                          toast({
+                            title: "Topic Required",
+                            description: "Enter a Topic first to generate expansion ideas",
+                            variant: "destructive",
+                          });
                           return;
                         }
                         try {
-                          toast.loading("Generating expansion topics...", { id: "expand-topics" });
+                          toast({
+                            title: "Generating...",
+                            description: "Finding expansion topics for your video",
+                          });
                           const response = await fetch(`${API_BASE_URL}/rewrite-script/generate-expansion-topics`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
@@ -4223,12 +4230,23 @@ const Index = () => {
                           const data = await response.json();
                           if (data.success && data.topics) {
                             setSettings(prev => ({ ...prev, expandWith: data.topics.join(", ") }));
-                            toast.success(`Generated ${data.topics.length} expansion topics`, { id: "expand-topics" });
+                            toast({
+                              title: "Topics Generated",
+                              description: `Added ${data.topics.length} expansion topics`,
+                            });
                           } else {
-                            toast.error(data.error || "Failed to generate topics", { id: "expand-topics" });
+                            toast({
+                              title: "Generation Failed",
+                              description: data.error || "Failed to generate topics",
+                              variant: "destructive",
+                            });
                           }
                         } catch (error) {
-                          toast.error("Failed to generate expansion topics", { id: "expand-topics" });
+                          toast({
+                            title: "Error",
+                            description: "Failed to generate expansion topics",
+                            variant: "destructive",
+                          });
                         }
                       }}
                       disabled={!settings.topic && !settings.projectTitle}
