@@ -1028,7 +1028,7 @@ router.post('/generate-expansion-topics', async (req: Request, res: Response) =>
     const anthropic = createAnthropicClient(apiKey);
 
     const response = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022', // Fast and cheap
+      model: 'claude-3-haiku-20240307', // Fast and cheap
       max_tokens: 500,
       system: `You are an expert historian helping to expand documentary content. Given a historical topic, suggest 5-8 related subtopics that would enrich a documentary script.
 
