@@ -881,11 +881,24 @@ STORY FOCUS (use this to guide your scenes):
 ${storySubjectFocus ? `This documentary focuses on: ${storySubjectFocus}` : 'Use the narration to understand the story being told.'}
 
 ⚠️ CRITICAL: VARIETY IS ESSENTIAL - DON'T SHOW THE SAME THING EVERY SCENE!
+${storySubjectFocus ? `
+SCENE DISTRIBUTION (when subject focus is "${storySubjectFocus}"):
+- 70%+ must include ${storySubjectFocus} as VISIBLE PEOPLE doing activities
+- 15-20% exterior establishing shots (manor houses, grounds, streets) WITH people in them
+- 5-10% detail shots (hands working, tools, period objects)
+- ONLY show empty rooms when narration explicitly calls for it (death, abandonment, "empty room")
+
+WITHIN the people scenes, vary them:
+- Groups working together (30%)
+- Individual moments - one person alone, working, contemplating (40%)
+- Interactions between characters (30%)
+` : `
 Even if the focus is a couple or person, you MUST vary your scenes:
 - Only 30-40% of images should show the main subjects TOGETHER
 - 20-30% should show INDIVIDUAL character moments (one person alone, contemplating, working)
 - 20-30% should show HISTORICAL CONTEXT (palaces, gardens, period street scenes, architecture)
-- 10-20% should show SUPPORTING ELEMENTS (servants, court life, landscapes, interiors without people)
+- 10-20% should show SUPPORTING ELEMENTS (landscapes, interiors without people)
+`}
 
 HOW TO BE TOPICAL:
 - For a LOVE STORY: Mix courtship scenes WITH individual moments, palace settings, gardens, court life - NOT just the couple together every frame
