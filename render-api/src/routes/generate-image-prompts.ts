@@ -882,16 +882,16 @@ ${storySubjectFocus ? `This documentary focuses on: ${storySubjectFocus}` : 'Use
 
 ⚠️ CRITICAL: VARIETY IS ESSENTIAL - DON'T SHOW THE SAME THING EVERY SCENE!
 ${storySubjectFocus ? `
-SCENE DISTRIBUTION (when subject focus is "${storySubjectFocus}"):
-- 70%+ must include ${storySubjectFocus} as VISIBLE PEOPLE doing activities
-- 15-20% exterior establishing shots (manor houses, grounds, streets) WITH people in them
-- 5-10% detail shots (hands working, tools, period objects)
-- ONLY show empty rooms when narration explicitly calls for it (death, abandonment, "empty room")
+SCENE GUIDANCE (when subject focus is "${storySubjectFocus}"):
+- PREFER showing ${storySubjectFocus} as VISIBLE PEOPLE when the narration describes their activities
+- Include people when narration talks about work, daily life, interactions, emotions
+- Show empty rooms/exteriors when narration describes places, architecture, or atmosphere WITHOUT mentioning people
+- Match the narration: if it says "the kitchen was quiet" = empty; if it says "cook prepared breakfast" = show cook
 
-WITHIN the people scenes, vary them:
-- Groups working together (30%)
-- Individual moments - one person alone, working, contemplating (40%)
-- Interactions between characters (30%)
+WITHIN scenes with people, vary them:
+- Groups working together
+- Individual moments - one person alone, working, contemplating
+- Interactions between characters
 ` : `
 Even if the focus is a couple or person, you MUST vary your scenes:
 - Only 30-40% of images should show the main subjects TOGETHER
