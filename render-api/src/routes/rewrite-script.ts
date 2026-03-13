@@ -1008,7 +1008,7 @@ Return the edited script with the issues fixed. Preserve the original as much as
 // Generate expansion topics for a given topic/title (uses Haiku for speed/cost)
 router.post('/generate-expansion-topics', async (req: Request, res: Response) => {
   try {
-    const { topic, title } = req.body;
+    const { topic, title, focus } = req.body;
 
     if (!topic && !title) {
       return res.status(400).json({ error: 'Topic or title is required' });
@@ -1019,7 +1019,10 @@ router.post('/generate-expansion-topics', async (req: Request, res: Response) =>
       return res.status(500).json({ error: 'API key not configured' });
     }
 
-    const subject = topic || title;
+    // Combine topic + focus for more specific suggestions
+    const subject = focus
+      ? `${topic || title} - specifically about ${focus}`
+      : (topic || title);
     console.log(`🔍 Generating expansion topics for: ${subject}`);
 
     const anthropic = createAnthropicClient(apiKey);

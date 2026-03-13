@@ -3405,3 +3405,44 @@ export async function uploadShortToYouTube(
     };
   }
 }
+
+/**
+ * Generate expansion topics for a given topic/title using AI
+ */
+export async function generateExpansionTopics(
+  topic: string,
+  title?: string,
+  focus?: string
+): Promise<{ success: boolean; topics?: string[]; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/rewrite-script/generate-expansion-topics`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ topic, title, focus })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Generate expansion topics error:', response.status, errorText);
+      return { success: false, error: `Failed to generate topics: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Generate expansion topics error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate expansion topics'
+    };
+  }
+}

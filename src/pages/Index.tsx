@@ -49,6 +49,7 @@ import {
   saveScriptToStorage,
   startFullPipeline,
   stopPipeline,
+  generateExpansionTopics,
   type ImagePromptWithTiming,
   type AudioSegment,
   type ClipPrompt,
@@ -4219,25 +4220,21 @@ const Index = () => {
                             title: "Generating...",
                             description: "Finding expansion topics for your video",
                           });
-                          const response = await fetch(`${API_BASE_URL}/rewrite-script/generate-expansion-topics`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              topic: settings.topic || settings.projectTitle,
-                              title: settings.projectTitle,
-                            }),
-                          });
-                          const data = await response.json();
-                          if (data.success && data.topics) {
-                            setSettings(prev => ({ ...prev, expandWith: data.topics.join(", ") }));
+                          const result = await generateExpansionTopics(
+                            settings.topic || settings.projectTitle,
+                            settings.projectTitle,
+                            settings.subjectFocus
+                          );
+                          if (result.success && result.topics) {
+                            setSettings(prev => ({ ...prev, expandWith: result.topics!.join(", ") }));
                             toast({
                               title: "Topics Generated",
-                              description: `Added ${data.topics.length} expansion topics`,
+                              description: `Added ${result.topics.length} expansion topics`,
                             });
                           } else {
                             toast({
                               title: "Generation Failed",
-                              description: data.error || "Failed to generate topics",
+                              description: result.error || "Failed to generate topics",
                               variant: "destructive",
                             });
                           }
