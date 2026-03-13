@@ -19,6 +19,7 @@
 
 import { Router, Request, Response } from 'express';
 import { createProject, updateProject, getSupabaseClient, getProjectData, ProjectUpdate } from '../lib/supabase-project';
+import { cleanScript, insertSubscribeCTA, COMPLETE_HISTORIES_TEMPLATE } from '../lib/pipeline-runner';
 
 const router = Router();
 
@@ -484,6 +485,10 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
       await updatePipelineStatus(projectId, 'script', 'running');
 
       console.log(`\n✍️  [Pipeline ${projectId}] Step 2: Rewriting script (${wordCount} words)...`);
+
+      // Use COMPLETE_HISTORIES_TEMPLATE if no custom template provided (same as full auto)
+      const scriptTemplate = template || COMPLETE_HISTORIES_TEMPLATE;
+
       const scriptResult = await callStreamingApi<{
         success?: boolean;
         type?: string;
@@ -492,7 +497,7 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         error?: string;
       }>('/rewrite-script', {
         transcript,
-        template: template || '',
+        template: scriptTemplate,
         title: videoTitle,
         topic: topic || videoTitle,
         wordCount,
@@ -504,14 +509,22 @@ async function runPipeline(config: PipelineRequest): Promise<void> {
         throw new Error(scriptResult.error || 'Failed to generate script');
       }
 
-      script = scriptResult.script;
-      console.log(`   ✓ Generated script: ${scriptResult.wordCount || script.split(/\s+/).length} words`);
+      // Clean the script of markdown headers and formatting (same as full auto)
+      script = cleanScript(scriptResult.script);
+
+      // Insert subscribe CTA after 3rd/4th sentence (same as full auto)
+      script = insertSubscribeCTA(script);
+
+      console.log(`   ✓ Generated script: ${script.split(/\s+/).length} words (cleaned + CTA inserted)`);
 
       // Save script to project (database column is script_content, not script)
       await updateProject(projectId, { script_content: script });
     } else if (providedScript) {
-      // Script was provided directly - save it to database
+      // Script was provided directly - clean it and add CTA (same as full auto)
       console.log(`\n⏭️  [Pipeline ${projectId}] Using provided script (${script.length} chars, ${script.split(/\s+/).length} words)`);
+      script = cleanScript(script);
+      script = insertSubscribeCTA(script);
+      console.log(`   ✓ Cleaned + CTA inserted: ${script.split(/\s+/).length} words`);
       await updateProject(projectId, { script_content: script });
     } else {
       console.log(`\n⏭️  [Pipeline ${projectId}] Skipping script generation (${script.length} chars already saved)`);

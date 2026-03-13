@@ -174,7 +174,7 @@ async function saveProjectToDatabase(
 }
 
 // Clean script of markdown headers, section markers, and formatting that breaks TTS
-function cleanScript(script: string): string {
+export function cleanScript(script: string): string {
   const cleaned = script
     // Remove entire lines starting with # (markdown headers)
     .replace(/^#.*$/gm, '')
@@ -205,13 +205,13 @@ function cleanScript(script: string): string {
 }
 
 // Hardcoded subscribe CTA - must appear in EVERY script after 3rd/4th sentence
-const SUBSCRIBE_CTA = `As always, I'd love to know—where in the world are you listening from and what time is it for you? And if you enjoy these cozy journeys through history, consider subscribing so you don't miss the next one. Whether you're here to drift into sleep or to follow the currents of history, I'm glad you're with me.`;
+export const SUBSCRIBE_CTA = `As always, I'd love to know—where in the world are you listening from and what time is it for you? And if you enjoy these cozy journeys through history, consider subscribing so you don't miss the next one. Whether you're here to drift into sleep or to follow the currents of history, I'm glad you're with me.`;
 
 /**
  * Insert subscribe CTA after the 3rd or 4th sentence of the script
  * This ensures the CTA is always present, regardless of Claude's output
  */
-function insertSubscribeCTA(script: string): string {
+export function insertSubscribeCTA(script: string): string {
   // Skip if CTA is already present (Claude included it)
   if (script.includes("where in the world are you listening from")) {
     console.log(`[Pipeline] Subscribe CTA already present, skipping insertion`);
@@ -484,7 +484,7 @@ async function callStreamingAPI(
 const DEFAULT_VOICE_SAMPLE = 'https://autoaigen.com/voices/clone_voice.wav';
 
 // Auto Poster Template: Complete Histories (template-a)
-const COMPLETE_HISTORIES_TEMPLATE = `THESE ARE INSTRUCTIONS FOR YOU - DO NOT INCLUDE ANY OF THIS MARKDOWN FORMATTING IN YOUR OUTPUT!
+export const COMPLETE_HISTORIES_TEMPLATE = `THESE ARE INSTRUCTIONS FOR YOU - DO NOT INCLUDE ANY OF THIS MARKDOWN FORMATTING IN YOUR OUTPUT!
 
 Your output must be ONLY plain text prose with zero formatting. No #, no **, no section headers, no brackets.
 
