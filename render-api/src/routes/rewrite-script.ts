@@ -721,15 +721,14 @@ WHAT IS GOOD (don't flag these):
 - Second-person immersion ("you could walk...", "imagine yourself...")
 - Sensory descriptions
 - Slow, meandering narrative
+- Opening engagement questions ('What were these...?', 'Why did...?', 'How did...?') - these are GOOD for YouTube retention
+- Subscribe CTA and meta-commentary ('As always, I'd love to know where in the world are you listening from...') - this is REQUIRED for YouTube growth
 
 WHAT IS BAD (flag these):
 - Dramatic tension, cliffhangers, urgency
 - Headers, titles, markdown formatting, hashtags
 - Short punchy sentences meant to excite
 - Modern slang or anachronisms
-- Questions that demand engagement
-- Direct viewer engagement questions in openings ('What was this era...?', 'Why does it still...?') - creates tension instead of calm contemplation
-- Meta-commentary or call-to-action phrases ('As always, I'd love to know...', 'Let me know in the comments...', 'Subscribe for more...') - breaks immersion
 
 TOPIC DRIFT DETECTION (CRITICAL):
 You MUST analyze the script for topic consistency. The title tells you the intended topic.
@@ -757,7 +756,7 @@ You must respond with valid JSON in this exact format:
 }
 
 SEVERITY RULES:
-- "major" (shown with !) = TTS-breaking issues: headers, markdown, titles, hashtags, TOPIC DRIFT, off-topic content, direct viewer engagement questions, meta-commentary/call-to-action
+- "major" (shown with !) = TTS-breaking issues: headers, markdown, titles, hashtags, TOPIC DRIFT, off-topic content
 - "minor" (shown with ?) = Quality suggestions: pacing, tone tweaks, missing sensory details, style improvements
 
 Example response with topic drift:
