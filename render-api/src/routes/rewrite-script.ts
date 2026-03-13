@@ -3,6 +3,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
 import { saveCost } from '../lib/cost-tracker';
 import { saveScriptToProject } from '../lib/supabase-project';
+import { cleanScript, insertSubscribeCTA } from '../lib/pipeline-runner';
 
 const router = Router();
 
@@ -504,6 +505,12 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
           }
         }
 
+        // Clean script and insert subscribe CTA (same as full auto pipeline)
+        fullScript = cleanScript(fullScript);
+        fullScript = insertSubscribeCTA(fullScript);
+        currentWordCount = fullScript.split(/\s+/).filter(w => w.length > 0).length;
+        console.log(`[Script] Cleaned + CTA inserted: ${currentWordCount} words`);
+
         // Save to project database (fire-and-forget - allows user to close browser)
         if (projectId && fullScript) {
           saveScriptToProject(projectId, fullScript)
@@ -641,6 +648,12 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
           break;
         }
       }
+
+      // Clean script and insert subscribe CTA (same as full auto pipeline)
+      fullScript = cleanScript(fullScript);
+      fullScript = insertSubscribeCTA(fullScript);
+      currentWordCount = fullScript.split(/\s+/).filter(w => w.length > 0).length;
+      console.log(`[Script] Cleaned + CTA inserted: ${currentWordCount} words`);
 
       res.json({
         success: true,
