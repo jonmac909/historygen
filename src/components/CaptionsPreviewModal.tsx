@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon } from "lucide-react";
+import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -20,6 +20,16 @@ interface ParsedSegment {
   text: string;
 }
 
+interface QualityIssue {
+  segmentIndex: number;
+  chunkIndex: number;
+  start: number;
+  end: number;
+  text: string;
+  issue: 'silence' | 'low_confidence' | 'repetitive';
+  value: number;
+}
+
 interface CaptionsPreviewModalProps {
   isOpen: boolean;
   srtContent: string;
@@ -34,6 +44,15 @@ interface CaptionsPreviewModalProps {
   onTopicChange?: (topic: string) => void;
   subjectFocus?: string;  // Story focus (e.g., "Charlotte and George's love story")
   onSubjectFocusChange?: (focus: string) => void;
+  qualityIssues?: QualityIssue[];  // Audio quality issues from Whisper
+  qualityWarning?: string;  // Summary warning message
+}
+
+// Format seconds to MM:SS
+function formatTime(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 // Parse SRT content into individual segments
@@ -79,10 +98,13 @@ export function CaptionsPreviewModal({
   onTopicChange,
   subjectFocus = "",
   onSubjectFocusChange,
+  qualityIssues,
+  qualityWarning,
 }: CaptionsPreviewModalProps) {
   const [editedSrt, setEditedSrt] = useState(srtContent);
   const [isEditing, setIsEditing] = useState(false);
   const [segments, setSegments] = useState<ParsedSegment[]>([]);
+  const [isQualityExpanded, setIsQualityExpanded] = useState(false);
 
   // Sync state when srtContent prop changes
   useEffect(() => {
@@ -126,6 +148,42 @@ export function CaptionsPreviewModal({
             Review the generated SRT captions.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Quality Issues Warning (collapsible) */}
+        {qualityIssues && qualityIssues.length > 0 && (
+          <div className="border border-amber-500/30 rounded-lg bg-amber-500/10">
+            <button
+              onClick={() => setIsQualityExpanded(!isQualityExpanded)}
+              className="w-full flex items-center justify-between p-3 text-left hover:bg-amber-500/5 transition-colors"
+            >
+              <div className="flex items-center gap-2 text-amber-600">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                  {qualityWarning || `${qualityIssues.length} potential audio quality issue${qualityIssues.length > 1 ? 's' : ''}`}
+                </span>
+              </div>
+              <ChevronDown className={`w-4 h-4 text-amber-600 transition-transform ${isQualityExpanded ? 'rotate-180' : ''}`} />
+            </button>
+            {isQualityExpanded && (
+              <div className="px-3 pb-3 space-y-2 max-h-40 overflow-y-auto">
+                {qualityIssues.map((issue, idx) => (
+                  <div key={idx} className="text-xs bg-background/50 rounded p-2 flex justify-between">
+                    <span className="text-muted-foreground">
+                      {formatTime(issue.start)} - {issue.issue === 'silence' ? 'Possible silence/noise' :
+                       issue.issue === 'low_confidence' ? 'Low confidence transcription' :
+                       'Possible repetitive content'}
+                    </span>
+                    <span className="text-amber-600 font-mono">
+                      {issue.issue === 'silence' ? `${(issue.value * 100).toFixed(0)}% noise` :
+                       issue.issue === 'low_confidence' ? `conf: ${issue.value.toFixed(2)}` :
+                       `ratio: ${issue.value.toFixed(1)}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Image Generation Settings */}
         {imageCount !== undefined && onImageCountChange && (

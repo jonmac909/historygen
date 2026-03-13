@@ -350,8 +350,19 @@ function createWavBufferFromPcm(pcmData: Buffer, format: AudioFormat): Buffer {
   return Buffer.concat([Buffer.from(header), pcmData]);
 }
 
+// Quality issue from Whisper
+interface QualityIssue {
+  segmentIndex: number;
+  chunkIndex: number;
+  start: number;
+  end: number;
+  text: string;
+  issue: 'silence' | 'low_confidence' | 'repetitive';
+  value: number;
+}
+
 // Transcribe a single audio chunk with retry logic (using Groq Whisper)
-async function transcribeChunk(audioData: Uint8Array | Buffer, groqApiKey: string, chunkIndex: number): Promise<{ chunkIndex: number; segments: Array<{ text: string; start: number; end: number }>; duration: number }> {
+async function transcribeChunk(audioData: Uint8Array | Buffer, groqApiKey: string, chunkIndex: number): Promise<{ chunkIndex: number; segments: Array<{ text: string; start: number; end: number }>; duration: number; qualityIssues: QualityIssue[] }> {
   const MAX_RETRIES = 3;
   let lastError: Error | null = null;
 
@@ -412,10 +423,58 @@ async function transcribeChunk(audioData: Uint8Array | Buffer, groqApiKey: strin
         keys: Object.keys(result)
       });
 
+      // Extract quality issues from Whisper verbose_json response
+      const qualityIssues: QualityIssue[] = [];
+      if (result.segments) {
+        result.segments.forEach((seg: any, idx: number) => {
+          // Check for likely silence/noise (high no_speech_prob)
+          if (seg.no_speech_prob > 0.8) {
+            qualityIssues.push({
+              segmentIndex: idx,
+              chunkIndex,
+              start: seg.start,
+              end: seg.end,
+              text: seg.text?.substring(0, 50) || '',
+              issue: 'silence',
+              value: seg.no_speech_prob,
+            });
+          }
+          // Check for low confidence transcription
+          if (seg.avg_logprob < -1.0) {
+            qualityIssues.push({
+              segmentIndex: idx,
+              chunkIndex,
+              start: seg.start,
+              end: seg.end,
+              text: seg.text?.substring(0, 50) || '',
+              issue: 'low_confidence',
+              value: seg.avg_logprob,
+            });
+          }
+          // Check for repetitive/hallucinated content
+          if (seg.compression_ratio > 2.4) {
+            qualityIssues.push({
+              segmentIndex: idx,
+              chunkIndex,
+              start: seg.start,
+              end: seg.end,
+              text: seg.text?.substring(0, 50) || '',
+              issue: 'repetitive',
+              value: seg.compression_ratio,
+            });
+          }
+        });
+      }
+
+      if (qualityIssues.length > 0) {
+        console.log(`Chunk ${chunkIndex + 1}: ${qualityIssues.length} quality issues detected`);
+      }
+
       return {
         chunkIndex,
         segments: result.segments || [],
         duration: result.duration || 0,
+        qualityIssues,
       };
     } catch (error: any) {
       lastError = error;
@@ -571,7 +630,8 @@ router.post('/', async (req: Request, res: Response) => {
     console.log(`Starting transcription: ${numChunks} chunks (processing sequentially, reading from disk)`);
 
     // Process chunks sequentially, reading each chunk from disk (minimal memory usage)
-    const chunkResults: { chunkIndex: number; segments: Array<{ text: string; start: number; end: number }>; duration: number }[] = [];
+    const chunkResults: { chunkIndex: number; segments: Array<{ text: string; start: number; end: number }>; duration: number; qualityIssues: QualityIssue[] }[] = [];
+    const allQualityIssues: QualityIssue[] = [];
 
     for (let i = 0; i < numChunks; i++) {
       const currentProgress = 5 + Math.round((i / numChunks) * 85);
@@ -590,6 +650,11 @@ router.post('/', async (req: Request, res: Response) => {
       // Transcribe this chunk
       const result = await transcribeChunk(chunkWav, groqApiKey, i);
       chunkResults.push(result);
+
+      // Collect quality issues (adjust timestamps with chunk offset later)
+      if (result.qualityIssues.length > 0) {
+        allQualityIssues.push(...result.qualityIssues);
+      }
 
       const newProgress = 5 + Math.round(((i + 1) / numChunks) * 85);
       sendEvent({
@@ -681,12 +746,27 @@ router.post('/', async (req: Request, res: Response) => {
       }).catch(err => console.error('[cost-tracker] Failed to save captions cost:', err));
     }
 
+    // Log quality issues summary
+    if (allQualityIssues.length > 0) {
+      console.log(`[Captions] ${allQualityIssues.length} quality issues detected:`,
+        allQualityIssues.reduce((acc, q) => {
+          acc[q.issue] = (acc[q.issue] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>)
+      );
+    }
+
     const result = {
       success: true,
       captionsUrl: urlData.publicUrl,
       srtContent,
       segmentCount: allChunks.length,
       audioDuration: totalDuration,
+      // Include quality issues if any were found
+      qualityIssues: allQualityIssues.length > 0 ? allQualityIssues : undefined,
+      qualityWarning: allQualityIssues.length > 0
+        ? `${allQualityIssues.length} potential audio quality issue${allQualityIssues.length > 1 ? 's' : ''} detected`
+        : undefined,
     };
 
     if (stream) {

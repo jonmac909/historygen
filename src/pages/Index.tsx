@@ -292,6 +292,8 @@ const Index = () => {
   const [isRecombining, setIsRecombining] = useState(false);
   const [pendingSrtContent, setPendingSrtContent] = useState("");
   const [pendingSrtUrl, setPendingSrtUrl] = useState("");
+  const [captionQualityIssues, setCaptionQualityIssues] = useState<any[] | undefined>();
+  const [captionQualityWarning, setCaptionQualityWarning] = useState<string | undefined>();
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [generatedThumbnails, setGeneratedThumbnails] = useState<string[]>([]);
   const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number | undefined>();
@@ -1414,6 +1416,16 @@ const Index = () => {
 
       // Use the real SRT for image timing
       setPendingSrtContent(captionsResult.srtContent);
+
+      // Store quality issues from Whisper (if any)
+      if (captionsResult.qualityIssues) {
+        setCaptionQualityIssues(captionsResult.qualityIssues);
+        setCaptionQualityWarning(captionsResult.qualityWarning);
+      } else {
+        setCaptionQualityIssues(undefined);
+        setCaptionQualityWarning(undefined);
+      }
+
       autoSave("captions", { srtContent: captionsResult.srtContent });
 
       // Show captions preview modal for user to review and set image settings
@@ -4947,6 +4959,8 @@ const Index = () => {
         onTopicChange={(topic) => setSettings(prev => ({ ...prev, topic }))}
         subjectFocus={settings.subjectFocus}
         onSubjectFocusChange={(subjectFocus) => setSettings(prev => ({ ...prev, subjectFocus }))}
+        qualityIssues={captionQualityIssues}
+        qualityWarning={captionQualityWarning}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}
