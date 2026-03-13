@@ -731,12 +731,13 @@ WHAT IS BAD (flag these):
 - Modern slang or anachronisms
 
 TOPIC DRIFT DETECTION (CRITICAL):
-You MUST analyze the script for topic consistency. The title tells you the intended topic.
+You MUST analyze the script for topic consistency. The TOPIC field (not the title) tells you the intended subject.
 - Identify ALL distinct topics/subjects covered in the script
-- Flag ANY topic that doesn't belong to the main subject indicated by the title
+- Flag ANY topic that doesn't belong to the main subject indicated by the TOPIC field
 - Topic drift is a MAJOR issue - it confuses viewers and breaks the narrative
+- NOTE: The video title may be clickbait/attention-grabbing - ignore it. Only use the TOPIC for drift detection.
 
-Example: If title is "Viking Winters" but script discusses Roman sanitation, Confederate America, or Medieval plagues - these are OFF-TOPIC sections that must be flagged.
+Example: If topic is "Viking Winters" but script discusses Roman sanitation, Confederate America, or Medieval plagues - these are OFF-TOPIC sections that must be flagged.
 
 RESPONSE FORMAT:
 You must respond with valid JSON in this exact format:
@@ -748,7 +749,7 @@ You must respond with valid JSON in this exact format:
   ],
   "fixPrompt": "If grade is B or C, provide a specific instruction to fix the script",
   "topicAnalysis": {
-    "expectedTopic": "The main topic from the title",
+    "expectedTopic": "The main subject from the TOPIC field",
     "topicsFound": ["Topic 1", "Topic 2", "Topic 3"],
     "offTopicSections": ["Description of off-topic section 1", "Description of off-topic section 2"],
     "hasDrift": true | false
