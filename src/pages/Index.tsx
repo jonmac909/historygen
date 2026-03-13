@@ -280,6 +280,8 @@ const Index = () => {
   const [projectStatus, setProjectStatus] = useState<'in_progress' | 'completed' | 'archived' | 'running' | 'cancelled' | 'failed'>('in_progress');
   const [pipelineCurrentStep, setPipelineCurrentStep] = useState<string | undefined>();
   const [videoTitle, setVideoTitle] = useState("History Documentary");
+  const [expansionTopics, setExpansionTopics] = useState<string[]>([]);
+  const [selectedExpansionTopics, setSelectedExpansionTopics] = useState<Set<string>>(new Set());
   const [pendingAudioUrl, setPendingAudioUrl] = useState("");
   const [pendingAudioDuration, setPendingAudioDuration] = useState<number>(0);
   const [pendingAudioSize, setPendingAudioSize] = useState<number>(0);
@@ -781,9 +783,18 @@ const Index = () => {
 
     // CRITICAL: Disable fullAutomation when manually resuming a project
     // User is reviewing/editing, not running full automation
-    setSettings(prev => ({ ...prev, fullAutomation: false }));
+    // Also restore project-specific settings (topic, focus, title) from saved project
+    setSettings(prev => ({
+      ...prev,
+      fullAutomation: false,
+      // Restore project-specific fields from saved project
+      projectTitle: savedProject.settings?.projectTitle || prev.projectTitle,
+      topic: savedProject.settings?.topic || prev.topic,
+      subjectFocus: savedProject.settings?.subjectFocus || prev.subjectFocus,
+      expandWith: savedProject.settings?.expandWith || "",
+    }));
 
-    // Restore state from saved project (but keep current settings so user can change them)
+    // Restore state from saved project
     setProjectId(savedProject.id);
     setSourceUrl(savedProject.sourceUrl);
     setVideoTitle(savedProject.videoTitle);
@@ -3523,7 +3534,15 @@ const Index = () => {
 
     // Disable fullAutomation when manually opening a project
     // User wants to review/edit, not auto-skip steps
-    setSettings(prev => ({ ...prev, fullAutomation: false }));
+    // CRITICAL: Restore project-specific settings to prevent mixing between projects
+    setSettings(prev => ({
+      ...prev,
+      fullAutomation: false,
+      projectTitle: project.settings?.projectTitle || project.videoTitle || prev.projectTitle,
+      topic: project.settings?.topic || prev.topic,
+      subjectFocus: project.settings?.subjectFocus || prev.subjectFocus,
+      expandWith: project.settings?.expandWith || "",
+    }));
 
     // CRITICAL: Reset ALL state first before loading new project
     // Without this, old project data persists when new project lacks certain fields
@@ -4190,70 +4209,153 @@ const Index = () => {
               </div>
 
               {/* Expand With - optional expansion topics for short source videos */}
-              <div className="flex items-center gap-3">
-                <div className="w-28 shrink-0">
+              <div className="flex items-start gap-3">
+                <div className="w-28 shrink-0 pt-1">
                   <label className="text-sm font-medium text-muted-foreground text-left block">Expand With</label>
                   <span className="text-xs text-muted-foreground/70">Extra topics (optional)</span>
                 </div>
-                <div className="flex-1 space-y-1">
-                  <div className="flex gap-2">
-                    <Input
-                      value={settings.expandWith || ""}
-                      onChange={(e) => setSettings(prev => ({ ...prev, expandWith: e.target.value }))}
-                      placeholder="e.g., men's fashion, accessories, grooming..."
-                      className="flex-1"
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        if (!settings.topic && !settings.projectTitle) {
-                          toast({
-                            title: "Topic Required",
-                            description: "Enter a Topic first to generate expansion ideas",
-                            variant: "destructive",
-                          });
-                          return;
-                        }
-                        try {
-                          toast({
-                            title: "Generating...",
-                            description: "Finding expansion topics for your video",
-                          });
-                          const result = await generateExpansionTopics(
-                            settings.topic || settings.projectTitle,
-                            settings.projectTitle,
-                            settings.subjectFocus
-                          );
-                          if (result.success && result.topics) {
-                            setSettings(prev => ({ ...prev, expandWith: result.topics!.join(", ") }));
-                            toast({
-                              title: "Topics Generated",
-                              description: `Added ${result.topics.length} expansion topics`,
-                            });
-                          } else {
-                            toast({
-                              title: "Generation Failed",
-                              description: result.error || "Failed to generate topics",
-                              variant: "destructive",
-                            });
+                <div className="flex-1 space-y-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      if (!settings.topic && !settings.projectTitle) {
+                        toast({
+                          title: "Topic Required",
+                          description: "Enter a Topic first to generate expansion ideas",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                      try {
+                        toast({
+                          title: "Generating...",
+                          description: "Finding expansion topics for your video",
+                        });
+                        const result = await generateExpansionTopics(
+                          settings.topic || settings.projectTitle,
+                          settings.projectTitle,
+                          settings.subjectFocus
+                        );
+                        if (result.success && result.topics) {
+                          // Pad to 10 slots (empty strings for unused slots)
+                          const paddedTopics = [...result.topics];
+                          while (paddedTopics.length < 10) {
+                            paddedTopics.push("");
                           }
-                        } catch (error) {
+                          setExpansionTopics(paddedTopics.slice(0, 10));
+                          // Select all non-empty by default
+                          const allSelected = new Set(result.topics);
+                          setSelectedExpansionTopics(allSelected);
+                          setSettings(prev => ({ ...prev, expandWith: result.topics!.join(", ") }));
                           toast({
-                            title: "Error",
-                            description: "Failed to generate expansion topics",
+                            title: "Topics Generated",
+                            description: `${result.topics.length} expansion topics ready`,
+                          });
+                        } else {
+                          toast({
+                            title: "Generation Failed",
+                            description: result.error || "Failed to generate topics",
                             variant: "destructive",
                           });
                         }
-                      }}
-                      disabled={!settings.topic && !settings.projectTitle}
-                    >
-                      ✨ Generate
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground/70">
-                    For short source videos: AI will add content on these topics
-                  </p>
+                      } catch (error) {
+                        toast({
+                          title: "Error",
+                          description: "Failed to generate expansion topics",
+                          variant: "destructive",
+                        });
+                      }
+                    }}
+                    disabled={!settings.topic && !settings.projectTitle}
+                  >
+                    ✨ Generate Expansion Topics
+                  </Button>
+
+                  {expansionTopics.length > 0 && (
+                    <div className="border rounded-lg overflow-hidden">
+                      {expansionTopics.map((topic, index) => (
+                        <div
+                          key={index}
+                          className={`flex items-center gap-2 px-3 py-1.5 ${
+                            index !== expansionTopics.length - 1 ? "border-b" : ""
+                          } ${!topic ? "bg-muted/20" : "hover:bg-muted/30 cursor-pointer"}`}
+                          onClick={() => {
+                            if (!topic) return;
+                            const newSelected = new Set(selectedExpansionTopics);
+                            if (newSelected.has(topic)) {
+                              newSelected.delete(topic);
+                            } else {
+                              newSelected.add(topic);
+                            }
+                            setSelectedExpansionTopics(newSelected);
+                            setSettings(prev => ({
+                              ...prev,
+                              expandWith: Array.from(newSelected).join(", ")
+                            }));
+                          }}
+                        >
+                          <span className="text-xs text-muted-foreground w-5 shrink-0 text-right">
+                            {index + 1}.
+                          </span>
+                          {topic ? (
+                            <>
+                              <input
+                                type="checkbox"
+                                checked={selectedExpansionTopics.has(topic)}
+                                onChange={() => {}}
+                                className="h-3.5 w-3.5 rounded border-gray-300 text-primary focus:ring-primary pointer-events-none"
+                              />
+                              <span className="text-sm flex-1">{topic}</span>
+                            </>
+                          ) : (
+                            <span className="text-sm text-muted-foreground/40 italic">—</span>
+                          )}
+                        </div>
+                      ))}
+                      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/10 border-t">
+                        <span className="text-xs text-muted-foreground">
+                          {selectedExpansionTopics.size} of {expansionTopics.filter(t => t).length} selected
+                        </span>
+                        <div className="flex gap-3">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const nonEmpty = expansionTopics.filter(t => t);
+                              if (selectedExpansionTopics.size === nonEmpty.length) {
+                                setSelectedExpansionTopics(new Set());
+                                setSettings(prev => ({ ...prev, expandWith: "" }));
+                              } else {
+                                const allSelected = new Set(nonEmpty);
+                                setSelectedExpansionTopics(allSelected);
+                                setSettings(prev => ({ ...prev, expandWith: nonEmpty.join(", ") }));
+                              }
+                            }}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            {selectedExpansionTopics.size === expansionTopics.filter(t => t).length ? "Deselect all" : "Select all"}
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpansionTopics([]);
+                              setSelectedExpansionTopics(new Set());
+                              setSettings(prev => ({ ...prev, expandWith: "" }));
+                            }}
+                            className="text-xs text-muted-foreground hover:text-destructive"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {expansionTopics.length === 0 && (
+                    <p className="text-xs text-muted-foreground/70">
+                      For short source videos: AI will add content on selected topics
+                    </p>
+                  )}
                 </div>
               </div>
 
