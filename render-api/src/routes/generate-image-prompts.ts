@@ -551,49 +551,63 @@ function groupSegmentsForImages(
   audioDuration?: number,
   clipCount: number = 12,
   clipDuration: number = 5
-): { startSeconds: number; endSeconds: number; text: string }[] {
+): { startSeconds: number; endSeconds: number; text: string; isIntro: boolean }[] {
   if (segments.length === 0) return [];
 
   const totalDuration = audioDuration || segments[segments.length - 1].endSeconds;
 
   // CLIP-AWARE TIMING:
-  // First N images are video clips (5s each by default)
-  // Remaining images are static images distributed across the rest of the audio
+  // First N images are INTRO video clips (5s each) - Topic/Focus-driven, NOT script-synced
+  // Remaining images are static images synced to script, starting AFTER the intro duration
   const actualClipCount = Math.min(clipCount, imageCount);
   const clipsTotalDuration = actualClipCount * clipDuration;
   const staticImageCount = imageCount - actualClipCount;
   const remainingDuration = Math.max(0, totalDuration - clipsTotalDuration);
   const staticImageDuration = staticImageCount > 0 ? remainingDuration / staticImageCount : 0;
 
-  console.log(`Clip-aware timing: ${actualClipCount} clips × ${clipDuration}s = ${clipsTotalDuration}s, then ${staticImageCount} static images across ${remainingDuration.toFixed(2)}s`);
+  console.log(`Clip-aware timing: ${actualClipCount} INTRO clips × ${clipDuration}s = ${clipsTotalDuration}s (Topic/Focus-driven), then ${staticImageCount} static images across ${remainingDuration.toFixed(2)}s (script-synced)`);
 
-  const windows: { startSeconds: number; endSeconds: number; text: string }[] = [];
+  const windows: { startSeconds: number; endSeconds: number; text: string; isIntro: boolean }[] = [];
 
   for (let i = 0; i < imageCount; i++) {
     let windowStart: number;
     let windowEnd: number;
+    let isIntro: boolean;
 
     if (i < actualClipCount) {
-      // Video clips: each is exactly clipDuration seconds
+      // INTRO video clips: Topic/Focus-driven, NOT tied to script timestamps
+      // These are establishing shots and thematic world-building scenes
       windowStart = i * clipDuration;
       windowEnd = (i + 1) * clipDuration;
+      isIntro = true;
     } else {
-      // Static images: distributed across remaining audio duration
+      // Static images: distributed across remaining audio duration, SCRIPT-SYNCED
+      // These start at 1:00 (after intro) and match narration timestamps
       const staticIndex = i - actualClipCount;
       windowStart = clipsTotalDuration + (staticIndex * staticImageDuration);
       windowEnd = clipsTotalDuration + ((staticIndex + 1) * staticImageDuration);
+      isIntro = false;
     }
 
-    const overlappingSegments = segments.filter(seg =>
-      seg.startSeconds < windowEnd && seg.endSeconds > windowStart
-    );
-
-    const text = overlappingSegments.map(s => s.text).join(' ');
+    // For intro images, don't pull script text - they're Topic/Focus-driven
+    // For static images, sync to script at their actual timestamp (starting at 1:00)
+    let text: string;
+    if (isIntro) {
+      // Intro images get a placeholder - actual content comes from Topic/Focus
+      text = `INTRO SCENE ${i + 1}`;
+    } else {
+      // Static images sync to script at their timestamp
+      const overlappingSegments = segments.filter(seg =>
+        seg.startSeconds < windowEnd && seg.endSeconds > windowStart
+      );
+      text = overlappingSegments.map(s => s.text).join(' ') || `Scene ${i + 1}`;
+    }
 
     windows.push({
       startSeconds: windowStart,
       endSeconds: windowEnd,
-      text: text || `Scene ${i + 1}`,
+      text,
+      isIntro,
     });
   }
 
@@ -1061,10 +1075,22 @@ Output format:
       const batchWindows = windows.slice(batchStart, batchEnd);
       const batchSize = batchWindows.length;
 
-      // Build context for this batch
-      const windowDescriptions = batchWindows.map((w, i) =>
-        `IMAGE ${batchStart + i + 1} (${formatTimecodeForFilename(w.startSeconds)} to ${formatTimecodeForFilename(w.endSeconds)}):\nNarration being spoken: "${w.text}"`
-      ).join('\n\n');
+      // Build context for this batch - differentiate intro vs script-synced images
+      const hasIntroImages = batchWindows.some(w => w.isIntro);
+      const hasScriptImages = batchWindows.some(w => !w.isIntro);
+
+      const windowDescriptions = batchWindows.map((w, i) => {
+        const imageNum = batchStart + i + 1;
+        const timecode = `${formatTimecodeForFilename(w.startSeconds)} to ${formatTimecodeForFilename(w.endSeconds)}`;
+
+        if (w.isIntro) {
+          // Intro images are Topic/Focus-driven, not script-synced
+          return `IMAGE ${imageNum} (${timecode}):\nINTRO SCENE - Topic/Focus-driven establishing or thematic scene (see instructions below)`;
+        } else {
+          // Script-synced images match narration
+          return `IMAGE ${imageNum} (${timecode}):\nNarration being spoken: "${w.text}"`;
+        }
+      }).join('\n\n');
 
       // Calculate tokens needed for this batch (use model-specific limit)
       const batchTokens = Math.min(MAX_TOKENS, batchSize * 150 + 500);
@@ -1082,15 +1108,31 @@ Output format:
               role: 'user',
               content: `Generate exactly ${batchSize} visual scene descriptions for images ${batchStart + 1} to ${batchEnd}. Return ONLY the JSON array, nothing else.
 
+ERA: ${eraTopic || timePeriod.era}
+${storySubjectFocus ? `SUBJECT FOCUS: ${storySubjectFocus}` : ''}
+
 SCRIPT CONTEXT (for understanding the era and setting):
 ${script.substring(0, 12000)}
 
-TIME-CODED SEGMENTS (MATCH THESE - show what each segment describes):
+IMAGE SEGMENTS:
 ${windowDescriptions}
 
-PRIORITY: Illustrate THE ACTUAL STORY from the narration using visually authentic ${timePeriod.era} imagery. Each image should show the SPECIFIC MOMENT described in that time segment - the people, places, and events being discussed. Use era-appropriate clothing, architecture, and settings.
-${batchStart === 0 ? `
-CRITICAL FOR THIS BATCH: Images 1-2 MUST be ESTABLISHING SHOTS - grand panoramic views of palaces, cities, or landscapes that set the scene. NO close-ups of people in the first 2 images. Show the WORLD first before showing the people in it.` : ''}
+${hasIntroImages ? `
+=== INTRO IMAGES (Topic/Focus-Driven) ===
+Images marked as "INTRO SCENE" are for the video introduction (first ${clipCount || 12} images = 1 minute).
+These should be THEMATIC and ESTABLISHING, NOT tied to specific script narration.
+- Image 1: MUST be a grand establishing shot of the era/location (no people in focus)
+- Images 2-${clipCount || 12}: Varied thematic scenes that set the mood and world of ${eraTopic || timePeriod.era}
+${storySubjectFocus ? `- Show the world of ${storySubjectFocus}: their environments, settings, objects, atmosphere` : ''}
+- Mix: exteriors, interiors, wide shots, detail shots - but all establishing the WORLD before the story begins
+- These are NOT synced to script timestamps - they set the visual tone for the documentary
+` : ''}
+${hasScriptImages ? `
+=== SCRIPT-SYNCED IMAGES ===
+Images with "Narration being spoken" should illustrate THE SPECIFIC MOMENT from the narration.
+Show the people, places, and events being discussed at that exact timestamp.
+Use era-appropriate clothing, architecture, and settings for ${timePeriod.era}.
+` : ''}
 Remember: Output ONLY a JSON array with ${batchSize} items, starting with index ${batchStart + 1}. No explanations.`
             }
           ],
@@ -1183,9 +1225,14 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
           const batchWindows = windows.slice(batchStart, batchEnd);
           const batchSize = batchWindows.length;
 
-          const batchWindowDescriptions = batchWindows.map((w, i) =>
-            `IMAGE ${batchStart + i + 1}: "${w.text}"`
-          ).join('\n');
+          const batchWindowDescriptions = batchWindows.map((w, i) => {
+            const imageNum = batchStart + i + 1;
+            if (w.isIntro) {
+              return `IMAGE ${imageNum}: INTRO - thematic establishing scene for ${eraTopic || timePeriod.era}`;
+            } else {
+              return `IMAGE ${imageNum}: "${w.text}"`;
+            }
+          }).join('\n');
 
           const response = await anthropic.messages.create({
             model: selectedModel,
