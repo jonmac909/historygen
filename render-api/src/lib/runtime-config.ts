@@ -25,10 +25,10 @@ export const rateLimitWindowMs = Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_0
 export const rateLimitMax = Number(process.env.RATE_LIMIT_MAX ?? 60);
 
 export const imageGenerationConfig = {
-  maxConcurrentJobs: Number(process.env.ZIMAGE_MAX_CONCURRENCY ?? 4),
+  maxConcurrentJobs: Number(process.env.ZIMAGE_MAX_CONCURRENCY ?? 3),  // Reduced from 4 to be gentler on RunPod
   pollIntervalMs: Number(process.env.ZIMAGE_POLL_INTERVAL_MS ?? 2000),
-  maxPollingTimeMs: Number(process.env.ZIMAGE_POLL_TIMEOUT_MS ?? 15 * 60 * 1000),
-  maxRetries: Number(process.env.ZIMAGE_MAX_RETRIES ?? 2),
+  maxPollingTimeMs: Number(process.env.ZIMAGE_POLL_TIMEOUT_MS ?? 20 * 60 * 1000),  // Increased to 20 min
+  maxRetries: Number(process.env.ZIMAGE_MAX_RETRIES ?? 4),  // Increased from 2 to 4 (5 total attempts)
 };
 
 export const allowedAssetHosts = splitList(
