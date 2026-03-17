@@ -973,15 +973,19 @@ export function ThumbnailGeneratorModal({
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-1"
-                      onClick={() => fileInputRef.current?.click()}
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center gap-1 w-full h-8 px-3 text-sm font-medium rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        console.log('[ThumbnailModal] Change Reference clicked');
+                        fileInputRef.current?.click();
+                      }}
                     >
                       <Upload className="w-3 h-3" />
                       Change Reference
-                    </Button>
+                    </button>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex-1 h-px bg-border" />
                       <span>or</span>
