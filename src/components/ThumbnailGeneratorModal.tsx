@@ -61,28 +61,6 @@ export function ThumbnailGeneratorModal({
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const openReferencePicker = () => {
-    const input = fileInputRef.current as (HTMLInputElement & {
-      showPicker?: () => void;
-    }) | null;
-
-    if (!input) return;
-
-    // Allow re-selecting the same file and prefer the native picker API when available.
-    input.value = "";
-
-    if (typeof input.showPicker === "function") {
-      try {
-        input.showPicker();
-        return;
-      } catch (error) {
-        console.warn("showPicker failed, falling back to click()", error);
-      }
-    }
-
-    input.click();
-  };
-
   // Load default thumbnail on mount or when project changes
   useEffect(() => {
     // Reset to default when project changes
@@ -425,6 +403,11 @@ export function ThumbnailGeneratorModal({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const handleReferenceInputClick = (e: React.MouseEvent<HTMLInputElement>) => {
+    // Allow selecting the same file twice in a row.
+    e.currentTarget.value = "";
   };
 
   const extractYouTubeVideoId = (url: string): string | null => {
@@ -995,14 +978,18 @@ export function ThumbnailGeneratorModal({
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <button
-                      type="button"
-                      className="inline-flex items-center justify-center gap-1 w-full h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
-                      onClick={openReferencePicker}
-                    >
+                    <label className="inline-flex items-center justify-center gap-1 w-full h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors relative overflow-hidden">
                       <Upload className="w-3 h-3" />
                       Change Reference
-                    </button>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        className="absolute inset-0 opacity-0 cursor-pointer"
+                        onClick={handleReferenceInputClick}
+                        onChange={handleFileSelect}
+                      />
+                    </label>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex-1 h-px bg-border" />
                       <span>or</span>
@@ -1030,10 +1017,7 @@ export function ThumbnailGeneratorModal({
                     />
                   </div>
                 ) : (<>
-                  <label
-                    htmlFor="thumbnail-ref-input"
-                    className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-colors aspect-video flex items-center justify-center"
-                  >
+                  <label className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-colors aspect-video flex items-center justify-center relative overflow-hidden">
                     {isUploading ? (
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="w-5 h-5 animate-spin text-primary" />
@@ -1047,6 +1031,14 @@ export function ThumbnailGeneratorModal({
                         </span>
                       </div>
                     )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      onClick={handleReferenceInputClick}
+                      onChange={handleFileSelect}
+                    />
                   </label>
                   <Input
                     placeholder="Paste YouTube URL..."
@@ -1070,14 +1062,6 @@ export function ThumbnailGeneratorModal({
                   />
                 </>)}
 
-                <input
-                  id="thumbnail-ref-input"
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/jpg,image/webp"
-                  className="sr-only"
-                  onChange={handleFileSelect}
-                />
               </div>
 
               {/* Topic → Prompt Suggestions */}
