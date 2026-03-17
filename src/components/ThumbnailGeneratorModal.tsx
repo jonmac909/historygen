@@ -973,15 +973,19 @@ export function ThumbnailGeneratorModal({
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="w-full gap-1"
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      <Upload className="w-3 h-3" />
-                      Change Reference
-                    </Button>
+                    <label htmlFor="thumbnail-ref-input" className="cursor-pointer">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full gap-1 pointer-events-none"
+                        asChild
+                      >
+                        <span>
+                          <Upload className="w-3 h-3" />
+                          Change Reference
+                        </span>
+                      </Button>
+                    </label>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex-1 h-px bg-border" />
                       <span>or</span>
@@ -1009,9 +1013,9 @@ export function ThumbnailGeneratorModal({
                     />
                   </div>
                 ) : (<>
-                  <div
+                  <label
+                    htmlFor="thumbnail-ref-input"
                     className="border-2 border-dashed border-border rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-colors aspect-video flex items-center justify-center"
-                    onClick={() => fileInputRef.current?.click()}
                   >
                     {isUploading ? (
                       <div className="flex flex-col items-center gap-2">
@@ -1026,7 +1030,7 @@ export function ThumbnailGeneratorModal({
                         </span>
                       </div>
                     )}
-                  </div>
+                  </label>
                   <Input
                     placeholder="Paste YouTube URL..."
                     className="h-7 text-xs"
@@ -1050,6 +1054,7 @@ export function ThumbnailGeneratorModal({
                 </>)}
 
                 <input
+                  id="thumbnail-ref-input"
                   ref={fileInputRef}
                   type="file"
                   accept="image/png,image/jpeg,image/jpg,image/webp"

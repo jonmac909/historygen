@@ -12,13 +12,13 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Pricing constants
+// Pricing constants (verified against RunPod billing Mar 2026)
 export const PRICING = {
   claude_input: 3 / 1_000_000,      // $3 per 1M input tokens
   claude_output: 15 / 1_000_000,    // $15 per 1M output tokens
   claude_vision: 0.004,             // per image scanned with Claude Vision
-  fish_speech: 0.004,               // per minute of audio output
-  z_image: 0.035,                   // per image generated
+  fish_speech: 0.018,               // per minute of audio output (verified: $0.017-0.018/min)
+  z_image: 0.008,                   // per image generated (verified: $0.0075-0.0082/img)
   seedance: 0.08,                   // per clip (flat rate)
   whisper: 0.006,                   // per minute of audio input
   runpod_cpu: 0.0003733,            // per second of processing
