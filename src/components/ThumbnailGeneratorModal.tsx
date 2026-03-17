@@ -973,18 +973,12 @@ export function ThumbnailGeneratorModal({
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <label htmlFor="thumbnail-ref-input" className="cursor-pointer">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full gap-1 pointer-events-none"
-                        asChild
-                      >
-                        <span>
-                          <Upload className="w-3 h-3" />
-                          Change Reference
-                        </span>
-                      </Button>
+                    <label
+                      htmlFor="thumbnail-ref-input"
+                      className="inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-8 px-3 w-full cursor-pointer"
+                    >
+                      <Upload className="w-3 h-3" />
+                      Change Reference
                     </label>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex-1 h-px bg-border" />
