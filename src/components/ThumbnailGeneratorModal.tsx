@@ -396,10 +396,17 @@ export function ThumbnailGeneratorModal({
   };
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const { currentTarget } = e;
+    const file = currentTarget.files?.[0];
     if (!file) return;
 
-    await loadReferenceFile(file);
+    try {
+      await loadReferenceFile(file);
+    } finally {
+      // Reset after a successful chooser interaction so selecting the same
+      // file again still triggers a change event without mutating during click.
+      currentTarget.value = "";
+    }
   };
 
   const handleRemoveImage = () => {
@@ -410,11 +417,6 @@ export function ThumbnailGeneratorModal({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
-
-  const handleReferenceInputClick = (e: React.MouseEvent<HTMLInputElement>) => {
-    // Allow selecting the same file twice in a row.
-    e.currentTarget.value = "";
   };
 
   const extractYouTubeVideoId = (url: string): string | null => {
@@ -990,7 +992,6 @@ export function ThumbnailGeneratorModal({
                       type="file"
                       accept="image/png,image/jpeg,image/jpg,image/webp"
                       className="block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                      onClick={handleReferenceInputClick}
                       onChange={handleFileSelect}
                     />
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1040,7 +1041,6 @@ export function ThumbnailGeneratorModal({
                     type="file"
                     accept="image/png,image/jpeg,image/jpg,image/webp"
                     className="block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                    onClick={handleReferenceInputClick}
                     onChange={handleFileSelect}
                   />
                   <Input
