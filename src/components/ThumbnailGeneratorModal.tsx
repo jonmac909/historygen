@@ -987,13 +987,18 @@ export function ThumbnailGeneratorModal({
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/png,image/jpeg,image/jpg,image/webp"
-                      className="block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                      onChange={handleFileSelect}
-                    />
+                    <label className="relative inline-flex h-9 w-full cursor-pointer items-center justify-center gap-1 overflow-hidden rounded-md border border-input bg-background px-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground">
+                      <Upload className="w-3 h-3" />
+                      <span>Change Reference</span>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        aria-label="Change reference image"
+                        className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        onChange={handleFileSelect}
+                      />
+                    </label>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex-1 h-px bg-border" />
                       <span>or</span>
@@ -1021,7 +1026,7 @@ export function ThumbnailGeneratorModal({
                     />
                   </div>
                 ) : (<>
-                  <div className="border-2 border-dashed border-border rounded-lg p-4 text-center transition-colors aspect-video flex items-center justify-center w-full">
+                  <label className="relative flex aspect-video w-full cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border p-4 text-center transition-colors hover:border-primary/50 hover:bg-secondary/30">
                     {isUploading ? (
                       <div className="flex flex-col items-center gap-2">
                         <Loader2 className="w-5 h-5 animate-spin text-primary" />
@@ -1033,16 +1038,20 @@ export function ThumbnailGeneratorModal({
                         <span className="text-xs text-muted-foreground">
                           Upload reference
                         </span>
+                        <span className="text-[11px] text-muted-foreground/80">
+                          Click anywhere to choose an image
+                        </span>
                       </div>
                     )}
-                  </div>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg,image/jpg,image/webp"
-                    className="block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/90"
-                    onChange={handleFileSelect}
-                  />
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/png,image/jpeg,image/jpg,image/webp"
+                      aria-label="Upload reference image"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                      onChange={handleFileSelect}
+                    />
+                  </label>
                   <Input
                     placeholder="Paste YouTube URL..."
                     className="h-7 text-xs"
