@@ -973,12 +973,15 @@ export function ThumbnailGeneratorModal({
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <label
-                      htmlFor="thumbnail-ref-input"
-                      className="inline-flex items-center justify-center gap-1 w-full h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
-                    >
+                    <label className="inline-flex items-center justify-center gap-1 w-full h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors">
                       <Upload className="w-3 h-3" />
                       Change Reference
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
+                        className="sr-only"
+                        onChange={handleFileSelect}
+                      />
                     </label>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex-1 h-px bg-border" />
