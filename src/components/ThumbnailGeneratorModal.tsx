@@ -973,16 +973,25 @@ export function ThumbnailGeneratorModal({
                         <X className="w-4 h-4" />
                       </Button>
                     </div>
-                    <label className="inline-flex items-center justify-center gap-1 w-full h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors relative overflow-hidden">
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center gap-1 w-full h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
+                      onClick={() => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/png,image/jpeg,image/jpg,image/webp';
+                        input.onchange = (e) => {
+                          const file = (e.target as HTMLInputElement).files?.[0];
+                          if (file) {
+                            handleFileSelect({ target: { files: [file] } } as any);
+                          }
+                        };
+                        input.click();
+                      }}
+                    >
                       <Upload className="w-3 h-3" />
                       Change Reference
-                      <input
-                        type="file"
-                        accept="image/png,image/jpeg,image/jpg,image/webp"
-                        className="absolute inset-0 opacity-0 cursor-pointer"
-                        onChange={handleFileSelect}
-                      />
-                    </label>
+                    </button>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
                       <div className="flex-1 h-px bg-border" />
                       <span>or</span>
