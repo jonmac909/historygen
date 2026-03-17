@@ -61,6 +61,28 @@ export function ThumbnailGeneratorModal({
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const openReferencePicker = () => {
+    const input = fileInputRef.current as (HTMLInputElement & {
+      showPicker?: () => void;
+    }) | null;
+
+    if (!input) return;
+
+    // Allow re-selecting the same file and prefer the native picker API when available.
+    input.value = "";
+
+    if (typeof input.showPicker === "function") {
+      try {
+        input.showPicker();
+        return;
+      } catch (error) {
+        console.warn("showPicker failed, falling back to click()", error);
+      }
+    }
+
+    input.click();
+  };
+
   // Load default thumbnail on mount or when project changes
   useEffect(() => {
     // Reset to default when project changes
@@ -976,18 +998,7 @@ export function ThumbnailGeneratorModal({
                     <button
                       type="button"
                       className="inline-flex items-center justify-center gap-1 w-full h-9 px-3 rounded-md text-sm font-medium border border-input bg-background hover:bg-accent hover:text-accent-foreground cursor-pointer transition-colors"
-                      onClick={() => {
-                        const input = document.createElement('input');
-                        input.type = 'file';
-                        input.accept = 'image/png,image/jpeg,image/jpg,image/webp';
-                        input.onchange = (e) => {
-                          const file = (e.target as HTMLInputElement).files?.[0];
-                          if (file) {
-                            handleFileSelect({ target: { files: [file] } } as any);
-                          }
-                        };
-                        input.click();
-                      }}
+                      onClick={openReferencePicker}
                     >
                       <Upload className="w-3 h-3" />
                       Change Reference
