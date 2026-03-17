@@ -1054,7 +1054,7 @@ export function ThumbnailGeneratorModal({
                   ref={fileInputRef}
                   type="file"
                   accept="image/png,image/jpeg,image/jpg,image/webp"
-                  className="hidden"
+                  className="sr-only"
                   onChange={handleFileSelect}
                 />
               </div>
