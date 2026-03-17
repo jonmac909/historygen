@@ -28,7 +28,7 @@ describe("ThumbnailGeneratorModal", () => {
     vi.stubGlobal("FileReader", MockFileReader);
   });
 
-  it("renders a directly clickable reference file input for Change Reference", async () => {
+  it("uses the browser file picker from Change Reference when available", async () => {
     render(
       <ThumbnailGeneratorModal
         isOpen
@@ -39,21 +39,18 @@ describe("ThumbnailGeneratorModal", () => {
     );
 
     const button = await screen.findByText(/change reference/i);
+    const showOpenFilePicker = vi.fn().mockResolvedValue([
+      {
+        getFile: async () => new File(["test"], "reference.jpg", { type: "image/jpeg" }),
+      },
+    ]);
 
-    const input = await waitFor(() => {
-      const element = button.closest("label")?.querySelector('input[type="file"]') as
-        | HTMLInputElement
-        | null;
-
-      expect(element).not.toBeNull();
-      return element!;
-    });
-
-    const clickSpy = vi.fn();
-    input.addEventListener("click", clickSpy);
+    vi.stubGlobal("showOpenFilePicker", showOpenFilePicker);
 
     fireEvent.click(button);
 
-    expect(clickSpy).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(showOpenFilePicker).toHaveBeenCalledTimes(1);
+    });
   });
 });
