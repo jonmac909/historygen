@@ -387,7 +387,7 @@ export function ImagePromptsPreviewModal({
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
-        <DialogHeader>
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-2xl font-bold flex items-center gap-2">
             <ImageIcon className="w-6 h-6 text-primary" />
             Review Image Prompts
@@ -407,7 +407,7 @@ export function ImagePromptsPreviewModal({
 
         {/* Modern Terms Warning Banner */}
         {promptsWithModernTerms.length > 0 && (
-          <div className="border border-yellow-500/50 rounded-lg p-3 bg-yellow-500/10">
+          <div className="flex-shrink-0 border border-yellow-500/50 rounded-lg p-3 bg-yellow-500/10">
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-start gap-2">
                 <AlertTriangle className="w-5 h-5 text-yellow-500 flex-shrink-0 mt-0.5" />
@@ -438,7 +438,7 @@ export function ImagePromptsPreviewModal({
         )}
 
         {/* Era/Topic Constraint */}
-        <div className="border rounded-lg p-3 bg-muted/30">
+        <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <MapPin className="w-4 h-4 text-muted-foreground" />
@@ -457,7 +457,7 @@ export function ImagePromptsPreviewModal({
         </div>
 
         {/* Subject Focus - who the story is about */}
-        <div className="border rounded-lg p-3 bg-muted/30">
+        <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <ImageIcon className="w-4 h-4 text-muted-foreground" />
@@ -476,7 +476,7 @@ export function ImagePromptsPreviewModal({
         </div>
 
         {/* Image Style Selector */}
-        <div className="border rounded-lg p-3 bg-muted/30">
+        <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30">
           <div className="flex items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <Palette className="w-4 h-4 text-muted-foreground" />
@@ -503,7 +503,7 @@ export function ImagePromptsPreviewModal({
 
         {/* Add Prompts Section */}
         {onAddPrompts && (
-          <div className="border rounded-lg p-3 bg-muted/30">
+          <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <Plus className="w-4 h-4 text-muted-foreground" />
@@ -582,7 +582,7 @@ export function ImagePromptsPreviewModal({
 
         {/* Custom Style Prompt Editor - only shown when custom is selected */}
         {selectedStyleKey === 'custom' && (
-          <div className="border rounded-lg p-3 bg-muted/30 space-y-2">
+          <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30 space-y-2">
             <div className="flex items-center gap-2">
               <Edit2 className="w-4 h-4 text-muted-foreground" />
               <span className="text-sm font-medium">Custom Style Prompt</span>

@@ -1463,26 +1463,48 @@ export async function generateImagesStreaming(
   const decoder = new TextDecoder();
   let buffer = '';
   let result: ImageGenerationResult = { success: false, error: 'No response received' };
+  let lastProgress = { completed: 0, total: prompts.length };
+
+  // Timeout for detecting stalled connections (45s = 3x heartbeat interval)
+  const STREAM_TIMEOUT_MS = 45000;
+
+  // Helper to read with timeout
+  const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Connection timeout - no data received for ${STREAM_TIMEOUT_MS / 1000}s. Images may still be generating on the server.`));
+      }, STREAM_TIMEOUT_MS);
+
+      reader.read().then((result) => {
+        clearTimeout(timeoutId);
+        resolve(result);
+      }).catch((err) => {
+        clearTimeout(timeoutId);
+        reject(err);
+      });
+    });
+  };
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithTimeout();
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      
+
       const events = buffer.split('\n\n');
       buffer = events.pop() || '';
 
       for (const event of events) {
         if (!event.trim()) continue;
-        
+
         const dataMatch = event.match(/^data: (.+)$/m);
         if (dataMatch) {
           try {
             const parsed = JSON.parse(dataMatch[1]);
-            
+
             if (parsed.type === 'progress') {
+              lastProgress = { completed: parsed.completed, total: parsed.total };
               onProgress(parsed.completed, parsed.total, parsed.message);
             } else if (parsed.type === 'complete') {
               result = {
@@ -1504,9 +1526,13 @@ export async function generateImagesStreaming(
     }
   } catch (streamError) {
     console.error('Stream reading error:', streamError);
-    return { 
-      success: false, 
-      error: streamError instanceof Error ? streamError.message : 'Stream reading failed' 
+    // Include progress info in error message so user knows where it stopped
+    const progressInfo = lastProgress.completed > 0
+      ? ` (stopped at ${lastProgress.completed}/${lastProgress.total} images)`
+      : '';
+    return {
+      success: false,
+      error: (streamError instanceof Error ? streamError.message : 'Stream reading failed') + progressInfo
     };
   }
 
