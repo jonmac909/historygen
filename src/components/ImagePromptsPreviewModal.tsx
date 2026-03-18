@@ -599,7 +599,7 @@ export function ImagePromptsPreviewModal({
           </div>
         )}
 
-        <div className="overflow-y-auto max-h-[50vh] py-4 pr-2">
+        <div className="flex-1 min-h-0 overflow-y-auto py-4 pr-2">
           {/* Pagination controls for large lists */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between mb-3 pb-3 border-b">
