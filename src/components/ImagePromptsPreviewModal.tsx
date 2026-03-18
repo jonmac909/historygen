@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { Check, X, Image as ImageIcon, Edit2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, Palette, RefreshCw, AlertTriangle, Trash2, MapPin, Plus, Minus } from "lucide-react";
+import { Check, X, Image as ImageIcon, Edit2, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Download, Palette, RefreshCw, AlertTriangle, Trash2, MapPin, Plus, Minus, Settings } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -163,6 +164,7 @@ export function ImagePromptsPreviewModal({
   const [editedPrompts, setEditedPrompts] = useState<ImagePrompt[]>(prompts);
   const [editedTopic, setEditedTopic] = useState(topic);
   const [editedFocus, setEditedFocus] = useState(subjectFocus);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Calculate how many more images are needed to reach the end of the audio
   const imagesNeededForAudio = useMemo(() => {
@@ -437,167 +439,184 @@ export function ImagePromptsPreviewModal({
           </div>
         )}
 
-        {/* Era/Topic Constraint */}
-        <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <MapPin className="w-4 h-4 text-muted-foreground" />
-              <div>
-                <span className="text-sm font-medium">Era / Topic</span>
-                <p className="text-xs text-muted-foreground">Constrains all images to this time period</p>
-              </div>
-            </div>
-            <Input
-              value={editedTopic}
-              onChange={(e) => handleTopicChange(e.target.value)}
-              placeholder="e.g., Regency England 1810s"
-              className="w-[250px]"
-            />
-          </div>
-        </div>
-
-        {/* Subject Focus - who the story is about */}
-        <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <ImageIcon className="w-4 h-4 text-muted-foreground" />
-              <div>
-                <span className="text-sm font-medium">Focus</span>
-                <p className="text-xs text-muted-foreground">Who the story is about (shows their world, not aristocrats)</p>
-              </div>
-            </div>
-            <Input
-              value={editedFocus}
-              onChange={(e) => handleFocusChange(e.target.value)}
-              placeholder="e.g., servants, housemaids, coachmen..."
-              className="w-[250px]"
-            />
-          </div>
-        </div>
-
-        {/* Image Style Selector */}
-        <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Palette className="w-4 h-4 text-muted-foreground" />
-              <div>
-                <span className="text-sm font-medium">Painting Style</span>
-                <p className="text-xs text-muted-foreground">Visual aesthetic only - doesn't affect era/content</p>
-              </div>
-            </div>
-            <Select value={selectedStyleKey} onValueChange={handleStyleSelect}>
-              <SelectTrigger className="w-[200px]">
-                <SelectValue placeholder="Select a style..." />
-              </SelectTrigger>
-              <SelectContent>
-                {imageTemplates.map((template) => (
-                  <SelectItem key={template.id} value={template.id}>
-                    {template.name}
-                  </SelectItem>
-                ))}
-                <SelectItem value="custom">Custom Style</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        {/* Add Prompts Section */}
-        {onAddPrompts && (
-          <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30">
-            <div className="flex items-center justify-between gap-4">
+        {/* Collapsible Settings Section */}
+        <Collapsible open={settingsOpen} onOpenChange={setSettingsOpen} className="flex-shrink-0">
+          <CollapsibleTrigger asChild>
+            <Button variant="outline" className="w-full justify-between">
               <div className="flex items-center gap-2">
-                <Plus className="w-4 h-4 text-muted-foreground" />
-                <div>
-                  <span className="text-sm font-medium">Add More Prompts</span>
-                  <p className="text-xs text-muted-foreground">
-                    {imagesNeededForAudio > 0 ? (
-                      <>
-                        Need <span className="font-medium text-primary">{imagesNeededForAudio}</span> more to reach end of audio
-                        {existingImageCount > 0 && ` (${existingImageCount} images exist)`}
-                      </>
-                    ) : existingImageCount > 0 ? (
-                      `${existingImageCount} images exist, ${editedPrompts.length} prompts total`
-                    ) : (
-                      'Append additional image prompts to the end'
-                    )}
-                  </p>
+                <Settings className="w-4 h-4" />
+                <span>Settings</span>
+                <span className="text-xs text-muted-foreground">
+                  ({editedTopic || 'No era'} • {imageTemplates.find(t => t.id === selectedStyleKey)?.name || 'Custom'})
+                </span>
+              </div>
+              {settingsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="space-y-2 pt-2">
+            {/* Era/Topic Constraint */}
+            <div className="border rounded-lg p-3 bg-muted/30">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <span className="text-sm font-medium">Era / Topic</span>
+                    <p className="text-xs text-muted-foreground">Constrains all images to this time period</p>
+                  </div>
+                </div>
+                <Input
+                  value={editedTopic}
+                  onChange={(e) => handleTopicChange(e.target.value)}
+                  placeholder="e.g., Regency England 1810s"
+                  className="w-[250px]"
+                />
+              </div>
+            </div>
+
+            {/* Subject Focus - who the story is about */}
+            <div className="border rounded-lg p-3 bg-muted/30">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <span className="text-sm font-medium">Focus</span>
+                    <p className="text-xs text-muted-foreground">Who the story is about (shows their world, not aristocrats)</p>
+                  </div>
+                </div>
+                <Input
+                  value={editedFocus}
+                  onChange={(e) => handleFocusChange(e.target.value)}
+                  placeholder="e.g., servants, housemaids, coachmen..."
+                  className="w-[250px]"
+                />
+              </div>
+            </div>
+
+            {/* Image Style Selector */}
+            <div className="border rounded-lg p-3 bg-muted/30">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2">
+                  <Palette className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <span className="text-sm font-medium">Painting Style</span>
+                    <p className="text-xs text-muted-foreground">Visual aesthetic only - doesn't affect era/content</p>
+                  </div>
+                </div>
+                <Select value={selectedStyleKey} onValueChange={handleStyleSelect}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select a style..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {imageTemplates.map((template) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="custom">Custom Style</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Add Prompts Section */}
+            {onAddPrompts && (
+              <div className="border rounded-lg p-3 bg-muted/30">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-2">
+                    <Plus className="w-4 h-4 text-muted-foreground" />
+                    <div>
+                      <span className="text-sm font-medium">Add More Prompts</span>
+                      <p className="text-xs text-muted-foreground">
+                        {imagesNeededForAudio > 0 ? (
+                          <>
+                            Need <span className="font-medium text-primary">{imagesNeededForAudio}</span> more to reach end of audio
+                            {existingImageCount > 0 && ` (${existingImageCount} images exist)`}
+                          </>
+                        ) : existingImageCount > 0 ? (
+                          `${existingImageCount} images exist, ${editedPrompts.length} prompts total`
+                        ) : (
+                          'Append additional image prompts to the end'
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setPromptsToAdd(Math.max(1, promptsToAdd - 1))}
+                      disabled={promptsToAdd <= 1 || isAddingPrompts}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={50}
+                      value={promptsToAdd}
+                      onChange={(e) => {
+                        const val = parseInt(e.target.value, 10);
+                        if (!isNaN(val) && val >= 1 && val <= 50) {
+                          setPromptsToAdd(val);
+                        }
+                      }}
+                      className="w-16 h-8 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      disabled={isAddingPrompts}
+                    />
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setPromptsToAdd(Math.min(50, promptsToAdd + 1))}
+                      disabled={promptsToAdd >= 50 || isAddingPrompts}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onAddPrompts(promptsToAdd)}
+                      disabled={isAddingPrompts}
+                      className="ml-2"
+                    >
+                      {isAddingPrompts ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                          Adding...
+                        </>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4 mr-2" />
+                          Add {promptsToAdd}
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setPromptsToAdd(Math.max(1, promptsToAdd - 1))}
-                  disabled={promptsToAdd <= 1 || isAddingPrompts}
-                >
-                  <Minus className="h-4 w-4" />
-                </Button>
-                <Input
-                  type="number"
-                  min={1}
-                  max={50}
-                  value={promptsToAdd}
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value, 10);
-                    if (!isNaN(val) && val >= 1 && val <= 50) {
-                      setPromptsToAdd(val);
-                    }
-                  }}
-                  className="w-16 h-8 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  disabled={isAddingPrompts}
-                />
-                <Button
-                  variant="outline"
-                  size="icon"
-                  className="h-8 w-8"
-                  onClick={() => setPromptsToAdd(Math.min(50, promptsToAdd + 1))}
-                  disabled={promptsToAdd >= 50 || isAddingPrompts}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => onAddPrompts(promptsToAdd)}
-                  disabled={isAddingPrompts}
-                  className="ml-2"
-                >
-                  {isAddingPrompts ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                      Adding...
-                    </>
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add {promptsToAdd}
-                    </>
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* Custom Style Prompt Editor - only shown when custom is selected */}
-        {selectedStyleKey === 'custom' && (
-          <div className="flex-shrink-0 border rounded-lg p-3 bg-muted/30 space-y-2">
-            <div className="flex items-center gap-2">
-              <Edit2 className="w-4 h-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Custom Style Prompt</span>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              This style is applied to all images. Describe the visual style you want.
-            </p>
-            <textarea
-              value={editedStyle}
-              onChange={(e) => setEditedStyle(e.target.value)}
-              className="w-full min-h-[120px] p-3 text-sm bg-background border rounded resize-y"
-              placeholder="Describe the visual style..."
-            />
-          </div>
-        )}
+            {/* Custom Style Prompt Editor - only shown when custom is selected */}
+            {selectedStyleKey === 'custom' && (
+              <div className="border rounded-lg p-3 bg-muted/30 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Edit2 className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">Custom Style Prompt</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  This style is applied to all images. Describe the visual style you want.
+                </p>
+                <textarea
+                  value={editedStyle}
+                  onChange={(e) => setEditedStyle(e.target.value)}
+                  className="w-full min-h-[120px] p-3 text-sm bg-background border rounded resize-y"
+                  placeholder="Describe the visual style..."
+                />
+              </div>
+            )}
+          </CollapsibleContent>
+        </Collapsible>
 
         <div className="flex-1 min-h-0 overflow-y-auto py-4 pr-2">
           {/* Pagination controls for large lists */}
