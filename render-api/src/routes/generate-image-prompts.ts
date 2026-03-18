@@ -998,6 +998,19 @@ When including people, describe SPECIFIC actions to avoid the AI adding romantic
 ✅ "Countryside path, traveler on horseback" (specific action)
 ❌ "romantic couple" "embracing" "in each other's arms" (vague = AI adds kissing)
 
+⚠️ EXPLICIT GENDER (CRITICAL - BE SPECIFIC):
+AI image generators create ambiguous figures unless you specify gender clearly.
+ALWAYS use explicit gender terms when describing people:
+✅ "Scottish man weaving at wooden loom" NOT "Scottish weaver at loom"
+✅ "young woman in tartan shawl" NOT "figure in tartan shawl"
+✅ "elderly gentleman in formal attire" NOT "person in formal attire"
+✅ "female servant carrying linens" NOT "servant carrying linens"
+✅ "male blacksmith at forge" NOT "blacksmith at forge"
+✅ "mother and daughter walking" NOT "two people walking"
+- Use: man, woman, boy, girl, gentleman, lady, male, female
+- Infer gender from context in the narration when possible
+- If gender is truly ambiguous, default to showing BOTH (e.g., "men and women gathered")
+
 SUBJECT MATCHING (CRITICAL - MATCH WHO THE NARRATION IS ABOUT):
 - Read the narration and ask: "WHO is this about?" Then show THAT person/group
 - If narration discusses SERVANTS: Show kitchens, servant quarters, below-stairs life, laundry, cooking
