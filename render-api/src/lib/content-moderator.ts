@@ -180,22 +180,22 @@ export async function rewritePromptForSafety(
   const violationGuidance = violations.map(v => {
     switch (v) {
       case 'nudity':
-        return '- NUDITY: Show fully-clothed figures in formal period attire, OR focus on architecture/landscape instead of people';
+        return '- NUDITY: KEEP the people but show them fully-clothed in elegant period attire (formal dress, tailcoat, etc.)';
       case 'violence':
-        return '- VIOLENCE: Show a peaceful moment, diplomatic scene, or the aftermath (empty battlefield, quiet aftermath)';
+        return '- VIOLENCE: KEEP the people but show a peaceful moment BEFORE or AFTER the violence (diplomacy, mourning, reconciliation)';
       case 'gore':
       case 'medical':
-        return '- GORE/MEDICAL: Show the building exterior, a peaceful room, or symbolic elements (crown, flag) - NOT the procedure';
+        return '- GORE/MEDICAL: KEEP the person but show them in a peaceful moment (recovering, comforted by family, or in happier times)';
       case 'disturbing':
-        return '- DISTURBING: Show a calm, peaceful version of the moment, different camera angle, or architectural focus';
+        return '- DISTURBING: KEEP the people but show a calmer version of the scene (comforting embrace, peaceful resolution)';
       case 'wrong_clothing':
-        return `- WRONG_CLOTHING: Specify correct era garments for ${eraTopic} (research exact fashion of that period)`;
+        return `- WRONG_CLOTHING: KEEP the people, just fix their clothing to match ${eraTopic} era fashion`;
       case 'wrong_architecture':
-        return `- WRONG_ARCHITECTURE: Specify correct era buildings/interiors for ${eraTopic}`;
+        return `- WRONG_ARCHITECTURE: KEEP the people, just fix the buildings/interiors to match ${eraTopic}`;
       case 'wrong_objects':
-        return `- WRONG_OBJECTS: Remove anachronistic items, add only period-correct objects for ${eraTopic}`;
+        return `- WRONG_OBJECTS: KEEP the people, just remove anachronistic items and add period-correct objects`;
       case 'wrong_era':
-        return `- WRONG_ERA: Ensure ALL visual elements match ${eraTopic} - clothing, architecture, objects, cultural elements`;
+        return `- WRONG_ERA: KEEP the people, but fix ALL visual elements to match ${eraTopic}`;
       default:
         return '';
     }
@@ -223,11 +223,13 @@ VIOLATIONS TO FIX:
 ${violationGuidance}
 
 Write a new 50-80 word prompt that:
-1. Captures the same historical MOMENT from the script
-2. Completely avoids all the violations listed above
-3. Is visually interesting (not just "person standing in room")
-4. Specifies era-accurate details for ${eraTopic}
-5. Focuses on setting/architecture if content issues are hard to avoid
+1. KEEPS THE PEOPLE from the original scene - do NOT remove them
+2. Captures the same historical MOMENT from the script
+3. Completely avoids all the violations listed above
+4. Is visually interesting with people DOING something
+5. Specifies era-accurate details for ${eraTopic}
+
+CRITICAL: 80-90% of prompts MUST feature people. Only remove people if absolutely necessary for safety.
 
 Return ONLY the new prompt text, no quotes, no explanation.`,
         },
@@ -251,8 +253,8 @@ Return ONLY the new prompt text, no quotes, no explanation.`,
     };
   } catch (error) {
     console.error('[content-moderator] Error rewriting prompt:', error);
-    // Return enhanced version of original prompt as fallback
-    const fallbackPrompt = `Family-friendly historical scene, ${eraTopic}, fully clothed figures in period attire, elegant architecture, peaceful atmosphere. ${originalPrompt}`;
+    // Return enhanced version of original prompt as fallback - KEEP the people!
+    const fallbackPrompt = `${originalPrompt} - depicted in ${eraTopic} era, fully clothed figures in elegant period attire, peaceful atmosphere`;
     return {
       newPrompt: fallbackPrompt,
       changes: `Fallback enhancement (rewrite failed: ${error instanceof Error ? error.message : 'Unknown'})`,
