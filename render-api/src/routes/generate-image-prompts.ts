@@ -1011,9 +1011,10 @@ ALWAYS use explicit gender terms when describing people:
 - Infer gender from context in the narration when possible
 - If gender is truly ambiguous, default to showing BOTH (e.g., "men and women gathered")
 
-HISTORICAL GENDER ROLES (use these defaults for pre-20th century):
-TYPICALLY MALE: blacksmith, weaver (professional loom), carpenter, farmer, soldier, sailor, coachman, butler, footman, valet, groom, gamekeeper, merchant, scholar, physician, clergy, mason, miller, innkeeper, fisherman
-TYPICALLY FEMALE: spinning (spinning wheel), seamstress, laundress, cook, housemaid, lady's maid, governess, midwife, wet nurse, dairy maid, lace-maker, milliner
+HISTORICAL GENDER ROLES FOR ${timePeriod.era.toUpperCase()}:
+Use historically accurate gender for occupations. For ${timePeriod.era}:
+TYPICALLY MALE: blacksmith, weaver (professional loom), carpenter, farmer, soldier, sailor, coachman, butler, footman, valet, groom, gamekeeper, merchant, scholar, physician, clergy, mason, miller, innkeeper, fisherman, shepherd, tailor (bespoke)
+TYPICALLY FEMALE: spinning (spinning wheel), seamstress, laundress, cook, housemaid, lady's maid, governess, midwife, wet nurse, dairy maid, lace-maker, milliner, nurse
 EITHER/BOTH: shopkeeper, innkeeper's family, market vendor, tavern worker, field laborer (harvest), domestic servant (general)
 
 SUBJECT MATCHING (CRITICAL - MATCH WHO THE NARRATION IS ABOUT):
