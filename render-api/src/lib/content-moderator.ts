@@ -185,7 +185,7 @@ export async function rewritePromptForSafety(
         return '- VIOLENCE: KEEP the people but show a peaceful moment BEFORE or AFTER the violence (diplomacy, mourning, reconciliation)';
       case 'gore':
       case 'medical':
-        return '- GORE/MEDICAL: KEEP the person but show them in a peaceful moment (recovering, comforted by family, or in happier times)';
+        return '- GORE/MEDICAL: If about DEATH, show mourning family or the empty location AFTER. Otherwise show the person in happier times or recovering';
       case 'disturbing':
         return '- DISTURBING: KEEP the people but show a calmer version of the scene (comforting embrace, peaceful resolution)';
       case 'wrong_clothing':
@@ -229,7 +229,10 @@ Write a new 50-80 word prompt that:
 4. Is visually interesting with people DOING something
 5. Specifies era-accurate details for ${eraTopic}
 
-CRITICAL: 80-90% of prompts MUST feature people. Only remove people if absolutely necessary for safety.
+EXCEPTIONS - DO NOT include people if:
+- The script describes someone's DEATH → show mourners, or the empty location after, NOT the dead person
+- The script says "empty room/hall/corridor" → show the empty space as described
+- The script focuses on architecture/landscape → keep it people-free
 
 Return ONLY the new prompt text, no quotes, no explanation.`,
         },
