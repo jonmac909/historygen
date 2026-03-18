@@ -4,6 +4,7 @@ import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-clie
 import { saveCost } from '../lib/cost-tracker';
 import { saveScriptToProject } from '../lib/supabase-project';
 import { cleanScript, insertSubscribeCTA } from '../lib/pipeline-runner';
+import { moderateScript, sanitizeScript, scriptNeedsModeration } from '../lib/content-moderator';
 
 const router = Router();
 
@@ -529,6 +530,42 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
         currentWordCount = fullScript.split(/\s+/).filter(w => w.length > 0).length;
         console.log(`[Script] Cleaned + CTA inserted: ${currentWordCount} words`);
 
+        // YouTube Policy Check - scan for violations and auto-fix if possible
+        let moderationWarnings: string[] = [];
+        if (scriptNeedsModeration(fullScript)) {
+          console.log(`[Script] Running YouTube policy check...`);
+          sendEvent({
+            type: 'progress',
+            progress: 98,
+            message: 'Checking YouTube policy compliance...'
+          });
+
+          const modResult = await moderateScript(fullScript);
+
+          if (!modResult.safe) {
+            console.log(`[Script] ⚠️ Policy issues found: ${modResult.issues.length}`);
+
+            // Auto-fix low/medium severity issues
+            const { sanitized, changes } = await sanitizeScript(fullScript, modResult.issues);
+            if (changes.length > 0) {
+              fullScript = sanitized;
+              currentWordCount = fullScript.split(/\s+/).filter(w => w.length > 0).length;
+              console.log(`[Script] Auto-fixed ${changes.length} policy issues`);
+              moderationWarnings = changes;
+            }
+
+            // Warn about high severity issues that couldn't be auto-fixed
+            const highSeverity = modResult.issues.filter(i => i.severity === 'high');
+            if (highSeverity.length > 0) {
+              moderationWarnings.push(
+                ...highSeverity.map(i => `⚠️ ${i.category.toUpperCase()}: ${i.excerpt.substring(0, 50)}...`)
+              );
+            }
+          } else {
+            console.log(`[Script] ✅ YouTube policy check passed`);
+          }
+        }
+
         // Save to project database (fire-and-forget - allows user to close browser)
         if (projectId && fullScript) {
           saveScriptToProject(projectId, fullScript)
@@ -547,7 +584,8 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
           success: true,
           script: fullScript,
           wordCount: currentWordCount,
-          progress: 100
+          progress: 100,
+          moderationWarnings: moderationWarnings.length > 0 ? moderationWarnings : undefined
         });
 
         res.end();

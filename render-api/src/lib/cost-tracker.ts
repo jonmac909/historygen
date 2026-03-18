@@ -1,10 +1,10 @@
 /**
  * Cost Tracker - Tracks and saves pipeline generation costs to Supabase
  *
- * Pricing (as of Jan 2025):
+ * Pricing (verified Mar 2026 against RunPod billing):
  * - Claude Sonnet 4.5: $3/1M input tokens, $15/1M output tokens
- * - Fish Speech (RunPod): ~$0.004/minute audio output
- * - Z-Image (RunPod): ~$0.035/image
+ * - Fish Speech (RunPod): ~$0.018/minute audio output
+ * - Z-Image (RunPod): ~$0.008/image
  * - Seedance 1.5 Pro (Kie.ai): $0.08/clip
  * - Whisper (OpenAI): $0.006/minute audio
  * - RunPod CPU: $0.0003733/second

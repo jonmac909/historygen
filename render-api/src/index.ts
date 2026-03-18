@@ -42,6 +42,7 @@ import generateShortHooksRouter from './routes/generate-short-hooks';
 import generateShortRouter from './routes/generate-short';
 import renderShortRouter from './routes/render-short';
 import deleteProjectImagesRouter from './routes/delete-project-images';
+import scanScriptsRouter from './routes/scan-scripts';
 
 dotenv.config();
 
@@ -190,6 +191,7 @@ app.use('/generate-short-hooks', generateShortHooksRouter);
 app.use('/generate-short', generateShortRouter);
 app.use('/render-short', renderShortRouter);
 app.use('/delete-project-images', deleteProjectImagesRouter);
+app.use('/scan-scripts', scanScriptsRouter);
 
 // Error handling
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
