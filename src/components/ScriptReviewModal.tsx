@@ -226,6 +226,26 @@ export function ScriptReviewModal({
                 <span className="text-muted-foreground font-normal">Grade: —</span>
               )}
             </span>
+            {/* YouTube Policy indicator */}
+            {rating?.youtubePolicy && (
+              <span className={`ml-1 px-2 py-0.5 text-xs font-medium rounded-full flex items-center gap-1 ${
+                rating.youtubePolicy.safe
+                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                  : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+              }`}>
+                {rating.youtubePolicy.safe ? (
+                  <>
+                    <Check className="w-3 h-3" />
+                    YouTube Safe
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-3 h-3" />
+                    Policy Issues ({rating.youtubePolicy.issues.length})
+                  </>
+                )}
+              </span>
+            )}
           </DialogTitle>
           <DialogDescription>
             Review and edit the generated script before creating audio.
@@ -330,6 +350,41 @@ export function ScriptReviewModal({
                             Full rewrite focused on {rating.topicAnalysis.expectedTopic}
                           </span>
                         </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* YouTube Policy Issues - show when policy check found issues */}
+              {rating.youtubePolicy && !rating.youtubePolicy.safe && (
+                <div className="mt-2 pt-2 border-t border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-900/20 rounded p-2 -mx-1">
+                  <div className="flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-orange-700 dark:text-orange-300">
+                        YouTube Policy Concerns
+                      </p>
+                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                        {rating.youtubePolicy.summary}
+                      </p>
+                      {rating.youtubePolicy.issues.length > 0 && (
+                        <ul className="text-xs text-muted-foreground mt-2 space-y-1">
+                          {rating.youtubePolicy.issues.map((issue, i) => (
+                            <li key={i} className="flex items-start gap-2">
+                              <span className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                                issue.severity === 'high'
+                                  ? 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300'
+                                  : issue.severity === 'medium'
+                                  ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/50 dark:text-orange-300'
+                                  : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/50 dark:text-yellow-300'
+                              }`}>
+                                {issue.severity}
+                              </span>
+                              <span className="flex-1">{issue.category}: "{issue.excerpt.substring(0, 50)}..."</span>
+                            </li>
+                          ))}
+                        </ul>
                       )}
                     </div>
                   </div>

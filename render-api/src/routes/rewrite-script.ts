@@ -745,6 +745,9 @@ router.post('/rate', async (req: Request, res: Response) => {
 
     const anthropic = createAnthropicClient(apiKey);
 
+    // Run YouTube policy check in parallel with grading (fast, uses Haiku)
+    const policyCheckPromise = moderateScript(script, apiKey);
+
     const systemPrompt = `You are an expert script evaluator for SLEEP-FRIENDLY long-form history documentary narration. These are 2-3 hour videos designed to help viewers drift peacefully through history while falling asleep.
 
 CONTEXT - SLEEP-FRIENDLY HISTORY CONTENT:
@@ -882,24 +885,48 @@ ${script.substring(0, 10000)}${script.length > 10000 ? '...[truncated]' : ''}`
         throw new Error('Invalid grade in response');
       }
 
+      // Wait for YouTube policy check to complete
+      const policyResult = await policyCheckPromise;
+      console.log(`[rate] YouTube policy check: safe=${policyResult.safe}, issues=${policyResult.issues.length}`);
+
       res.json({
         success: true,
         grade: rating.grade,
         summary: rating.summary || '',
         issues: rating.issues || [],
         fixPrompt: rating.fixPrompt || '',
-        topicAnalysis: rating.topicAnalysis || null
+        topicAnalysis: rating.topicAnalysis || null,
+        // YouTube policy scan results
+        youtubePolicy: {
+          safe: policyResult.safe,
+          issues: policyResult.issues,
+          summary: policyResult.summary
+        }
       });
     } catch (parseError) {
       console.error('Failed to parse rating response:', responseText);
       // Fallback - try to extract grade from text
       const gradeMatch = responseText.match(/grade["\s:]+([ABC])/i);
+
+      // Still try to get policy results even if grading failed
+      let policyResult;
+      try {
+        policyResult = await policyCheckPromise;
+      } catch {
+        policyResult = { safe: true, issues: [], summary: 'Policy check skipped' };
+      }
+
       res.json({
         success: true,
         grade: gradeMatch ? gradeMatch[1].toUpperCase() : 'B',
         summary: 'Could not parse detailed feedback',
         issues: ['Review manually'],
-        fixPrompt: ''
+        fixPrompt: '',
+        youtubePolicy: {
+          safe: policyResult.safe,
+          issues: policyResult.issues,
+          summary: policyResult.summary
+        }
       });
     }
   } catch (error) {

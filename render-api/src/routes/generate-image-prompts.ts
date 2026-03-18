@@ -768,30 +768,31 @@ ABSOLUTELY FORBIDDEN:
 ❌ NO scary, dark, disturbing, shocking imagery
 ❌ NO multiple locations in one prompt (no "meanwhile", "across town", "in another room")
 
-REQUIRED APPROACH FOR DARK TOPICS:
-Instead of showing illness/death/medical procedures directly, show:
-- BEFORE: Healthy person in happier times
-- PERIPHERAL: Empty chair, closed door, waiting family, doctor arriving at house exterior
-- SYMBOLIC: Wilting flowers, sunset, autumn leaves, extinguished candle
-- AFTERMATH: Memorial, gravestone in peaceful churchyard, mourning clothes
+REQUIRED APPROACH FOR DARK TOPICS (ONLY FOR THE SPECIFIC SCENE DEPICTING THE EVENT):
+⚠️ IMPORTANT: These rules apply ONLY to the specific narration segment that describes the graphic event.
+If narration says "he died" - THAT image avoids showing death. But all OTHER images in the documentary should show people normally!
+A documentary ABOUT death still shows the person ALIVE in most scenes.
 
-EXAMPLES OF CORRECT ALTERNATIVES:
+ONLY for the scene where something graphic happens:
+- Death scene → Show mourning family, memorial, or the person in happier earlier times
+- Surgery/illness → Show family at bedside (clothed, no medical procedure visible)
+- Battle → Show soldiers preparing before, or aftermath without bodies
+
+EXAMPLES OF CORRECT ALTERNATIVES (for graphic scenes only):
 ❌ "Physician draws lancet across skin, blood streaming into basin"
-✅ "Georgian physician's study, leather medical bag on mahogany desk, morning light through tall windows"
+✅ "Georgian physician at patient's bedside, family keeping vigil, soft candlelight" (KEEP THE PEOPLE)
 
-❌ "Patient lies motionless, skin clammy, leeches on neck"
-✅ "Elegant townhouse exterior at dusk, physician's carriage departing, housekeeper at door"
+❌ "Patient lies motionless, skin clammy"
+✅ "Concerned family gathered around bed, physician speaking with mother, warm interior" (KEEP THE PEOPLE)
 
-❌ "Woman lies dying, blood-soaked handkerchief beside her"
-✅ "Victorian bedroom at dusk, vase of white lilies, leather-bound Bible on nightstand"
+❌ "Child's body lies still on the bed"
+✅ "Grieving father holding son's hand, mother weeping nearby, soft morning light" (KEEP THE PEOPLE - just no death)
 
-✅ Surgery/illness → Show the peaceful building exterior, doctor's bag on a table, or family waiting hopefully
-✅ Battle/violence → Show the calm aftermath, a memorial, or the landscape before/after
-✅ Death → Show a memorial, peaceful remembrance, or happier earlier times
-✅ Nudity/bathing → Show the person fully clothed in elegant attire, or just the setting without people
-✅ Kissing/intimacy → Show the couple holding hands, sitting side by side, or gazing at each other from a distance
-✅ Torture/imprisonment → Show the empty corridor, exterior of the building, or the person being comforted after
-✅ ONE beautiful scene per prompt - single location, single moment
+✅ Surgery/illness → Family at bedside, doctor speaking to family (KEEP PEOPLE, just no graphic procedure)
+✅ Battle/violence → Soldiers preparing, or survivors comforting each other (KEEP PEOPLE)
+✅ Death → Mourning family, person in happier times, funeral procession (KEEP PEOPLE)
+✅ Kissing/intimacy → Couple holding hands, sitting side by side, gazing at each other
+✅ ONE beautiful scene per prompt - single location, single moment - WITH PEOPLE
 
 ⚠️ FOR ROMANTIC COUPLES - USE SPECIFIC POSES (CRITICAL):
 When showing a couple, NEVER say "romantic couple" or "embracing" - the image generator turns this into kissing!
@@ -883,21 +884,21 @@ ${storySubjectFocus ? `This documentary focuses on: ${storySubjectFocus}` : 'Use
 ⚠️ CRITICAL: VARIETY IS ESSENTIAL - DON'T SHOW THE SAME THING EVERY SCENE!
 ${storySubjectFocus ? `
 SCENE GUIDANCE (when subject focus is "${storySubjectFocus}"):
-- PREFER showing ${storySubjectFocus} as VISIBLE PEOPLE when the narration describes their activities
-- Include people when narration talks about work, daily life, interactions, emotions
-- Show empty rooms/exteriors when narration describes places, architecture, or atmosphere WITHOUT mentioning people
-- Match the narration: if it says "the kitchen was quiet" = empty; if it says "cook prepared breakfast" = show cook
+- 80-90% of images MUST show ${storySubjectFocus} as VISIBLE PEOPLE doing something
+- Show empty rooms/exteriors ONLY when narration explicitly says "empty" or describes a location without action
+- VARY the scenes: groups, individuals, interactions - but ALWAYS with people visible
 
 WITHIN scenes with people, vary them:
 - Groups working together
 - Individual moments - one person alone, working, contemplating
 - Interactions between characters
 ` : `
-Even if the focus is a couple or person, you MUST vary your scenes:
-- Only 30-40% of images should show the main subjects TOGETHER
-- 20-30% should show INDIVIDUAL character moments (one person alone, contemplating, working)
-- 20-30% should show HISTORICAL CONTEXT (palaces, gardens, period street scenes, architecture)
-- 10-20% should show SUPPORTING ELEMENTS (landscapes, interiors without people)
+CRITICAL: 80-90% of images MUST show people! Vary scenes while keeping people visible:
+- 40-50% of images should show the main subjects (together or individually)
+- 30-40% should show OTHER people from that era (supporting characters, crowds, workers)
+- 10-20% MAXIMUM should be pure landscapes/architecture without people
+
+DO NOT default to empty exteriors. Show PEOPLE in most scenes!
 `}
 
 HOW TO BE TOPICAL:
@@ -977,24 +978,25 @@ AESTHETIC PRIORITY (SLEEPY HISTORY STYLE - COZY BEDTIME VIEWING):
 - Evoke SERENE EMOTIONS: peace, dignity, beauty, wonder
 - Avoid anything harsh, scary, dark, or unsettling
 
-⚠️ CRITICAL - NO PEOPLE IN LANDSCAPE/SHIP/ARCHITECTURE SCENES:
-When writing prompts for ships, landscapes, buildings, or exteriors - DO NOT MENTION ANY PEOPLE.
-The image generator will add romantic couples if you mention people. So DON'T.
+⚠️ PEOPLE IN MOST SCENES (80-90% OF ALL IMAGES):
+Most images SHOULD include people! Only 10-20% should be pure landscapes/architecture without people.
 
-CORRECT for a ship scene:
-✅ "Storm-tossed sailing ship on grey-green North Sea, square-rigged vessel, dramatic clouds, churning waves"
-❌ "Storm-tossed ship with Charlotte watching from the deck" (WRONG - will add kissing couple)
+WHEN TO INCLUDE PEOPLE (80-90% of images):
+✅ Any scene about activities, emotions, relationships, work, daily life
+✅ Ships with crew, palaces with inhabitants, gardens with strollers
+✅ Interiors with the people who live/work there
 
-CORRECT for a palace exterior:
-✅ "Kew Palace exterior at golden hour, Georgian redbrick architecture, formal gardens, autumn light"
-❌ "Kew Palace with the royal couple walking in gardens" (WRONG - will add romantic pose)
+WHEN TO EXCLUDE PEOPLE (10-20% of images):
+✅ Pure establishing shots of locations (1-2 per documentary)
+✅ Narration explicitly says "empty room" or "deserted"
+✅ Dramatic landscape without action (sunset over battlefield AFTER conflict)
 
-CORRECT for a landscape:
-✅ "Misty English countryside at dawn, rolling hills, stone walls, sheep grazing"
-❌ "English countryside with Charlotte contemplating" (WRONG - will add people)
-
-RULE: If a scene is about a PLACE (ship, palace, garden, landscape), describe ONLY the place. NO PEOPLE.
-Only mention people when the scene is specifically about that ONE person doing something specific.
+AVOIDING ROMANTIC POSES:
+When including people, describe SPECIFIC actions to avoid the AI adding romantic poses:
+✅ "Ship deck, captain consulting charts with first mate" (specific action)
+✅ "Palace garden, ladies walking together discussing" (specific action)
+✅ "Countryside path, traveler on horseback" (specific action)
+❌ "romantic couple" "embracing" "in each other's arms" (vague = AI adds kissing)
 
 SUBJECT MATCHING (CRITICAL - MATCH WHO THE NARRATION IS ABOUT):
 - Read the narration and ask: "WHO is this about?" Then show THAT person/group
@@ -1026,9 +1028,9 @@ VISUAL VARIETY (CRITICAL - AVOID REPETITION):
 - Each image should feel like a distinct painting, not a variation of the previous one
 
 VISUAL PACING (DOCUMENTARY FLOW):
-- IMAGE 1-2: ALWAYS start with ESTABLISHING SHOTS - grand panoramic views WITHOUT people in focus
-- Every 8-10 images: Include a SCENIC/ARCHITECTURAL shot for visual breathing room
-- Vary shot types: WIDE (landscapes) → MEDIUM (groups) → CLOSE (details) → repeat
+- IMAGE 1-2: Start with ESTABLISHING SHOTS - grand views that can include people for scale
+- Every 8-10 images: Include variety - but keep people in most scenes
+- Vary shot types: WIDE (with crowds/groups) → MEDIUM (small groups) → CLOSE (individuals) → repeat
 - Include atmospheric variety: different times of day, weather, lighting moods
 
 ATMOSPHERIC QUALITY (MAKE EACH IMAGE A MASTERPIECE):
@@ -1066,15 +1068,15 @@ Do NOT include any text, titles, or words in the image.
 
 CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
 
-IMAGE 1 RULE (MANDATORY): The FIRST image MUST be an establishing shot of WHERE this story takes place. Match the story's subject:
-- Story about servants/common people: Show the town, village, or estate exterior
-- Story about royalty: Show the palace or grand estate
-- Story about workers: Show the town, factory district, or countryside
-NO people as the main focus - just the setting that establishes the world of the story.
+IMAGE 1 RULE (MANDATORY): The FIRST image should be an establishing shot that sets the scene:
+- Story about servants/common people: Show them arriving at the estate or working in the grounds
+- Story about royalty: Show the palace with courtiers or guards
+- Story about workers: Show the bustling town or factory with workers visible
+People CAN be in establishing shots - they add life and scale to the scene!
 
 Output format:
 [
-  {"index": 1, "sceneDescription": "Grand panoramic view of [era-specific iconic location], [architectural details], [atmospheric lighting], [time of day] - ESTABLISHING SHOT, no people in focus"},
+  {"index": 1, "sceneDescription": "Grand view of [era-specific location], [people doing activity], [atmospheric lighting], [time of day]"},
   {"index": 2, "sceneDescription": "..."},
   {"index": 3, "sceneDescription": "..."}
 ]`;
@@ -1141,11 +1143,11 @@ ${hasIntroImages ? `
 === INTRO IMAGES (Topic/Focus-Driven) ===
 Images marked as "INTRO SCENE" are for the video introduction (first ${clipCount || 12} images = 1 minute).
 These should be THEMATIC and ESTABLISHING, NOT tied to specific script narration.
-- Image 1: MUST be a grand establishing shot of the era/location (no people in focus)
-- Images 2-${clipCount || 12}: Varied thematic scenes that set the mood and world of ${eraTopic || timePeriod.era}
-${storySubjectFocus ? `- Show the world of ${storySubjectFocus}: their environments, settings, objects, atmosphere` : ''}
-- Mix: exteriors, interiors, wide shots, detail shots - but all establishing the WORLD before the story begins
-- These are NOT synced to script timestamps - they set the visual tone for the documentary
+- Image 1: Grand establishing shot of the era/location (CAN include people for scale/life)
+- Images 2-${clipCount || 12}: Varied thematic scenes showing PEOPLE in ${eraTopic || timePeriod.era}
+${storySubjectFocus ? `- Show ${storySubjectFocus} doing activities: working, walking, interacting` : ''}
+- Mix: exteriors WITH people, interiors WITH people, individual moments, group scenes
+- 80-90% of intro images should include VISIBLE PEOPLE doing era-appropriate activities
 ` : ''}
 ${hasScriptImages ? `
 === SCRIPT-SYNCED IMAGES ===

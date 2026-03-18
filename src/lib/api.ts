@@ -499,6 +499,21 @@ export interface TopicAnalysis {
   hasDrift: boolean;
 }
 
+// YouTube policy issue
+export interface YouTubePolicyIssue {
+  category: 'sexual' | 'violence' | 'hate' | 'harassment' | 'dangerous' | 'misleading';
+  severity: 'low' | 'medium' | 'high';
+  excerpt: string;
+  suggestion: string;
+}
+
+// YouTube policy check result
+export interface YouTubePolicyResult {
+  safe: boolean;
+  issues: YouTubePolicyIssue[];
+  summary: string;
+}
+
 // Script rating result interface
 export interface ScriptRatingResult {
   success: boolean;
@@ -507,6 +522,7 @@ export interface ScriptRatingResult {
   issues?: ScriptIssue[];
   fixPrompt?: string;
   topicAnalysis?: TopicAnalysis;
+  youtubePolicy?: YouTubePolicyResult;
   error?: string;
 }
 
