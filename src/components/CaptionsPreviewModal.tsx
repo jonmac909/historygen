@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown } from "lucide-react";
+import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2 } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -149,8 +149,9 @@ export function CaptionsPreviewModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Quality Issues Warning (collapsible) */}
-        {qualityIssues && qualityIssues.length > 0 && (
+        {/* Audio Quality Status */}
+        {qualityIssues && qualityIssues.length > 0 ? (
+          // Warning banner when issues found
           <div className="border border-amber-500/30 rounded-lg bg-amber-500/10">
             <button
               onClick={() => setIsQualityExpanded(!isQualityExpanded)}
@@ -183,7 +184,17 @@ export function CaptionsPreviewModal({
               </div>
             )}
           </div>
-        )}
+        ) : captionCount > 0 ? (
+          // Success banner when audio is clean
+          <div className="border border-green-500/30 rounded-lg bg-green-500/10 p-3">
+            <div className="flex items-center gap-2 text-green-600">
+              <CheckCircle2 className="w-4 h-4" />
+              <span className="text-sm font-medium">
+                Audio quality: Good ({captionCount.toLocaleString()} segments scanned)
+              </span>
+            </div>
+          </div>
+        ) : null}
 
         {/* Image Generation Settings */}
         {imageCount !== undefined && onImageCountChange && (
