@@ -294,6 +294,7 @@ const Index = () => {
   const [pendingSrtUrl, setPendingSrtUrl] = useState("");
   const [captionQualityIssues, setCaptionQualityIssues] = useState<any[] | undefined>();
   const [captionQualityWarning, setCaptionQualityWarning] = useState<string | undefined>();
+  const [scriptQaResult, setScriptQaResult] = useState<{ score: number; needsReview: boolean; issues: any[] } | undefined>();
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [generatedThumbnails, setGeneratedThumbnails] = useState<string[]>([]);
   const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number | undefined>();
@@ -1424,6 +1425,16 @@ const Index = () => {
       } else {
         setCaptionQualityIssues(undefined);
         setCaptionQualityWarning(undefined);
+      }
+
+      // Store script QA results (comparing TTS audio to original script)
+      if (captionsResult.scriptQa) {
+        setScriptQaResult(captionsResult.scriptQa);
+        if (captionsResult.scriptQa.needsReview) {
+          console.log(`[Script QA] Score: ${captionsResult.scriptQa.score}% - Review recommended`);
+        }
+      } else {
+        setScriptQaResult(undefined);
       }
 
       autoSave("captions", { srtContent: captionsResult.srtContent });
@@ -4961,6 +4972,7 @@ const Index = () => {
         onSubjectFocusChange={(subjectFocus) => setSettings(prev => ({ ...prev, subjectFocus }))}
         qualityIssues={captionQualityIssues}
         qualityWarning={captionQualityWarning}
+        scriptQa={scriptQaResult}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}

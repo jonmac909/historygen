@@ -64,6 +64,22 @@ export interface AudioResult {
   error?: string;
 }
 
+export interface ScriptQAIssue {
+  type: 'missing' | 'garbled' | 'extra' | 'mismatch';
+  originalText: string;
+  transcribedText: string;
+  similarity?: number;
+  severity: 'warning' | 'error';
+}
+
+export interface ScriptQAResult {
+  score: number;
+  totalScriptSentences: number;
+  matchedSentences: number;
+  issues: ScriptQAIssue[];
+  needsReview: boolean;
+}
+
 export interface CaptionsResult {
   success: boolean;
   captionsUrl?: string;
@@ -71,6 +87,7 @@ export interface CaptionsResult {
   segmentCount?: number;
   estimatedDuration?: number;
   error?: string;
+  scriptQa?: ScriptQAResult;
 }
 
 export interface ImageGenerationResult {

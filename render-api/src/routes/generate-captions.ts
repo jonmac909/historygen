@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { saveCost } from '../lib/cost-tracker';
 import { Readable } from 'stream';
 import { ReadableStream as WebReadableStream } from 'stream/web';
+import { compareScriptToTranscription, QAResult } from '../utils/script-qa';
 
 const router = Router();
 
@@ -756,6 +757,34 @@ router.post('/', async (req: Request, res: Response) => {
       );
     }
 
+    // Script QA: Compare transcription to original script
+    let scriptQa: QAResult | undefined;
+    if (projectId) {
+      try {
+        // Fetch original script from database
+        const { data: project } = await supabase
+          .from('generation_projects')
+          .select('script_content')
+          .eq('id', projectId)
+          .single();
+
+        if (project?.script_content) {
+          // Combine all transcription segments into full text
+          const fullTranscription = allSegments.map(s => s.text).join(' ');
+
+          // Run QA comparison
+          scriptQa = compareScriptToTranscription(project.script_content, fullTranscription);
+
+          console.log(`[Captions] Script QA: ${scriptQa.score}% match (${scriptQa.matchedSentences}/${scriptQa.totalScriptSentences} sentences)`);
+          if (scriptQa.issues.length > 0) {
+            console.log(`[Captions] Script QA issues:`, scriptQa.issues.slice(0, 5));
+          }
+        }
+      } catch (qaErr) {
+        console.error('[Captions] Script QA error (non-fatal):', qaErr);
+      }
+    }
+
     const result = {
       success: true,
       captionsUrl: urlData.publicUrl,
@@ -767,6 +796,8 @@ router.post('/', async (req: Request, res: Response) => {
       qualityWarning: allQualityIssues.length > 0
         ? `${allQualityIssues.length} potential audio quality issue${allQualityIssues.length > 1 ? 's' : ''} detected`
         : undefined,
+      // Script QA results
+      scriptQa,
     };
 
     if (stream) {

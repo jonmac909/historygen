@@ -30,6 +30,14 @@ interface QualityIssue {
   value: number;
 }
 
+interface ScriptQAResult {
+  score: number;
+  totalScriptSentences: number;
+  matchedSentences: number;
+  issues: { type: string; originalText: string; transcribedText: string; severity: string }[];
+  needsReview: boolean;
+}
+
 interface CaptionsPreviewModalProps {
   isOpen: boolean;
   srtContent: string;
@@ -46,6 +54,7 @@ interface CaptionsPreviewModalProps {
   onSubjectFocusChange?: (focus: string) => void;
   qualityIssues?: QualityIssue[];  // Audio quality issues from Whisper
   qualityWarning?: string;  // Summary warning message
+  scriptQa?: ScriptQAResult;  // Script vs transcription QA results
 }
 
 // Format seconds to MM:SS
@@ -100,11 +109,13 @@ export function CaptionsPreviewModal({
   onSubjectFocusChange,
   qualityIssues,
   qualityWarning,
+  scriptQa,
 }: CaptionsPreviewModalProps) {
   const [editedSrt, setEditedSrt] = useState(srtContent);
   const [isEditing, setIsEditing] = useState(false);
   const [segments, setSegments] = useState<ParsedSegment[]>([]);
   const [isQualityExpanded, setIsQualityExpanded] = useState(false);
+  const [isScriptQaExpanded, setIsScriptQaExpanded] = useState(false);
 
   // Sync state when srtContent prop changes
   useEffect(() => {
@@ -195,6 +206,67 @@ export function CaptionsPreviewModal({
             </div>
           </div>
         ) : null}
+
+        {/* Script QA: Compare TTS audio to original script */}
+        {scriptQa && (
+          scriptQa.needsReview ? (
+            // Warning when score is low
+            <div className={`border rounded-lg ${scriptQa.score < 85 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
+              <button
+                onClick={() => setIsScriptQaExpanded(!isScriptQaExpanded)}
+                className="w-full flex items-center justify-between p-3 text-left hover:bg-black/5 transition-colors"
+              >
+                <div className={`flex items-center gap-2 ${scriptQa.score < 85 ? 'text-red-600' : 'text-amber-600'}`}>
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-sm font-medium">
+                    Script match: {scriptQa.score}% - {scriptQa.issues.length} issue{scriptQa.issues.length !== 1 ? 's' : ''} detected
+                  </span>
+                </div>
+                <ChevronDown className={`w-4 h-4 transition-transform ${isScriptQaExpanded ? 'rotate-180' : ''}`} />
+              </button>
+              {isScriptQaExpanded && scriptQa.issues.length > 0 && (
+                <div className="px-3 pb-3 space-y-2 max-h-40 overflow-y-auto">
+                  {scriptQa.issues.slice(0, 10).map((issue, idx) => (
+                    <div key={idx} className="text-xs bg-background/50 rounded p-2">
+                      <div className="flex justify-between mb-1">
+                        <span className={`font-medium ${issue.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                          {issue.type === 'missing' ? 'Missing from audio' :
+                           issue.type === 'garbled' ? 'Possible TTS error' :
+                           issue.type === 'extra' ? 'Extra content in audio' : 'Mismatch'}
+                        </span>
+                      </div>
+                      {issue.originalText && (
+                        <div className="text-muted-foreground truncate">
+                          Script: "{issue.originalText}"
+                        </div>
+                      )}
+                      {issue.transcribedText && (
+                        <div className="text-muted-foreground truncate">
+                          Heard: "{issue.transcribedText}"
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  {scriptQa.issues.length > 10 && (
+                    <div className="text-xs text-muted-foreground text-center">
+                      +{scriptQa.issues.length - 10} more issues
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            // Success when script matches well
+            <div className="border border-green-500/30 rounded-lg bg-green-500/10 p-3">
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                  Script match: {scriptQa.score}% ({scriptQa.matchedSentences}/{scriptQa.totalScriptSentences} sentences)
+                </span>
+              </div>
+            </div>
+          )
+        )}
 
         {/* Image Generation Settings */}
         {imageCount !== undefined && onImageCountChange && (
