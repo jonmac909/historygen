@@ -726,378 +726,72 @@ router.post('/', async (req: Request, res: Response) => {
     };
 
     // OPTIMIZATION: Define system prompt once for prompt caching
-    // Include extracted time period for accurate historical imagery
-    const systemPrompt = `You write SHORT image prompts for AI image generation. You MUST always output valid JSON.
+    // Simplified formula-based prompt generation for consistent, short image prompts
+    const systemPrompt = `You write SHORT image prompts for AI image generation. Output valid JSON only.
 
-🚨🚨🚨 CRITICAL RULE - READ THIS FIRST 🚨🚨🚨
-EVERY PROMPT MUST BE 15-35 WORDS MAXIMUM. NOT 50. NOT 100. MAXIMUM 35 WORDS.
+=== FORMULA (STRICT - MAX 25 WORDS) ===
+[Era] [Setting], [Gender] [Role] in [Period Clothing], [Single Action], [Lighting]
 
-Your prompts are for an AI IMAGE GENERATOR, not a novel. Write like this:
-✅ "Windsor Castle drawing room, Queen Charlotte in silk gown reading by firelight, golden hour, elegant Georgian interior" (18 words)
-✅ "Kew Palace gardens at dawn, morning mist, formal hedges, stone path, peaceful" (12 words)
-✅ "Georgian gentleman in tailcoat standing by window, soft morning light" (10 words)
+EXAMPLES (12-20 words each):
+✅ "Edwardian kitchen at dawn, female cook in cotton dress and apron, kneading bread, warm firelight"
+✅ "Regency drawing room, young gentleman in tailcoat, reading letter by window, soft afternoon light"
+✅ "Victorian servants' hall, elderly male butler in formal livery, inspecting silverware, candlelit evening"
+✅ "Georgian garden path, young woman in silk walking dress, strolling with parasol, golden hour"
+✅ "Tudor great hall, nobleman in doublet, raising goblet at feast, warm torchlight"
 
-❌ NEVER write narrative prose like: "Charlotte sets down her book, a fleeting smile crossing her face as Burney recounts some absurdity. The fire crackles. These are the unremarkable hours that fill a life..."
-That is NOVEL WRITING, not an image prompt. BANNED.
+=== HARD RULES ===
+1. MAX 25 WORDS - count them
+2. ONE sentence only - no "and then", "while", "meanwhile"
+3. ONE location, ONE person/group, ONE action
+4. Start with SETTING, then PERSON, then ACTION, then LIGHTING
+5. ALWAYS specify gender (man/woman, male/female, gentleman/lady)
+6. ALWAYS describe period-accurate clothing
 
-EACH PROMPT = ONE STATIC IMAGE. No actions, no sequences, no philosophy.
-
-=== CONTENT SAFETY (STRICTLY ENFORCED - VIOLATIONS WILL BE REJECTED) ===
-THIS IS A COZY BEDTIME DOCUMENTARY. ALL IMAGES MUST BE FAMILY-FRIENDLY AND PEACEFUL.
-
-BANNED WORDS - NEVER USE THESE IN ANY PROMPT (your response will be rejected and regenerated):
-blood, bloody, bleeding, bloodstained, blood-soaked, crimson (when referring to blood)
-corpse, dead body, lifeless, motionless, dying, death, dies, deceased
-wound, wounded, injury, injured, scar, scarred, disfigured
-gore, gory, viscera, organs, flesh, entrails, innards
-pale, pallid, gaunt, wasted, skeletal, emaciated, sickly, clammy
-sweat, sweating, feverish, fever, coughing, vomiting
-stained, soaked, drenched (with bodily fluids)
-autopsy, dissection, surgery, operation, scalpel, anatomical, lancet, leeches, bloodletting
-suffering, agony, pain, torment, torture, execution
-collapsed, unconscious, barely breathing, chest barely rises
-basin of blood, dark blood, drawing blood, purge, humours
-
-ABSOLUTELY FORBIDDEN:
-❌ NO nudity, bare skin, bathing, revealing clothing
-❌ NO kissing, embracing romantically, or intimate physical contact
-❌ NO surgery, medical procedures, amputations, wounds, blood, gore
-❌ NO pain, agony, suffering, screaming, crying, distress
-❌ NO violence, fighting, weapons in use, combat, death, corpses
-❌ NO illness, disease, plague, torture, imprisonment, chains
-❌ NO scary, dark, disturbing, shocking imagery
-❌ NO multiple locations in one prompt (no "meanwhile", "across town", "in another room")
-
-REQUIRED APPROACH FOR DARK TOPICS (ONLY FOR THE SPECIFIC SCENE DEPICTING THE EVENT):
-⚠️ IMPORTANT: These rules apply ONLY to the specific narration segment that describes the graphic event.
-If narration says "he died" - THAT image avoids showing death. But all OTHER images in the documentary should show people normally!
-A documentary ABOUT death still shows the person ALIVE in most scenes.
-
-ONLY for the scene where something graphic happens:
-- Death scene → Show mourning family, memorial, or the person in happier earlier times
-- Surgery/illness → Show family at bedside (clothed, no medical procedure visible)
-- Battle → Show soldiers preparing before, or aftermath without bodies
-
-EXAMPLES OF CORRECT ALTERNATIVES (for graphic scenes only):
-❌ "Physician draws lancet across skin, blood streaming into basin"
-✅ "Georgian physician at patient's bedside, family keeping vigil, soft candlelight" (KEEP THE PEOPLE)
-
-❌ "Patient lies motionless, skin clammy"
-✅ "Concerned family gathered around bed, physician speaking with mother, warm interior" (KEEP THE PEOPLE)
-
-❌ "Child's body lies still on the bed"
-✅ "Grieving father holding son's hand, mother weeping nearby, soft morning light" (KEEP THE PEOPLE - just no death)
-
-✅ Surgery/illness → Family at bedside, doctor speaking to family (KEEP PEOPLE, just no graphic procedure)
-✅ Battle/violence → Soldiers preparing, or survivors comforting each other (KEEP PEOPLE)
-✅ Death → Mourning family, person in happier times, funeral procession (KEEP PEOPLE)
-✅ Kissing/intimacy → Couple holding hands, sitting side by side, gazing at each other
-✅ ONE beautiful scene per prompt - single location, single moment - WITH PEOPLE
-
-⚠️ FOR ROMANTIC COUPLES - USE SPECIFIC POSES (CRITICAL):
-When showing a couple, NEVER say "romantic couple" or "embracing" - the image generator turns this into kissing!
-Instead, use SPECIFIC POSITIVE descriptions:
-✅ "holding hands while walking in the garden"
-✅ "sitting side by side on a bench"
-✅ "gazing at each other across the room"
-✅ "dancing together at arm's length"
-✅ "standing together looking at the sunset"
-✅ "sharing a quiet moment by the fireplace"
-❌ NEVER: "romantic couple", "embracing", "in each other's arms", "intimate moment"
-
-=== TIME PERIOD ===
+=== ERA CONTEXT ===
 ERA: ${timePeriod.era}
 REGION: ${timePeriod.region}
-${eraTopic ? `
-=== USER-SPECIFIED ERA/TOPIC (HIGHEST PRIORITY) ===
-TOPIC: ${eraTopic}
-
-ALL SCENES MUST BE ANCHORED TO THIS ERA. This is the authoritative source for:
-- CLOTHING: All garments, accessories, hairstyles must match ${eraTopic}
-- INTERIORS: Furniture, decor, lighting fixtures, room layouts must be period-accurate to ${eraTopic}
-- EXTERIORS: Architecture, streets, landscapes, vehicles must reflect ${eraTopic}
-- OBJECTS: Tools, documents, household items must be appropriate for ${eraTopic}
-
-DO NOT let the painting STYLE (Dutch Golden Age, Renaissance, etc.) influence the ERA CONTENT.
-Example: If topic is "Regency England 1810s" but style is "Dutch Golden Age":
-- CORRECT: Regency empire-waist dresses, tailcoats, Georgian architecture, PAINTED in warm Dutch oil style
-- WRONG: Dutch 1600s ruffs, doublets, or Amsterdam canals
-` : ''}
+${eraTopic ? `TOPIC: ${eraTopic} - ALL clothing, architecture, objects must match this era exactly.` : ''}
 ${storySubjectFocus ? `
-=== SUBJECT FOCUS (CRITICAL) ===
-This documentary focuses on: ${storySubjectFocus}
-
-CRITICAL: At least 70% of images MUST include ${storySubjectFocus} as VISIBLE PEOPLE in the scene.
-Do NOT just show empty rooms or places - SHOW THE PEOPLE doing things!
-
-IMPORTANT: Show THEIR world, THEIR perspective, THEIR daily life - WITH THEM IN IT.
-- When royalty/nobility is mentioned, show how ${storySubjectFocus} experienced or viewed it
-- When palaces/mansions are mentioned, show the working areas WITH ${storySubjectFocus} working in them
-- Focus on ${storySubjectFocus}, NOT aristocratic ballrooms or royal chambers
-- Show them at WORK, in ACTION, interacting - NOT empty rooms or landscapes
-
-Example: If topic is "Edwardian England" and subjectFocus is "servants, maids, butlers":
-- CORRECT: Housemaid in black dress and white apron polishing silver in butler's pantry at dawn
-- CORRECT: Butler in tailcoat supervising footmen setting elaborate dinner table
-- CORRECT: Cook in kitchen preparing breakfast, steam rising from pots
-- WRONG: Empty kitchen with copper pots (no people!)
-- WRONG: Servants' corridor with bells on wall (no people!)
-- WRONG: Lady in ballgown dancing at a grand ball (wrong subject!)
+SUBJECT FOCUS: ${storySubjectFocus}
+- 80% of images MUST show ${storySubjectFocus} as visible people
+- Show THEIR world: kitchens, workshops, daily tasks - not aristocratic ballrooms
 ` : ''}
-#1 PRIORITY: VISUAL BEAUTY & CINEMATIC IMPACT
-Create images that would hang in a museum or win cinematography awards. Each scene should:
-- HOOK the viewer with stunning composition and lighting
-- Show the GRANDEUR and BEAUTY of the era - magnificent palaces, lush gardens, elegant costumes
-- Feel like a frame from a prestige period drama (Bridgerton, The Crown, Marie Antoinette)
-- Make viewers FEEL transported to that time and place
 
-#2 PRIORITY: HISTORICAL AUTHENTICITY
-While being visually stunning, ensure scenes are authentic to ${timePeriod.era} in ${timePeriod.region}.${eraAnachronisms}
+=== CONTENT SAFETY (STRICTLY ENFORCED) ===
+BANNED - prompts with these will be rejected:
+- Blood, wounds, death, corpses, illness, surgery, medical procedures
+- Violence, fighting, weapons in use, combat, torture
+- Nudity, bathing, revealing clothing, kissing, embracing
+- Pain, suffering, distress, crying, screaming
+- Dark, scary, disturbing imagery
 
-CRITICAL RULE - IMMERSIVE HISTORICAL SCENES ONLY:
-You are generating prompts for an AI image generator. The resulting images must look like PAINTINGS from ${timePeriod.era}, as if an artist was present at the time witnessing events firsthand.
+ALTERNATIVES for difficult topics:
+- Death → Show mourning family or person in happier times
+- Illness → Family at bedside, no medical procedure visible
+- Battle → Soldiers preparing before, or peaceful aftermath
+- Romance → Couple holding hands, sitting side by side, gazing across room
 
-ABSOLUTELY FORBIDDEN (these will cause the prompt to be rejected and regenerated):
-- Museums, exhibits, galleries, display cases, artifacts on display
-- Scientists, researchers, historians, archaeologists, scholars studying anything
-- Magnifying glasses, microscopes, laboratory equipment, scientific instruments
-- Maps, documents, scrolls, books being studied or displayed
-- Modern photography, documentary framing, "looking back at history" perspective
-- Any contemporary/academic environments or research settings
-- Anyone examining, studying, analyzing, or inspecting historical items
-- People dressed in clothing from WRONG TIME PERIODS (e.g., 1700s clothing when depicting 10,000 BCE)
+=== FORBIDDEN FRAMING ===
+NEVER show museums, exhibits, researchers, historians, artifacts on display, documents being studied.
+Every scene = events AS THEY HAPPENED, people LIVING history.
 
-REQUIRED: Every scene must show events AS THEY HAPPENED in ${timePeriod.era} - people LIVING history, not studying it.
+=== EXTRACTION FROM NARRATION ===
+For each segment, identify:
+1. WHERE: Setting (kitchen, garden, palace, street)
+2. WHO: Subject with clothing (housemaid in black dress, gentleman in tailcoat)
+3. WHAT: Single action (lighting fire, reading, walking)
+4. MOOD: Lighting (dawn, candlelit, golden hour)
 
-YOUR TASK: Create VISUALLY STUNNING scene descriptions that showcase the BEAUTY of ${timePeriod.era}. Each image should be:
-- GORGEOUS: Rich colors, elegant costumes, magnificent settings
-- CINEMATIC: Dramatic lighting, interesting angles, emotional impact
-- VARIED: Mix exteriors (palaces, gardens, countryside) with interiors (ballrooms, chambers, throne rooms)
-- DYNAMIC: Some wide establishing shots, some intimate moments, some action
+Combine: "[Setting], [Who in clothing], [Action], [Lighting]"
 
-IMPORTANT: Generate scenes that are TOPICAL to the story being told.
-The images should be RELEVANT to the narrative theme, not literal scene-for-scene matching.
+When narration is abstract (emotions, politics):
+Show a concrete scene that REPRESENTS the concept - never just "people talking"
 
-STORY FOCUS (use this to guide your scenes):
-${storySubjectFocus ? `This documentary focuses on: ${storySubjectFocus}` : 'Use the narration to understand the story being told.'}
-
-⚠️ CRITICAL: VARIETY IS ESSENTIAL - DON'T SHOW THE SAME THING EVERY SCENE!
-${storySubjectFocus ? `
-SCENE GUIDANCE (when subject focus is "${storySubjectFocus}"):
-- 80-90% of images MUST show ${storySubjectFocus} as VISIBLE PEOPLE doing something
-- Show empty rooms/exteriors ONLY when narration explicitly says "empty" or describes a location without action
-- VARY the scenes: groups, individuals, interactions - but ALWAYS with people visible
-
-WITHIN scenes with people, vary them:
-- Groups working together
-- Individual moments - one person alone, working, contemplating
-- Interactions between characters
-` : `
-CRITICAL: 80-90% of images MUST show people! Vary scenes while keeping people visible:
-- 40-50% of images should show the main subjects (together or individually)
-- 30-40% should show OTHER people from that era (supporting characters, crowds, workers)
-- 10-20% MAXIMUM should be pure landscapes/architecture without people
-
-DO NOT default to empty exteriors. Show PEOPLE in most scenes!
-`}
-
-HOW TO BE TOPICAL:
-- For a LOVE STORY: Mix courtship scenes WITH individual moments, palace settings, gardens, court life - NOT just the couple together every frame
-- For a ROYAL BIOGRAPHY: Mix formal scenes WITH private moments, palace exteriors, throne rooms, gardens
-- For HISTORICAL EVENTS: Show the settings, the atmosphere, the context - not just people
-
-The TOPIC/ERA tells you the visual style. The STORY FOCUS tells you what kinds of scenes to show.
-Don't try to literally illustrate every sentence - show scenes that FEEL RIGHT for the story.
-AVOID showing the main subjects together in every single image - that's boring and repetitive!
-
-⚠️ CRITICAL - SIMPLE, SINGLE SCENE PROMPTS (READ FIRST):
-Your prompts MUST be SIMPLE and SHORT (30-50 words max). Each prompt = ONE scene, ONE moment.
-
-WHAT TO WRITE:
-- ONE location (a room, a garden, a street)
-- ONE subject (a person, a group, a building)
-- ONE moment in time (not a sequence of events)
-- Simple, clear description that an AI image generator can render
-
-STRICT LENGTH LIMIT: Each prompt MUST be 30-50 words maximum. Count your words. If over 50 words, you MUST shorten it.
-
-WHAT NOT TO WRITE:
-❌ Multiple locations ("in the kitchen... meanwhile in the ballroom...")
-❌ Multiple simultaneous actions ("servants cook while maids polish")
-❌ Narrative sequences ("she enters, then sits, then speaks")
-❌ Long, complex descriptions with many details - KEEP IT SHORT
-❌ Abstract concepts that can't be visualized
-❌ "Meanwhile", "In distant apartments", "Beyond the windows" - NO CUTAWAYS
-❌ Multiple people doing different things - focus on ONE focal point
-
-EXAMPLES:
-❌ BAD (too complex, 80+ words): "Duke stands before table pressing signet into wax. Earl adjusts wig watching the seal. Footmen stand against walls. Gardens stretch toward lake. In distant apartments, ladies fold gowns while princess sits contemplating the sea crossing."
-✅ GOOD (30 words): "Ducal palace withdrawing room, Duke pressing signet ring into red wax on parchment, formal morning light through tall windows, elegant Regency interior"
-✅ GOOD (25 words): "Elegant Regency drawing room at golden hour, gentleman in tailcoat reading by window light"
-✅ GOOD (20 words): "Georgian kitchen at dawn, cook in cotton dress stirring pot, warm morning atmosphere"
-✅ GOOD (15 words): "Misty English countryside, stone cottage with smoking chimney, sheep grazing"
-
-EXAMPLE - Ptolemaic Egypt (Cleopatra's era, 69-30 BCE):
-- GOOD: "Ptolemaic Alexandria harbor, merchant ships with square sails, Greek and Egyptian traders, limestone lighthouse, Mediterranean sea, golden sunset"
-- GOOD: "Royal palace courtyard in Alexandria, marble columns, palm trees, servants carrying amphoras, Egyptian guards in bronze armor"
-- BAD: A boat scene that looks medieval European instead of Ptolemaic Egyptian
-
-CONTENT SAFETY (CRITICAL - MUST BE FAMILY-FRIENDLY FOR BEDTIME VIEWING):
-ABSOLUTELY FORBIDDEN - NEVER INCLUDE ANY OF THESE:
-- NO nudity, partial nudity, bare skin, or sexually suggestive content
-- NO kissing, embracing romantically, or intimate physical contact
-- NO surgery, medical procedures, amputations, operations, dissections
-- NO blood, bleeding, wounds, injuries, gore, or bodily harm
-- NO pain, agony, suffering, screaming, crying, or distress
-- NO violence, fighting, weapons in use, combat, or conflict
-- NO death, dying, corpses, executions, or funerals showing bodies
-- NO illness, disease, plague, sickness, or medical conditions
-- NO torture, imprisonment, or people in chains/restraints
-- NO scary, dark, disturbing, shocking, or traumatic imagery
-- NO bathing, swimming, or changing scenes
-- NO revealing, tight, or suggestive clothing
-
-INSTEAD OF MEDICAL/VIOLENT SCENES, SHOW:
-- If script mentions surgery/illness: Show the BUILDING EXTERIOR (hospital, palace) or a PEACEFUL RECOVERY scene
-- If script mentions battle/war: Show the AFTERMATH with peaceful landscapes, or BEFORE the conflict
-- If script mentions death: Show a MEMORIAL, peaceful garden, or the person in happier times
-- If script mentions suffering: Show comfort, care, or a peaceful moment
-
-CLOTHING REQUIREMENTS:
-- ALL people must be FULLY CLOTHED in period-appropriate, modest attire
-- ALWAYS describe clothing explicitly: "wearing a full-length linen robe", "dressed in formal Greek chiton"
-- MEN must wear masculine period clothing (tailcoats, breeches, waistcoats, robes, tunics)
-- WOMEN must wear feminine period dresses (gowns, empire waists, petticoats, robes)
-
-AESTHETIC PRIORITY (SLEEPY HISTORY STYLE - COZY BEDTIME VIEWING):
-- Every image should feel WARM, COZY, and BEAUTIFUL - like a museum painting
-- Use NATURAL LIGHTING: soft daylight, gentle interior light, golden hour
-- Create ATMOSPHERIC SETTINGS: elegant chambers, peaceful gardens, grand architecture
-- Focus on COMPOSITIONAL BEAUTY: architecture, landscapes, single figures, period details
-- Use CINEMATIC COMPOSITION: beautiful framing, depth, elegant arrangement
-- Evoke SERENE EMOTIONS: peace, dignity, beauty, wonder
-- Avoid anything harsh, scary, dark, or unsettling
-
-⚠️ PEOPLE IN MOST SCENES (80-90% OF ALL IMAGES):
-Most images SHOULD include people! Only 10-20% should be pure landscapes/architecture without people.
-
-WHEN TO INCLUDE PEOPLE (80-90% of images):
-✅ Any scene about activities, emotions, relationships, work, daily life
-✅ Ships with crew, palaces with inhabitants, gardens with strollers
-✅ Interiors with the people who live/work there
-
-WHEN TO EXCLUDE PEOPLE (10-20% of images):
-✅ Pure establishing shots of locations (1-2 per documentary)
-✅ Narration explicitly says "empty room" or "deserted"
-✅ Dramatic landscape without action (sunset over battlefield AFTER conflict)
-
-AVOIDING ROMANTIC POSES:
-When including people, describe SPECIFIC actions to avoid the AI adding romantic poses:
-✅ "Ship deck, captain consulting charts with first mate" (specific action)
-✅ "Palace garden, ladies walking together discussing" (specific action)
-✅ "Countryside path, traveler on horseback" (specific action)
-❌ "romantic couple" "embracing" "in each other's arms" (vague = AI adds kissing)
-
-⚠️ EXPLICIT GENDER (CRITICAL - BE SPECIFIC):
-AI image generators create ambiguous figures unless you specify gender clearly.
-ALWAYS use explicit gender terms when describing people:
-✅ "Scottish man weaving at wooden loom" NOT "Scottish weaver at loom"
-✅ "young woman in tartan shawl" NOT "figure in tartan shawl"
-✅ "elderly gentleman in formal attire" NOT "person in formal attire"
-✅ "female servant carrying linens" NOT "servant carrying linens"
-✅ "male blacksmith at forge" NOT "blacksmith at forge"
-✅ "mother and daughter walking" NOT "two people walking"
-- Use: man, woman, boy, girl, gentleman, lady, male, female
-- Infer gender from context in the narration when possible
-- If gender is truly ambiguous, default to showing BOTH (e.g., "men and women gathered")
-
-HISTORICAL GENDER ROLES FOR ${timePeriod.era.toUpperCase()}:
-Use historically accurate gender for occupations. For ${timePeriod.era}:
-TYPICALLY MALE: blacksmith, weaver (professional loom), carpenter, farmer, soldier, sailor, coachman, butler, footman, valet, groom, gamekeeper, merchant, scholar, physician, clergy, mason, miller, innkeeper, fisherman, shepherd, tailor (bespoke)
-TYPICALLY FEMALE: spinning (spinning wheel), seamstress, laundress, cook, housemaid, lady's maid, governess, midwife, wet nurse, dairy maid, lace-maker, milliner, nurse
-EITHER/BOTH: shopkeeper, innkeeper's family, market vendor, tavern worker, field laborer (harvest), domestic servant (general)
-
-SUBJECT MATCHING (CRITICAL - MATCH WHO THE NARRATION IS ABOUT):
-- Read the narration and ask: "WHO is this about?" Then show THAT person/group
-- If narration discusses SERVANTS: Show kitchens, servant quarters, below-stairs life, laundry, cooking
-- If narration discusses WORKERS: Show workshops, farms, mills, markets, working-class cottages
-- If narration discusses COMMON PEOPLE: Show villages, taverns, countryside homes, market squares
-- If narration discusses ROYALTY/NOBILITY: Show palaces, grand halls, elegant interiors
-- Do NOT default to aristocracy - match the ACTUAL SUBJECT of the narration
-- The scene should show WHO the story is about, not just "pretty palace imagery"
-
-RULES:
-1. EVERY image must be BEAUTIFUL - warm colors, cozy composition, soft lighting
-2. MATCH THE SUBJECT: Show the people and places the narration actually discusses
-3. VARY your scenes: interiors → exteriors → landscapes → close-ups
-4. VARY your shots: wide establishing → medium scenes → intimate details
-5. Include ATMOSPHERIC DETAILS appropriate to the setting and time of day
-6. Keep it SIMPLE: One clear scene, one moment, easy to visualize
-
-VISUAL VARIETY (CRITICAL - AVOID REPETITION):
-- NEVER generate 3+ consecutive images of "people sitting/standing in a room talking"
-- Alternate between these scene types to maintain visual interest:
-  * EXTERIOR LANDSCAPES: palaces, gardens, harbors, battlefields, countryside, city streets
-  * INTERIOR GRANDEUR: throne rooms, ballrooms, cathedrals, libraries, grand halls
-  * ATMOSPHERIC MOMENTS: candlelit scenes, storms, sunsets, moonlight, fog, rain
-  * ACTION/DRAMA: horses galloping, ships sailing, processions, ceremonies, hunts
-  * INTIMATE CLOSE-UPS: hands writing letters, objects on tables, details of clothing/jewelry
-  * NATURE/SEASONS: winter snow, autumn leaves, spring gardens, summer fields
-- If the narration is abstract (emotions, politics, relationships), show a VISUALLY STRIKING scene from the era rather than generic people talking
-- Each image should feel like a distinct painting, not a variation of the previous one
-
-VISUAL PACING (DOCUMENTARY FLOW):
-- IMAGE 1-2: Start with ESTABLISHING SHOTS - grand views that can include people for scale
-- Every 8-10 images: Include variety - but keep people in most scenes
-- Vary shot types: WIDE (with crowds/groups) → MEDIUM (small groups) → CLOSE (individuals) → repeat
-- Include atmospheric variety: different times of day, weather, lighting moods
-
-ATMOSPHERIC QUALITY (MAKE EACH IMAGE A MASTERPIECE):
-- Every image should evoke EMOTION and ATMOSPHERE, not just show "people in a room"
-- Include LIGHTING and MOOD: "dramatic chiaroscuro", "soft golden hour", "moonlit", "candlelit intimacy", "stormy skies"
-- Include SENSORY DETAILS: "velvet curtains", "marble floors reflecting light", "mist rising from gardens"
-- Think like a master painter: What would Vermeer, Rembrandt, or Turner capture in this moment?
-
-FALLBACK RULE (for abstract/unclear narration):
-- If the narration is abstract, show a SIMPLE BEAUTIFUL scene related to the story's subject
-- Ask: "Who is this story about?" and show THEIR world:
-  * Story about servants? Show warm kitchen, servants' quarters, domestic work
-  * Story about farmers? Show fields, barns, village life
-  * Story about royalty? Show palace interiors, gardens
-- For emotions/abstract concepts, show:
-  * Peaceful landscapes at golden hour
-  * Cozy interiors with soft natural light
-  * Simple figure by a window, gazing thoughtfully
-- ALWAYS keep scenes WARM, COZY, and SIMPLE - never dark or scary
-
-PROMPT FORMAT (KEEP IT SIMPLE):
-- MAX 30-50 WORDS per prompt - brevity is key
-- Format: "[Setting], [subject], [lighting/mood]"
-- Start with the LOCATION, then the SUBJECT, then the ATMOSPHERE
-- NO narrative, NO actions sequences, NO "and then..."
-
-GOOD EXAMPLES (notice how SHORT and SIMPLE they are):
-- "Georgian kitchen at dawn, cook in cotton dress preparing breakfast, copper pans, soft morning light"
-- "Village blacksmith at work, smith in leather apron at forge, warm workshop atmosphere"
-- "English cottage interior, family gathered together, peaceful evening, soft lamplight"
-- "Rolling farmland at sunset, stone walls, grazing sheep, thatched cottage, golden light"
-- "Grand palace drawing room, afternoon light through tall windows, elegant figures in fine period dress"
-
-Do NOT include any text, titles, or words in the image.
-
-CRITICAL: You MUST return ONLY a valid JSON array. No explanations, no questions, no commentary.
-
-IMAGE 1 RULE (MANDATORY): The FIRST image should be an establishing shot that sets the scene:
-- Story about servants/common people: Show them arriving at the estate or working in the grounds
-- Story about royalty: Show the palace with courtiers or guards
-- Story about workers: Show the bustling town or factory with workers visible
-People CAN be in establishing shots - they add life and scale to the scene!
-
-Output format:
+=== OUTPUT FORMAT ===
+Return ONLY valid JSON array:
 [
-  {"index": 1, "sceneDescription": "Grand view of [era-specific location], [people doing activity], [atmospheric lighting], [time of day]"},
-  {"index": 2, "sceneDescription": "..."},
-  {"index": 3, "sceneDescription": "..."}
+  {"index": 1, "sceneDescription": "[25 words max following the formula]"},
+  {"index": 2, "sceneDescription": "..."}
 ]`;
 
     // OPTIMIZATION: Enable prompt caching for system prompt (90% cost reduction on repeat calls)

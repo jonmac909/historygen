@@ -328,8 +328,14 @@ async function handleStreamingImages(
 
   const MAX_CONCURRENT_JOBS = imageGenerationConfig.maxConcurrentJobs;
   const POLL_INTERVAL = imageGenerationConfig.pollIntervalMs;
-  const MAX_POLLING_TIME = imageGenerationConfig.maxPollingTimeMs;
   const MAX_RETRIES = imageGenerationConfig.maxRetries;
+
+  // Dynamic timeout based on image count - prevents timeout for large batches
+  const baseTimeout = imageGenerationConfig.maxPollingTimeMs;  // 20 min default
+  const perImageTime = 45 * 1000;  // 45 seconds per image (conservative)
+  const bufferTime = 5 * 60 * 1000;  // 5 minute buffer
+  const MAX_POLLING_TIME = Math.max(baseTimeout, (total * perImageTime / MAX_CONCURRENT_JOBS) + bufferTime);
+  console.log(`Dynamic timeout: ${Math.round(MAX_POLLING_TIME / 60000)} minutes for ${total} images`);
 
   try {
     console.log(`\n=== Generating ${total} images with rolling concurrency (max ${MAX_CONCURRENT_JOBS} concurrent) ===`);
