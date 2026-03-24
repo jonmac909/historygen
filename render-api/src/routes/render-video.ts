@@ -114,16 +114,21 @@ function getKenBurnsFilters(imageIndex: number, duration: number): { first: stri
   const halfFrames = Math.floor(halfDuration * 30);
   const isZoom = imageIndex % 2 === 0;  // Even index = zoom, odd = pan
 
+  // Calculate zoom increment for 12% total zoom over halfFrames (noticeable but smooth)
+  const totalZoom = 0.12;  // 12% zoom
+  const zoomIncrement = (totalZoom / halfFrames).toFixed(6);
+  const endZoom = (1 + totalZoom).toFixed(2);  // 1.12
+
   if (isZoom) {
-    // Zoom: IN for first half, OUT for second half
+    // Zoom: IN for first half (1.0 → 1.12), OUT for second half (1.12 → 1.0)
     // Uses Bannerbear method (scale to 8000px for smooth zoom)
     return {
-      first: `scale=8000:-1,zoompan=z='zoom+0.0002':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${halfFrames}:s=1920x1080:fps=30`,
-      second: `scale=8000:-1,zoompan=z='1.18-0.0002*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${halfFrames}:s=1920x1080:fps=30`
+      first: `scale=8000:-1,zoompan=z='zoom+${zoomIncrement}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${halfFrames}:s=1920x1080:fps=30`,
+      second: `scale=8000:-1,zoompan=z='${endZoom}-${zoomIncrement}*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${halfFrames}:s=1920x1080:fps=30`
     };
   } else {
     // Pan: L→R for first half, R→L for second half
-    // Uses crop method with time variable for smooth motion
+    // Scale wider than output to allow horizontal panning (2500px = 580px pan room)
     return {
       first: `scale=2500:-1,crop=1920:1080:'(in_w-1920)*t/${halfDuration}':0`,
       second: `scale=2500:-1,crop=1920:1080:'(in_w-1920)*(1-t/${halfDuration})':0`
