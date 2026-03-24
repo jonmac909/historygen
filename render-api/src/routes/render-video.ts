@@ -1583,11 +1583,19 @@ router.post('/', async (req: Request, res: Response) => {
 
     console.log(`Created render job ${jobId} for project ${params.projectId}`);
 
-    // Use parallel mode for efficiency (10 workers render chunks simultaneously)
+    // Determine rendering strategy
     const imageCount = params.imageUrls.length;
-    const useParallel = imageCount >= 5;  // Only use parallel for 5+ images
+    const isKenBurns = params.effects?.ken_burns === true;
 
-    if (useParallel) {
+    // Ken Burns requires special per-image processing (zoom/pan alternation)
+    // Must use Railway local CPU rendering since RunPod workers don't support it
+    if (isKenBurns) {
+      console.log(`Job ${jobId}: Using RAILWAY CPU rendering for Ken Burns (${imageCount} images)`);
+      processRenderJob(jobId, params).catch(err => {
+        console.error(`Railway CPU render job ${jobId} crashed:`, err);
+      });
+    } else if (imageCount >= 5) {
+      // Use parallel mode for efficiency (10 workers render chunks simultaneously)
       console.log(`Job ${jobId}: Using PARALLEL rendering (${PARALLEL_WORKERS} workers)`);
       processRenderJobParallel(jobId, params).catch(err => {
         console.error(`Parallel render job ${jobId} crashed:`, err);
