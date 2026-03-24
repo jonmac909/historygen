@@ -82,7 +82,7 @@ function assertAllowedAssetUrl(rawUrl: string, context: string): void {
   );
 
   if (!isAllowed) {
-    throw new Error(`Disallowed host for ${context}`);
+    throw new Error(`Disallowed host for ${context}: ${hostname}`);
   }
 }
 
