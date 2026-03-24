@@ -87,7 +87,7 @@ function assertAllowedAssetUrl(rawUrl: string, context: string): void {
 }
 
 // RunPod rendering configuration
-const RUNPOD_VIDEO_ENDPOINT_ID = process.env.RUNPOD_VIDEO_ENDPOINT_ID || '';  // GPU endpoint
+const KENBURNS_ENDPOINT_ID = process.env.KENBURNS_ENDPOINT_ID || '';  // GPU endpoint
 const RUNPOD_CPU_ENDPOINT_ID = process.env.RUNPOD_CPU_ENDPOINT_ID || 'bw3dx1k956cee9';  // CPU endpoint (32 vCPU)
 const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY || '';
 const RUNPOD_VIDEO_POLL_INTERVAL = 2000;  // 2 seconds
@@ -275,7 +275,7 @@ async function processRenderJobGpu(jobId: string, params: RenderVideoRequest): P
     await updateJobStatus(supabase, jobId, 'queued', 5, 'Submitting to GPU worker...');
 
     // Submit job to RunPod
-    const runpodUrl = `https://api.runpod.ai/v2/${RUNPOD_VIDEO_ENDPOINT_ID}/run`;
+    const runpodUrl = `https://api.runpod.ai/v2/${KENBURNS_ENDPOINT_ID}/run`;
     const runpodResponse = await fetch(runpodUrl, {
       method: 'POST',
       headers: {
@@ -310,7 +310,7 @@ async function processRenderJobGpu(jobId: string, params: RenderVideoRequest): P
     await updateJobStatus(supabase, jobId, 'rendering', 10, 'GPU rendering started...');
 
     // Poll for completion
-    const statusUrl = `https://api.runpod.ai/v2/${RUNPOD_VIDEO_ENDPOINT_ID}/status/${runpodJobId}`;
+    const statusUrl = `https://api.runpod.ai/v2/${KENBURNS_ENDPOINT_ID}/status/${runpodJobId}`;
     const startTime = Date.now();
     let lastProgress = 10;
 
@@ -1587,7 +1587,7 @@ router.post('/', async (req: Request, res: Response) => {
     // Determine rendering strategy
     const imageCount = params.imageUrls.length;
     const isKenBurns = params.effects?.ken_burns === true;
-    const hasGpuEndpoint = !!RUNPOD_VIDEO_ENDPOINT_ID && !!RUNPOD_API_KEY;
+    const hasGpuEndpoint = !!KENBURNS_ENDPOINT_ID && !!RUNPOD_API_KEY;
 
     // Ken Burns is GPU-intensive - use GPU if available, otherwise fall back to CPU
     if (isKenBurns && hasGpuEndpoint) {
