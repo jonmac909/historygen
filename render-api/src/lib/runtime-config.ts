@@ -44,5 +44,12 @@ export const allowedAssetHosts = splitList(
     'r2.cloudflarestorage.com',
     'cloudflare-ipfs.com',
     'replicate.delivery',
+    // Chinese cloud CDNs (used by Kie.ai and similar services)
+    'aliyuncs.com',      // Alibaba Cloud OSS
+    'myqcloud.com',      // Tencent Cloud COS
+    'qiniucdn.com',      // Qiniu CDN
+    'qiniudn.com',       // Qiniu CDN (alternate)
+    'volccdn.com',       // ByteDance/Volcengine CDN
+    'bcebos.com',        // Baidu Cloud BOS
   ]
 );
