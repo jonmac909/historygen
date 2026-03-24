@@ -304,6 +304,7 @@ const Index = () => {
   const [videoUrlCaptioned, setVideoUrlCaptioned] = useState<string | undefined>();
   const [embersVideoUrl, setEmbersVideoUrl] = useState<string | undefined>();
   const [smokeEmbersVideoUrl, setSmokeEmbersVideoUrl] = useState<string | undefined>();
+  const [kenBurnsVideoUrl, setKenBurnsVideoUrl] = useState<string | undefined>();
   const [imagePrompts, setImagePrompts] = useState<ImagePromptWithTiming[]>([]);
   const [regeneratingImageIndices, setRegeneratingImageIndices] = useState<Set<number>>(new Set());
   const [isRegeneratingPrompts, setIsRegeneratingPrompts] = useState(false);
@@ -466,6 +467,7 @@ const Index = () => {
       if (project.videoUrlCaptioned) setVideoUrlCaptioned(project.videoUrlCaptioned);
       if (project.embersVideoUrl) setEmbersVideoUrl(project.embersVideoUrl);
       if (project.smokeEmbersVideoUrl) setSmokeEmbersVideoUrl(project.smokeEmbersVideoUrl);
+      if (project.kenBurnsVideoUrl) setKenBurnsVideoUrl(project.kenBurnsVideoUrl);
       if (project.thumbnails) setGeneratedThumbnails(project.thumbnails);
       if (project.selectedThumbnailIndex !== undefined) setSelectedThumbnailIndex(project.selectedThumbnailIndex);
       if (project.favoriteThumbnails) setFavoriteThumbnails(project.favoriteThumbnails);
@@ -720,6 +722,9 @@ const Index = () => {
     if (overrides?.smokeEmbersVideoUrl !== undefined) {
       projectData.smokeEmbersVideoUrl = overrides.smokeEmbersVideoUrl;
     }
+    if (overrides?.kenBurnsVideoUrl !== undefined) {
+      projectData.kenBurnsVideoUrl = overrides.kenBurnsVideoUrl;
+    }
 
     // Video clips - ONLY save when explicitly provided in overrides
     // This prevents stale closure state from overwriting regenerated clips
@@ -821,6 +826,7 @@ const Index = () => {
     if (savedProject.videoUrlCaptioned) setVideoUrlCaptioned(savedProject.videoUrlCaptioned);
     if (savedProject.embersVideoUrl) setEmbersVideoUrl(savedProject.embersVideoUrl);
     if (savedProject.smokeEmbersVideoUrl) setSmokeEmbersVideoUrl(savedProject.smokeEmbersVideoUrl);
+    if (savedProject.kenBurnsVideoUrl) setKenBurnsVideoUrl(savedProject.kenBurnsVideoUrl);
     if (savedProject.thumbnails) setGeneratedThumbnails(savedProject.thumbnails);
     if (savedProject.selectedThumbnailIndex !== undefined) setSelectedThumbnailIndex(savedProject.selectedThumbnailIndex);
     if (savedProject.favoriteThumbnails) setFavoriteThumbnails(savedProject.favoriteThumbnails);
@@ -997,6 +1003,7 @@ const Index = () => {
         videoUrlCaptioned: undefined,
         embersVideoUrl: undefined,
         smokeEmbersVideoUrl: undefined,
+        kenBurnsVideoUrl: undefined,
         thumbnails: [],
         selectedThumbnailIndex: undefined,
       });
@@ -1132,6 +1139,7 @@ const Index = () => {
         videoUrlCaptioned: undefined,
         embersVideoUrl: undefined,
         smokeEmbersVideoUrl: undefined,
+        kenBurnsVideoUrl: undefined,
         thumbnails: [],
         selectedThumbnailIndex: undefined,
       });
@@ -1839,7 +1847,8 @@ const Index = () => {
         clipPrompts: promptsWithImages,
         clips: clipsResult.clips || [],
         videoUrl: undefined,
-        smokeEmbersVideoUrl: undefined
+        smokeEmbersVideoUrl: undefined,
+        kenBurnsVideoUrl: undefined
       });
 
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -2739,7 +2748,8 @@ const Index = () => {
         clipPrompts: clipPromptsForVideo,
         clips: clipsResult.clips || [],
         videoUrl: undefined,
-        smokeEmbersVideoUrl: undefined
+        smokeEmbersVideoUrl: undefined,
+        kenBurnsVideoUrl: undefined
       });
 
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -2799,13 +2809,20 @@ const Index = () => {
     }
   };
 
-  // Video render handler (2-pass: basic + effects)
-  const handleRenderConfirm = (basicVideoUrl: string, effectsVideoUrl: string) => {
-    // Save both video URLs
-    setVideoUrl(basicVideoUrl);
-    setRenderedVideoUrl(effectsVideoUrl);
-    setSmokeEmbersVideoUrl(effectsVideoUrl);
-    autoSave("complete", { videoUrl: basicVideoUrl, smokeEmbersVideoUrl: effectsVideoUrl });
+  // Video render handler (basic + effects + ken burns)
+  const handleRenderConfirm = (basicVideoUrl: string, effectsVideoUrl: string, kenBurnsUrl?: string) => {
+    // Save all video URLs
+    if (basicVideoUrl) setVideoUrl(basicVideoUrl);
+    if (effectsVideoUrl) {
+      setRenderedVideoUrl(effectsVideoUrl);
+      setSmokeEmbersVideoUrl(effectsVideoUrl);
+    }
+    if (kenBurnsUrl) setKenBurnsVideoUrl(kenBurnsUrl);
+    autoSave("complete", {
+      videoUrl: basicVideoUrl || undefined,
+      smokeEmbersVideoUrl: effectsVideoUrl || undefined,
+      kenBurnsVideoUrl: kenBurnsUrl || undefined
+    });
     // Go to thumbnails step
     setViewState("review-thumbnails");
   };
@@ -3359,6 +3376,7 @@ const Index = () => {
         videoUrlCaptioned: undefined,
         embersVideoUrl: undefined,
         smokeEmbersVideoUrl: undefined,
+        kenBurnsVideoUrl: undefined,
         thumbnails: [],
         selectedThumbnailIndex: undefined,
       });
@@ -3494,6 +3512,7 @@ const Index = () => {
         videoUrlCaptioned: undefined,
         embersVideoUrl: undefined,
         smokeEmbersVideoUrl: undefined,
+        kenBurnsVideoUrl: undefined,
         thumbnails: [],
         selectedThumbnailIndex: undefined,
       });
@@ -4138,15 +4157,17 @@ const Index = () => {
             // Clear video URLs since clips changed - user needs to re-render
             setVideoUrl(undefined);
             setSmokeEmbersVideoUrl(undefined);
-            autoSave("complete", { clips: [], videoUrl: undefined, smokeEmbersVideoUrl: undefined });
+            setKenBurnsVideoUrl(undefined);
+            autoSave("complete", { clips: [], videoUrl: undefined, smokeEmbersVideoUrl: undefined, kenBurnsVideoUrl: undefined });
           }}
           onDeleteRender={() => {
             setVideoUrl(undefined);
             setVideoUrlCaptioned(undefined);
             setEmbersVideoUrl(undefined);
             setSmokeEmbersVideoUrl(undefined);
+            setKenBurnsVideoUrl(undefined);
             // Use null to clear from Supabase (undefined is ignored)
-            autoSave("complete", { videoUrl: null as unknown as string, videoUrlCaptioned: null as unknown as string, embersVideoUrl: null as unknown as string, smokeEmbersVideoUrl: null as unknown as string });
+            autoSave("complete", { videoUrl: null as unknown as string, videoUrlCaptioned: null as unknown as string, embersVideoUrl: null as unknown as string, smokeEmbersVideoUrl: null as unknown as string, kenBurnsVideoUrl: null as unknown as string });
           }}
         />
       ) : (
@@ -5190,6 +5211,7 @@ const Index = () => {
         }}
         existingBasicVideoUrl={videoUrl}
         existingEffectsVideoUrl={smokeEmbersVideoUrl}
+        existingKenBurnsVideoUrl={kenBurnsVideoUrl}
         autoRender={settings.fullAutomation}
         segmentsNeedRecombine={segmentsNeedRecombine}
         onRecombineAudio={handleRecombineForRender}
