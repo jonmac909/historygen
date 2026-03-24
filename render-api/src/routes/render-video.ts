@@ -1094,7 +1094,7 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
               ])
               .output(clip1Path)
               .on('error', reject)
-              .on('end', resolve)
+              .on('end', () => resolve())
               .run();
           });
           clipPaths.push(clip1Path);
@@ -1117,7 +1117,7 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
               ])
               .output(clip2Path)
               .on('error', reject)
-              .on('end', resolve)
+              .on('end', () => resolve())
               .run();
           });
           clipPaths.push(clip2Path);
@@ -1139,7 +1139,7 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
             .outputOptions(['-c', 'copy', '-y'])
             .output(chunk.outputPath)
             .on('error', reject)
-            .on('end', resolve)
+            .on('end', () => resolve())
             .run();
         });
 
