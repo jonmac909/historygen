@@ -855,7 +855,8 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
       imageUrls,
       imageTimings,
       srtContent,
-      effects
+      effects,
+      introClips
     } = params;
 
     // Determine which effect to use (ken_burns takes priority, then smoke_embers, then embers)
@@ -972,6 +973,24 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
       }
     }
     console.log('All images downloaded');
+
+    // Download intro clips if any
+    const introClipPaths: string[] = [];
+    if (introClips && introClips.length > 0) {
+      console.log(`Downloading ${introClips.length} intro clips...`);
+      for (let i = 0; i < introClips.length; i++) {
+        const clip = introClips[i];
+        const clipPath = path.join(tempDir, `intro_clip_${i}.mp4`);
+        try {
+          await downloadFile(clip.url, clipPath);
+          introClipPaths.push(clipPath);
+          console.log(`Downloaded intro clip ${i + 1}/${introClips.length}`);
+        } catch (err) {
+          console.error(`Failed to download intro clip ${i}:`, err);
+        }
+      }
+      console.log(`Downloaded ${introClipPaths.length} intro clips`);
+    }
 
     fs.writeFileSync(path.join(tempDir, 'captions.srt'), srtContent, 'utf8');
 
@@ -1306,11 +1325,44 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
       await Promise.all(batch.map(chunk => renderChunk(chunk)));
     }
 
-    // Stage 3: Concatenate chunks
+    // Stage 3: Re-encode intro clips to match chunk format (if any)
+    const reEncodedIntroPaths: string[] = [];
+    if (introClipPaths.length > 0) {
+      await updateJobStatus(supabase, jobId, 'muxing', 70, 'Re-encoding intro clips...');
+      for (let i = 0; i < introClipPaths.length; i++) {
+        const introPath = introClipPaths[i];
+        const reEncodedPath = path.join(tempDir!, `intro_reencoded_${i}.mp4`);
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg()
+            .input(introPath)
+            .outputOptions([
+              '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2',
+              '-c:v', 'libx264',
+              '-preset', FFMPEG_PRESET,
+              '-crf', FFMPEG_CRF,
+              '-pix_fmt', 'yuv420p',
+              '-r', '30',
+              '-an',  // Remove audio from intro clips (we'll add voiceover later)
+              '-y'
+            ])
+            .output(reEncodedPath)
+            .on('error', reject)
+            .on('end', () => resolve())
+            .run();
+        });
+        reEncodedIntroPaths.push(reEncodedPath);
+        console.log(`Re-encoded intro clip ${i + 1}/${introClipPaths.length}`);
+      }
+    }
+
+    // Stage 4: Concatenate intro clips + chunks
     await updateJobStatus(supabase, jobId, 'muxing', 72, 'Joining video segments...');
 
+    // Combine intro clips (at start) + image chunks
+    const allVideoPaths = [...reEncodedIntroPaths, ...chunkVideoPaths];
     const chunksListPath = path.join(tempDir, 'chunks_list.txt');
-    fs.writeFileSync(chunksListPath, chunkVideoPaths.map(p => `file '${p}'`).join('\n'), 'utf8');
+    fs.writeFileSync(chunksListPath, allVideoPaths.map(p => `file '${p}'`).join('\n'), 'utf8');
+    console.log(`Concatenating ${reEncodedIntroPaths.length} intro clips + ${chunkVideoPaths.length} image chunks`);
 
     const concatenatedPath = path.join(tempDir, 'concatenated.mp4');
 
