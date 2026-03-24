@@ -289,6 +289,7 @@ async function processRenderJobGpu(jobId: string, params: RenderVideoRequest): P
           audio_url: audioUrl,
           project_id: projectId,
           apply_effects: applyEffects,
+          ken_burns: effects?.ken_burns || false,  // Ken Burns zoom/pan effect
           supabase_url: supabaseUrl,
           supabase_key: supabaseKey,
           render_job_id: jobId,  // So GPU worker can update job status directly
@@ -1586,11 +1587,17 @@ router.post('/', async (req: Request, res: Response) => {
     // Determine rendering strategy
     const imageCount = params.imageUrls.length;
     const isKenBurns = params.effects?.ken_burns === true;
+    const hasGpuEndpoint = !!RUNPOD_VIDEO_ENDPOINT_ID && !!RUNPOD_API_KEY;
 
-    // Ken Burns requires special per-image processing (zoom/pan alternation)
-    // Must use Railway local CPU rendering since RunPod workers don't support it
-    if (isKenBurns) {
-      console.log(`Job ${jobId}: Using RAILWAY CPU rendering for Ken Burns (${imageCount} images)`);
+    // Ken Burns is GPU-intensive - use GPU if available, otherwise fall back to CPU
+    if (isKenBurns && hasGpuEndpoint) {
+      console.log(`Job ${jobId}: Using GPU rendering for Ken Burns (${imageCount} images)`);
+      processRenderJobGpu(jobId, params).catch(err => {
+        console.error(`GPU render job ${jobId} crashed:`, err);
+      });
+    } else if (isKenBurns) {
+      // No GPU configured - fall back to Railway CPU (slower)
+      console.log(`Job ${jobId}: Using RAILWAY CPU rendering for Ken Burns (${imageCount} images) - no GPU configured`);
       processRenderJob(jobId, params).catch(err => {
         console.error(`Railway CPU render job ${jobId} crashed:`, err);
       });
