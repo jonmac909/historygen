@@ -38,5 +38,11 @@ export const allowedAssetHosts = splitList(
     'autoaigen.com',
     'history-gen-ai.pages.dev',
     'historygenai.netlify.app',
+    // Video generation services (Kie.ai, etc.)
+    'kie.ai',
+    'piapi.ai',
+    'r2.cloudflarestorage.com',
+    'cloudflare-ipfs.com',
+    'replicate.delivery',
   ]
 );
