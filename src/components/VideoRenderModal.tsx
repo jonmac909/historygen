@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { Video, Download, Loader2, ChevronLeft, ChevronRight, X, Check, Sparkles, RotateCcw } from "lucide-react";
+import { Video, Download, Loader2, ChevronLeft, ChevronRight, X, Check, Sparkles, RotateCcw, Maximize } from "lucide-react";
+
+type EffectChoice = 'smoke_embers' | 'ken_burns' | 'none';
 import {
   Dialog,
   DialogContent,
@@ -30,12 +32,13 @@ interface VideoRenderModalProps {
   srtContent: string;
   introClips?: IntroClip[];  // Optional intro video clips (60s intro)
   existingBasicVideoUrl?: string;  // Pre-rendered basic video URL
-  existingEffectsVideoUrl?: string;  // Pre-rendered effects video URL
+  existingEffectsVideoUrl?: string;  // Pre-rendered effects video URL (smoke+embers)
+  existingKenBurnsVideoUrl?: string;  // Pre-rendered Ken Burns video URL
   autoRender?: boolean;  // Auto-start rendering when modal opens (for full automation mode)
   segmentsNeedRecombine?: boolean;  // Whether audio segments need to be recombined
   onRecombineAudio?: () => Promise<string>;  // Callback to recombine audio, returns new URL
   onRefreshData?: () => Promise<{ clips: IntroClip[]; images: string[] }>;  // Fetch latest clips/images from DB before render
-  onConfirm: (basicVideoUrl: string, effectsVideoUrl: string) => void;
+  onConfirm: (basicVideoUrl: string, effectsVideoUrl: string, kenBurnsVideoUrl?: string) => void;
   onCancel: () => void;
   onBack?: () => void;
   onSkip?: () => void;
@@ -73,6 +76,7 @@ export function VideoRenderModal({
   introClips,
   existingBasicVideoUrl,
   existingEffectsVideoUrl,
+  existingKenBurnsVideoUrl,
   autoRender = false,
   segmentsNeedRecombine = false,
   onRecombineAudio,
@@ -88,11 +92,12 @@ export function VideoRenderModal({
   const [renderProgress, setRenderProgress] = useState<RenderVideoProgress | null>(null);
   const [basicVideoUrl, setBasicVideoUrl] = useState<string | null>(null);
   const [effectsVideoUrl, setEffectsVideoUrl] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'basic' | 'effects'>('effects'); // Default to effects tab
+  const [kenBurnsVideoUrl, setKenBurnsVideoUrl] = useState<string | null>(null);
+  const [selectedEffect, setSelectedEffect] = useState<EffectChoice>('smoke_embers'); // Effect selector
   const [actualAudioUrl, setActualAudioUrl] = useState<string>(audioUrl); // Track actual audio URL (may be updated after recombine)
   const autoRenderTriggered = useRef(false);
   const hasInitializedRef = useRef(false);
-  const lastPropsRef = useRef({ basic: '', effects: '' });
+  const lastPropsRef = useRef({ basic: '', effects: '', kenBurns: '' });
 
   // Update actual audio URL when prop changes
   useEffect(() => {
@@ -109,35 +114,33 @@ export function VideoRenderModal({
 
     const propsChanged =
       lastPropsRef.current.basic !== (existingBasicVideoUrl || '') ||
-      lastPropsRef.current.effects !== (existingEffectsVideoUrl || '');
+      lastPropsRef.current.effects !== (existingEffectsVideoUrl || '') ||
+      lastPropsRef.current.kenBurns !== (existingKenBurnsVideoUrl || '');
 
     if (!hasInitializedRef.current || propsChanged) {
       hasInitializedRef.current = true;
       lastPropsRef.current = {
         basic: existingBasicVideoUrl || '',
-        effects: existingEffectsVideoUrl || ''
+        effects: existingEffectsVideoUrl || '',
+        kenBurns: existingKenBurnsVideoUrl || ''
       };
 
       // CRITICAL: Always sync internal state with props, including clearing when undefined
       // This ensures switching projects properly resets the video URLs
       setBasicVideoUrl(existingBasicVideoUrl || null);
       setEffectsVideoUrl(existingEffectsVideoUrl || null);
+      setKenBurnsVideoUrl(existingKenBurnsVideoUrl || null);
 
-      if (existingEffectsVideoUrl) {
+      if (existingEffectsVideoUrl || existingKenBurnsVideoUrl || existingBasicVideoUrl) {
         autoRenderTriggered.current = true;
         setCurrentPass('complete');
-      } else if (existingBasicVideoUrl) {
-        // Basic video exists but no effects video — still show as complete
-        autoRenderTriggered.current = true;
-        setCurrentPass('complete');
-        setActiveTab('basic');
       } else {
         // No videos exist - reset to idle state for fresh render
         autoRenderTriggered.current = false;
         setCurrentPass('idle');
       }
     }
-  }, [isOpen, existingBasicVideoUrl, existingEffectsVideoUrl]);
+  }, [isOpen, existingBasicVideoUrl, existingEffectsVideoUrl, existingKenBurnsVideoUrl]);
 
   // Auto-start rendering when modal opens (if autoRender=true AND no existing videos)
   useEffect(() => {
@@ -162,15 +165,16 @@ export function VideoRenderModal({
   // Auto-confirm when rendering completes in full automation mode
   const autoConfirmTriggered = useRef(false);
   useEffect(() => {
-    if (autoRender && effectsVideoUrl && currentPass === 'complete' && !autoConfirmTriggered.current) {
+    const hasVideo = effectsVideoUrl || kenBurnsVideoUrl || basicVideoUrl;
+    if (autoRender && hasVideo && currentPass === 'complete' && !autoConfirmTriggered.current) {
       autoConfirmTriggered.current = true;
-      console.log('[VideoRenderModal] Auto-confirming after both passes complete');
+      console.log('[VideoRenderModal] Auto-confirming after render complete');
       const timer = setTimeout(() => {
-        onConfirm(basicVideoUrl || '', effectsVideoUrl);
+        onConfirm(basicVideoUrl || '', effectsVideoUrl || '', kenBurnsVideoUrl || undefined);
       }, 500);
       return () => clearTimeout(timer);
     }
-  }, [autoRender, basicVideoUrl, effectsVideoUrl, currentPass, onConfirm]);
+  }, [autoRender, basicVideoUrl, effectsVideoUrl, kenBurnsVideoUrl, currentPass, onConfirm]);
 
   // Reset auto-confirm flag when modal closes
   useEffect(() => {
@@ -179,8 +183,8 @@ export function VideoRenderModal({
     }
   }, [isOpen]);
 
-  // Render both passes sequentially
-  const handleRenderBothPasses = async () => {
+  // Render video with selected effect (single pass)
+  const handleRender = async () => {
     // CRITICAL: Refresh data from database before rendering to get latest clips/images
     let clipsToRender = introClips;
     let imagesToRender = imageUrls;
@@ -200,8 +204,20 @@ export function VideoRenderModal({
       }
     }
 
+    // Map selected effect to API effects object
+    const effectsConfig = {
+      embers: false,
+      smoke_embers: selectedEffect === 'smoke_embers',
+      ken_burns: selectedEffect === 'ken_burns'
+    };
+
+    const effectLabel = selectedEffect === 'smoke_embers' ? 'Smoke + Embers'
+      : selectedEffect === 'ken_burns' ? 'Ken Burns'
+      : 'Basic';
+
     // Log all render inputs for debugging
     console.log('[Render] Starting render with:', {
+      effect: selectedEffect,
       introClips: clipsToRender?.length || 0,
       images: imagesToRender?.length || 0,
       audioUrl: actualAudioUrl?.substring(0, 50) + '...',
@@ -233,7 +249,7 @@ export function VideoRenderModal({
       : '';
     toast({
       title: "Starting Render",
-      description: `${clipInfo}${imagesToRender.length} images`,
+      description: `${clipInfo}${imagesToRender.length} images (${effectLabel})`,
     });
 
     // CRITICAL: Log clip URLs so we can verify correct clips are being rendered
@@ -248,8 +264,6 @@ export function VideoRenderModal({
     let audioUrlToUse = actualAudioUrl;
 
     // Only recombine if explicitly needed (segmentsNeedRecombine flag)
-    // Skip recombine if we already have a valid audio URL - this saves time and avoids
-    // errors when segments are missing but combined audio exists
     if (onRecombineAudio && segmentsNeedRecombine) {
       setCurrentPass('pass1');
       setRenderProgress({ stage: 'downloading', percent: 0, message: 'Recombining audio segments...' });
@@ -260,7 +274,6 @@ export function VideoRenderModal({
         console.log('Audio recombined before render:', audioUrlToUse);
       } catch (error) {
         console.error('Failed to recombine audio:', error);
-        // If recombine fails but we have an existing audio URL, use that instead
         if (actualAudioUrl) {
           console.log('Using existing audio URL after recombine failed:', actualAudioUrl);
           audioUrlToUse = actualAudioUrl;
@@ -283,12 +296,11 @@ export function VideoRenderModal({
       console.log('Skipping recombine, using existing audio URL:', actualAudioUrl?.substring(0, 60));
     }
 
-    // Pass 1: Basic video (no effects)
     setCurrentPass('pass1');
-    setRenderProgress({ stage: 'downloading', percent: 0, message: 'Pass 1: Starting basic video render...' });
+    setRenderProgress({ stage: 'downloading', percent: 0, message: `Rendering ${effectLabel} video...` });
 
     try {
-      const pass1Result = await renderVideoStreaming(
+      const result = await renderVideoStreaming(
         projectId,
         audioUrlToUse,
         imagesToRender,
@@ -298,70 +310,37 @@ export function VideoRenderModal({
         {
           onProgress: (progress) => setRenderProgress({
             ...progress,
-            message: `Pass 1: ${progress.message}`,
-            percent: Math.round(progress.percent * 0.5) // Pass 1 is 0-50%
+            message: progress.message
           }),
           onVideoReady: (url) => {
-            setBasicVideoUrl(url);
-            toast({
-              title: "Pass 1 Complete",
-              description: "Basic video rendered. Starting effects pass...",
-            });
-          },
-          onCaptionError: (error) => {
-            console.warn('Caption error (ignored):', error);
-          }
-        },
-        { embers: false, smoke_embers: false },  // No effects for pass 1
-        true,  // Use CPU rendering
-        clipsToRender  // Include intro video clips (fresh from DB)
-      );
-
-      if (!pass1Result.success || !pass1Result.videoUrl) {
-        throw new Error(pass1Result.error || 'Pass 1 failed');
-      }
-
-      setBasicVideoUrl(pass1Result.videoUrl);
-
-      // Pass 2: Video with smoke + embers effects
-      setCurrentPass('pass2');
-      setRenderProgress({ stage: 'downloading', percent: 50, message: 'Pass 2: Starting effects render...' });
-
-      const pass2Result = await renderVideoStreaming(
-        projectId,
-        audioUrlToUse,
-        imagesToRender,
-        imageTimings,
-        srtContent,
-        projectTitle || 'HistoryGenAI Export',
-        {
-          onProgress: (progress) => setRenderProgress({
-            ...progress,
-            message: `Pass 2: ${progress.message}`,
-            percent: 50 + Math.round(progress.percent * 0.5) // Pass 2 is 50-100%
-          }),
-          onVideoReady: (url) => {
-            setEffectsVideoUrl(url);
             toast({
               title: "Render Complete",
-              description: "Both video versions are ready!",
+              description: `${effectLabel} video is ready!`,
             });
           },
           onCaptionError: (error) => {
             console.warn('Caption error (ignored):', error);
           }
         },
-        { embers: false, smoke_embers: true },  // Smoke + embers for pass 2
+        effectsConfig,
         true,  // Use CPU rendering
         clipsToRender  // Include intro video clips (fresh from DB)
       );
 
-      if (pass2Result.success && pass2Result.videoUrl) {
-        setEffectsVideoUrl(pass2Result.videoUrl);
-        setCurrentPass('complete');
-      } else {
-        throw new Error(pass2Result.error || 'Pass 2 failed');
+      if (!result.success || !result.videoUrl) {
+        throw new Error(result.error || 'Render failed');
       }
+
+      // Store the video URL in the appropriate state based on effect type
+      if (selectedEffect === 'smoke_embers') {
+        setEffectsVideoUrl(result.videoUrl);
+      } else if (selectedEffect === 'ken_burns') {
+        setKenBurnsVideoUrl(result.videoUrl);
+      } else {
+        setBasicVideoUrl(result.videoUrl);
+      }
+
+      setCurrentPass('complete');
 
     } catch (error) {
       console.error('Render error:', error);
@@ -375,117 +354,21 @@ export function VideoRenderModal({
     }
   };
 
-  // Re-render effects only (Pass 2) - useful when basic video is fine but effects failed
-  const handleRenderEffectsOnly = async () => {
-    let audioUrlToUse = actualAudioUrl;
+  // Keep old function name for auto-render compatibility
+  const handleRenderBothPasses = handleRender;
 
-    // Only recombine if explicitly needed
-    if (onRecombineAudio && segmentsNeedRecombine) {
-      setCurrentPass('pass2');
-      setRenderProgress({ stage: 'downloading', percent: 0, message: 'Recombining audio segments...' });
-
-      try {
-        audioUrlToUse = await onRecombineAudio();
-        setActualAudioUrl(audioUrlToUse);
-      } catch (error) {
-        console.error('Failed to recombine audio:', error);
-        // If recombine fails but we have an existing audio URL, use that instead
-        if (actualAudioUrl) {
-          console.log('Using existing audio URL after recombine failed:', actualAudioUrl);
-          audioUrlToUse = actualAudioUrl;
-        } else {
-          toast({
-            title: "Audio Recombine Failed",
-            description: error instanceof Error ? error.message : "Failed to recombine audio",
-            variant: "destructive",
-          });
-          setCurrentPass('idle');
-          setRenderProgress(null);
-          return;
-        }
-      }
-    }
-
-    setCurrentPass('pass2');
-    setRenderProgress({ stage: 'downloading', percent: 0, message: 'Starting effects render...' });
-
-    try {
-      const pass2Result = await renderVideoStreaming(
-        projectId,
-        audioUrlToUse,
-        imageUrls,
-        imageTimings,
-        srtContent,
-        projectTitle || 'HistoryGenAI Export',
-        {
-          onProgress: (progress) => setRenderProgress({
-            ...progress,
-            message: `Effects: ${progress.message}`,
-            percent: progress.percent
-          }),
-          onVideoReady: (url) => {
-            setEffectsVideoUrl(url);
-            toast({
-              title: "Effects Render Complete",
-              description: "Video with effects is ready!",
-            });
-          },
-          onCaptionError: (error) => {
-            console.warn('Caption error (ignored):', error);
-          }
-        },
-        { embers: false, smoke_embers: true },  // Smoke + embers
-        true,  // Use CPU rendering
-        introClips  // Include intro video clips
-      );
-
-      if (pass2Result.success && pass2Result.videoUrl) {
-        setEffectsVideoUrl(pass2Result.videoUrl);
-        setCurrentPass('complete');
-      } else {
-        throw new Error(pass2Result.error || 'Effects render failed');
-      }
-
-    } catch (error) {
-      console.error('Effects render error:', error);
-      toast({
-        title: "Effects Render Failed",
-        description: error instanceof Error ? error.message : "Failed to render effects. Please try again.",
-        variant: "destructive",
-      });
-      setCurrentPass('idle');
-      setRenderProgress(null);
-    }
-  };
-
-  const handleDownloadBasic = async () => {
-    if (!basicVideoUrl) return;
-    const filename = (projectTitle || 'video').replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_').substring(0, 50) + '.mp4';
-    toast({ title: "Downloading...", description: "Downloading basic video..." });
-    try {
-      await downloadFromUrl(basicVideoUrl, filename);
-      toast({ title: "Download Complete", description: `${filename} downloaded successfully.` });
-    } catch (error) {
-      toast({ title: "Download Failed", description: "Failed to download video.", variant: "destructive" });
-    }
-  };
-
-  const handleDownloadEffects = async () => {
-    if (!effectsVideoUrl) return;
-    const filename = (projectTitle || 'video').replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_').substring(0, 50) + '_effects.mp4';
-    toast({ title: "Downloading...", description: "Downloading video with effects..." });
-    try {
-      await downloadFromUrl(effectsVideoUrl, filename);
-      toast({ title: "Download Complete", description: `${filename} downloaded successfully.` });
-    } catch (error) {
-      toast({ title: "Download Failed", description: "Failed to download video.", variant: "destructive" });
-    }
-  };
 
   const handleConfirm = () => {
-    if (effectsVideoUrl || basicVideoUrl) {
-      onConfirm(basicVideoUrl || '', effectsVideoUrl || '');
+    if (effectsVideoUrl || basicVideoUrl || kenBurnsVideoUrl) {
+      onConfirm(basicVideoUrl || '', effectsVideoUrl || '', kenBurnsVideoUrl || undefined);
     }
+  };
+
+  // Get the current video URL based on selected effect
+  const getCurrentVideoUrl = (): string | null => {
+    if (selectedEffect === 'smoke_embers') return effectsVideoUrl;
+    if (selectedEffect === 'ken_burns') return kenBurnsVideoUrl;
+    return basicVideoUrl;
   };
 
   // Exit handler - save videos if they exist before closing
@@ -499,9 +382,9 @@ export function VideoRenderModal({
     }
 
     // If videos were rendered, save them before exiting
-    if (currentPass === 'complete' && (effectsVideoUrl || basicVideoUrl)) {
+    if (currentPass === 'complete' && (effectsVideoUrl || basicVideoUrl || kenBurnsVideoUrl)) {
       console.log('[VideoRenderModal] Saving videos on exit');
-      onConfirm(basicVideoUrl || '', effectsVideoUrl || '');
+      onConfirm(basicVideoUrl || '', effectsVideoUrl || '', kenBurnsVideoUrl || undefined);
     }
     onCancel();
   };
@@ -517,7 +400,8 @@ export function VideoRenderModal({
   };
 
   const isRendering = currentPass === 'pass1' || currentPass === 'pass2';
-  const hasAnyVideo = basicVideoUrl || effectsVideoUrl;
+  const hasAnyVideo = basicVideoUrl || effectsVideoUrl || kenBurnsVideoUrl;
+  const currentVideoUrl = getCurrentVideoUrl();
 
   // Handle escape key - allow closing when not actively rendering
   const handleEscapeKey = (e: KeyboardEvent) => {
@@ -544,73 +428,26 @@ export function VideoRenderModal({
           </DialogTitle>
           <DialogDescription>
             {currentPass === 'complete'
-              ? 'Both video versions are ready! Download or continue to thumbnails.'
+              ? 'Your video is ready! Download or continue to thumbnails.'
               : isRendering
-                ? `Rendering your video (${currentPass === 'pass1' ? 'Pass 1: Basic' : 'Pass 2: Effects'})...`
-                : 'Render your video in two passes: basic video and with smoke + embers effects.'}
+                ? 'Rendering your video...'
+                : 'Choose an effect style and render your video.'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 py-4">
-          {/* Video Tabs - Only show when we have videos */}
-          {hasAnyVideo && currentPass === 'complete' && (
+          {/* Video Player - Show rendered video */}
+          {currentVideoUrl && currentPass === 'complete' && (
             <div className="space-y-3">
-              {/* Tab Buttons */}
-              <div className="flex gap-2 border-b">
-                <button
-                  onClick={() => setActiveTab('effects')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === 'effects'
-                      ? 'border-primary text-primary'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4 inline mr-1" />
-                  With Effects
-                </button>
-                <button
-                  onClick={() => setActiveTab('basic')}
-                  className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                    activeTab === 'basic'
-                      ? 'border-primary text-primary'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
-                >
-                  <Video className="w-4 h-4 inline mr-1" />
-                  Basic
-                </button>
-              </div>
-
-              {/* Video Player */}
-              {activeTab === 'effects' && effectsVideoUrl && (
-                <video
-                  key={effectsVideoUrl}
-                  src={effectsVideoUrl}
-                  controls
-                  preload="auto"
-                  crossOrigin="anonymous"
-                  className="w-full rounded-lg border"
-                  style={{ maxHeight: '400px' }}
-                />
-              )}
-
-              {activeTab === 'basic' && basicVideoUrl && (
-                <video
-                  key={basicVideoUrl}
-                  src={basicVideoUrl}
-                  controls
-                  preload="auto"
-                  crossOrigin="anonymous"
-                  className="w-full rounded-lg border"
-                  style={{ maxHeight: '400px' }}
-                />
-              )}
-              {activeTab === 'basic' && !basicVideoUrl && !isRendering && (
-                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                  <p>Basic video not available</p>
-                  <p className="text-sm mt-1">Only the effects version was saved for this project</p>
-                </div>
-              )}
+              <video
+                key={currentVideoUrl}
+                src={currentVideoUrl}
+                controls
+                preload="auto"
+                crossOrigin="anonymous"
+                className="w-full rounded-lg border"
+                style={{ maxHeight: '400px' }}
+              />
             </div>
           )}
 
@@ -620,7 +457,7 @@ export function VideoRenderModal({
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">
-                    {currentPass === 'pass1' ? 'Pass 1: Basic Video' : 'Pass 2: Adding Effects'}
+                    Rendering {selectedEffect === 'smoke_embers' ? 'Smoke + Embers' : selectedEffect === 'ken_burns' ? 'Ken Burns' : 'Basic'} video...
                   </span>
                   <span className="font-medium">{renderProgress.percent}%</span>
                 </div>
@@ -629,15 +466,6 @@ export function VideoRenderModal({
               <p className="text-sm text-muted-foreground">
                 {getStageLabel(renderProgress.stage)}: {renderProgress.message}
               </p>
-              <div className="flex gap-2 text-xs text-muted-foreground">
-                <span className={currentPass === 'pass1' ? 'text-primary font-medium' : ''}>
-                  Pass 1 {currentPass === 'pass2' || currentPass === 'complete' ? '✓' : ''}
-                </span>
-                <span>→</span>
-                <span className={currentPass === 'pass2' ? 'text-primary font-medium' : ''}>
-                  Pass 2 {currentPass === 'complete' ? '✓' : ''}
-                </span>
-              </div>
               <p className="text-xs text-muted-foreground">
                 This may take several minutes for large videos (200 images ~30-45 min)...
               </p>
@@ -652,49 +480,67 @@ export function VideoRenderModal({
             </div>
           )}
 
-          {/* Render button when not rendering */}
+          {/* Effect Selector + Render button when not rendering */}
           {!isRendering && currentPass !== 'complete' && (
             <div className="space-y-4 py-4">
-              <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                <h4 className="font-medium text-sm">Two-Pass Rendering</h4>
-                <ul className="text-sm text-muted-foreground space-y-1">
-                  <li className="flex items-center gap-2">
-                    <Video className="w-4 h-4" />
-                    <span><strong>Pass 1:</strong> Basic video (no effects)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" />
-                    <span><strong>Pass 2:</strong> Video with smoke + embers overlay</span>
-                  </li>
-                </ul>
+              <div className="bg-muted/50 rounded-lg p-4 space-y-3">
+                <h4 className="font-medium text-sm">Choose Video Effect</h4>
+                <div className="space-y-2">
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="effect"
+                      value="smoke_embers"
+                      checked={selectedEffect === 'smoke_embers'}
+                      onChange={() => setSelectedEffect('smoke_embers')}
+                      className="w-4 h-4"
+                    />
+                    <Sparkles className="w-4 h-4 text-orange-500" />
+                    <span className="text-sm">Smoke + Embers <span className="text-muted-foreground">(Atmospheric overlay)</span></span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="effect"
+                      value="ken_burns"
+                      checked={selectedEffect === 'ken_burns'}
+                      onChange={() => setSelectedEffect('ken_burns')}
+                      className="w-4 h-4"
+                    />
+                    <Maximize className="w-4 h-4 text-blue-500" />
+                    <span className="text-sm">Ken Burns <span className="text-muted-foreground">(Slow zoom + pan, clean)</span></span>
+                  </label>
+                  <label className="flex items-center gap-3 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="effect"
+                      value="none"
+                      checked={selectedEffect === 'none'}
+                      onChange={() => setSelectedEffect('none')}
+                      className="w-4 h-4"
+                    />
+                    <Video className="w-4 h-4 text-gray-500" />
+                    <span className="text-sm">None <span className="text-muted-foreground">(Basic video)</span></span>
+                  </label>
+                </div>
               </div>
-              <Button onClick={handleRenderBothPasses} className="w-full gap-2">
+              <Button onClick={handleRender} className="w-full gap-2">
                 <Video className="w-4 h-4" />
-                {hasAnyVideo ? 'Re-render Video (2 Passes)' : 'Render Video (2 Passes)'}
+                Render Video
               </Button>
             </div>
           )}
 
-          {/* Re-render buttons when videos are complete */}
+          {/* Re-render button when video is complete */}
           {!isRendering && currentPass === 'complete' && (
-            <div className="flex gap-2 mt-2">
+            <div className="mt-2">
               <Button
                 variant="outline"
-                onClick={() => {
-                  setCurrentPass('idle');
-                }}
-                className="flex-1 gap-2"
+                onClick={() => setCurrentPass('idle')}
+                className="w-full gap-2"
               >
                 <RotateCcw className="w-4 h-4" />
-                Re-render All
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleRenderEffectsOnly}
-                className="flex-1 gap-2"
-              >
-                <Sparkles className="w-4 h-4" />
-                Re-render Effects
+                Render Different Effect
               </Button>
             </div>
           )}
@@ -713,12 +559,23 @@ export function VideoRenderModal({
                 <ChevronRight className="w-5 h-5" />
               </Button>
             )}
-            {/* Download button - downloads whichever video is on active tab */}
-            {hasAnyVideo && currentPass === 'complete' && (
+            {/* Download button - downloads current video */}
+            {currentVideoUrl && currentPass === 'complete' && (
               <Button
                 variant="outline"
-                onClick={activeTab === 'effects' ? handleDownloadEffects : handleDownloadBasic}
-                disabled={activeTab === 'effects' ? !effectsVideoUrl : !basicVideoUrl}
+                onClick={async () => {
+                  const effectSuffix = selectedEffect === 'smoke_embers' ? '_effects'
+                    : selectedEffect === 'ken_burns' ? '_kenburns'
+                    : '';
+                  const filename = (projectTitle || 'video').replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_').substring(0, 50) + effectSuffix + '.mp4';
+                  toast({ title: "Downloading...", description: `Downloading ${filename}...` });
+                  try {
+                    await downloadFromUrl(currentVideoUrl, filename);
+                    toast({ title: "Download Complete", description: `${filename} downloaded successfully.` });
+                  } catch (error) {
+                    toast({ title: "Download Failed", description: "Failed to download video.", variant: "destructive" });
+                  }
+                }}
               >
                 <Download className="w-4 h-4 mr-2" />
                 Download

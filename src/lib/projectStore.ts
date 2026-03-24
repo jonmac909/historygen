@@ -56,6 +56,7 @@ export interface Project {
   videoUrlCaptioned?: string;
   embersVideoUrl?: string;
   smokeEmbersVideoUrl?: string;
+  kenBurnsVideoUrl?: string;
 
   // Video Clips (intro clips for video)
   clipPrompts?: ClipPrompt[];
@@ -109,6 +110,7 @@ function rowToProject(row: {
   video_url_captioned: string | null;
   embers_video_url: string | null;
   smoke_embers_video_url: string | null;
+  ken_burns_video_url: string | null;
   clip_prompts: unknown;
   clips: unknown;
   settings: unknown;
@@ -154,6 +156,7 @@ function rowToProject(row: {
     videoUrlCaptioned: row.video_url_captioned || undefined,
     embersVideoUrl: row.embers_video_url || undefined,
     smokeEmbersVideoUrl: row.smoke_embers_video_url || undefined,
+    kenBurnsVideoUrl: row.ken_burns_video_url || undefined,
     clipPrompts: (row.clip_prompts as ClipPrompt[]) || undefined,
     clips: (row.clips as GeneratedClip[]) || undefined,
     thumbnails: (row.thumbnails as string[]) || undefined,
@@ -200,6 +203,7 @@ function projectToRow(project: Partial<Project> & { id: string }, isNew: boolean
   if (project.videoUrlCaptioned !== undefined) row.video_url_captioned = project.videoUrlCaptioned || null;
   if (project.embersVideoUrl !== undefined) row.embers_video_url = project.embersVideoUrl || null;
   if (project.smokeEmbersVideoUrl !== undefined) row.smoke_embers_video_url = project.smokeEmbersVideoUrl || null;
+  if (project.kenBurnsVideoUrl !== undefined) row.ken_burns_video_url = project.kenBurnsVideoUrl || null;
   if (project.clipPrompts !== undefined) row.clip_prompts = project.clipPrompts || [];
   if (project.clips !== undefined) row.clips = project.clips || [];
   if (project.settings !== undefined) row.settings = project.settings || null;
@@ -575,6 +579,7 @@ export async function migrateFromLocalStorage(): Promise<void> {
         videoUrlCaptioned: saved.videoUrlCaptioned,
         embersVideoUrl: saved.embersVideoUrl,
         smokeEmbersVideoUrl: saved.smokeEmbersVideoUrl,
+        kenBurnsVideoUrl: saved.kenBurnsVideoUrl,
       });
     } catch (e) {
       console.error('[projectStore] Failed to migrate legacy saved project:', e);
@@ -609,6 +614,7 @@ export async function migrateFromLocalStorage(): Promise<void> {
             videoUrlCaptioned: item.videoUrlCaptioned,
             embersVideoUrl: item.embersVideoUrl,
             smokeEmbersVideoUrl: item.smokeEmbersVideoUrl,
+            kenBurnsVideoUrl: item.kenBurnsVideoUrl,
           });
         } catch (err) {
           console.error(`[projectStore] Failed to migrate history item ${item.id}:`, err);

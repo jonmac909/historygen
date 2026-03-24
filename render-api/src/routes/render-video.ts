@@ -93,11 +93,42 @@ const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY || '';
 const RUNPOD_VIDEO_POLL_INTERVAL = 2000;  // 2 seconds
 const RUNPOD_VIDEO_MAX_WAIT = 60 * 60 * 1000;  // 60 minutes max (200 images can take 30-45 min)
 
-type EffectType = 'none' | 'embers' | 'smoke_embers';
+type EffectType = 'none' | 'embers' | 'smoke_embers' | 'ken_burns';
 
 interface VideoEffects {
   embers?: boolean;
   smoke_embers?: boolean;
+  ken_burns?: boolean;
+}
+
+/**
+ * Ken Burns effect filter generator.
+ * Returns TWO filters for each image: first half + second half.
+ *
+ * Pattern (alternates per image):
+ * - Image 0,2,4... (even): Zoom IN (15s) → Zoom OUT (15s)
+ * - Image 1,3,5... (odd): Pan L→R (15s) → Pan R→L (15s)
+ */
+function getKenBurnsFilters(imageIndex: number, duration: number): { first: string; second: string } {
+  const halfDuration = duration / 2;
+  const halfFrames = Math.floor(halfDuration * 30);
+  const isZoom = imageIndex % 2 === 0;  // Even index = zoom, odd = pan
+
+  if (isZoom) {
+    // Zoom: IN for first half, OUT for second half
+    // Uses Bannerbear method (scale to 8000px for smooth zoom)
+    return {
+      first: `scale=8000:-1,zoompan=z='zoom+0.0002':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${halfFrames}:s=1920x1080:fps=30`,
+      second: `scale=8000:-1,zoompan=z='1.18-0.0002*on':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${halfFrames}:s=1920x1080:fps=30`
+    };
+  } else {
+    // Pan: L→R for first half, R→L for second half
+    // Uses crop method with time variable for smooth motion
+    return {
+      first: `scale=2500:-1,crop=1920:1080:'(in_w-1920)*t/${halfDuration}':0`,
+      second: `scale=2500:-1,crop=1920:1080:'(in_w-1920)*(1-t/${halfDuration})':0`
+    };
+  }
 }
 
 interface ImageTiming {
@@ -189,11 +220,13 @@ async function updateProjectVideoUrl(
   videoUrl: string,
   effects?: VideoEffects
 ): Promise<void> {
-  const column = effects?.smoke_embers
-    ? 'smoke_embers_video_url'
-    : effects?.embers
-      ? 'embers_video_url'
-      : 'video_url';
+  const column = effects?.ken_burns
+    ? 'ken_burns_video_url'
+    : effects?.smoke_embers
+      ? 'smoke_embers_video_url'
+      : effects?.embers
+        ? 'embers_video_url'
+        : 'video_url';
 
   const { error } = await supabase
     .from('generation_projects')
@@ -825,8 +858,14 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
       effects
     } = params;
 
-    // Determine which effect to use (smoke_embers takes priority over embers)
-    const effectType: EffectType = effects?.smoke_embers ? 'smoke_embers' : (effects?.embers ? 'embers' : 'none');
+    // Determine which effect to use (ken_burns takes priority, then smoke_embers, then embers)
+    const effectType: EffectType = effects?.ken_burns
+      ? 'ken_burns'
+      : effects?.smoke_embers
+        ? 'smoke_embers'
+        : effects?.embers
+          ? 'embers'
+          : 'none';
     console.log(`Job ${jobId}: Starting render for project ${projectId}`);
     console.log(`Effects: ${effectType}, Images: ${imageUrls.length}`);
 
@@ -980,8 +1019,9 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
 
     const chunkVideoPaths = chunkDataList.map(c => c.outputPath);
 
-    // Check which overlays are available
-    const overlayAvailable = effectType !== 'none' && (hasEmbersOverlay || hasSmokeOverlay);
+    // Check which overlays are available (not for ken_burns which is handled differently)
+    const overlayAvailable = effectType !== 'none' && effectType !== 'ken_burns' && (hasEmbersOverlay || hasSmokeOverlay);
+    const isKenBurns = effectType === 'ken_burns';
 
     // Progress tracking
     const progress: RenderProgress = {
@@ -1018,10 +1058,102 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
       const chunkStart = chunk.index * IMAGES_PER_CHUNK;
       const chunkEnd = Math.min((chunk.index + 1) * IMAGES_PER_CHUNK, totalImages);
       const chunkTimingsSlice = imageTimings.slice(chunkStart, chunkEnd);
+      const chunkImages = imagePaths.slice(chunkStart, chunkEnd);
       const chunkDuration = chunkTimingsSlice[chunkTimingsSlice.length - 1].endSeconds - chunkTimingsSlice[0].startSeconds;
 
       console.log(`Rendering chunk ${chunk.index + 1}/${numChunks} (${chunkDuration.toFixed(1)}s)`);
       progress.chunkProgress.set(chunk.index, 0);
+
+      // Ken Burns: Render each image with zoom/pan effect (two clips per image: first half + second half)
+      if (isKenBurns) {
+        const clipPaths: string[] = [];
+        const totalClips = chunkImages.length * 2;  // Two clips per image
+
+        for (let i = 0; i < chunkImages.length; i++) {
+          const imagePath = chunkImages[i];
+          const globalImageIndex = chunkStart + i;  // Global index for alternating zoom/pan
+          const duration = chunkTimingsSlice[i].endSeconds - chunkTimingsSlice[i].startSeconds;
+          const halfDuration = duration / 2;
+          const filters = getKenBurnsFilters(globalImageIndex, duration);
+
+          // Render first half clip
+          const clip1Path = path.join(tempDir!, `kb_${chunk.index}_${i}_1.mp4`);
+          await new Promise<void>((resolve, reject) => {
+            ffmpeg()
+              .input(imagePath)
+              .inputOptions(['-loop', '1'])
+              .outputOptions([
+                '-vf', filters.first,
+                '-t', halfDuration.toString(),
+                '-c:v', 'libx264',
+                '-preset', FFMPEG_PRESET,
+                '-crf', FFMPEG_CRF,
+                '-pix_fmt', 'yuv420p',
+                '-r', '30',
+                '-y'
+              ])
+              .output(clip1Path)
+              .on('error', reject)
+              .on('end', resolve)
+              .run();
+          });
+          clipPaths.push(clip1Path);
+
+          // Render second half clip
+          const clip2Path = path.join(tempDir!, `kb_${chunk.index}_${i}_2.mp4`);
+          await new Promise<void>((resolve, reject) => {
+            ffmpeg()
+              .input(imagePath)
+              .inputOptions(['-loop', '1'])
+              .outputOptions([
+                '-vf', filters.second,
+                '-t', halfDuration.toString(),
+                '-c:v', 'libx264',
+                '-preset', FFMPEG_PRESET,
+                '-crf', FFMPEG_CRF,
+                '-pix_fmt', 'yuv420p',
+                '-r', '30',
+                '-y'
+              ])
+              .output(clip2Path)
+              .on('error', reject)
+              .on('end', resolve)
+              .run();
+          });
+          clipPaths.push(clip2Path);
+
+          // Update progress
+          const clipProgress = ((i + 1) * 2 / totalClips) * 100;
+          progress.chunkProgress.set(chunk.index, clipProgress);
+          await updateProgressThrottled(`Ken Burns: chunk ${chunk.index + 1}, image ${i + 1}/${chunkImages.length}`);
+        }
+
+        // Concatenate all clips into chunk video
+        const clipsConcatPath = path.join(tempDir!, `kb_concat_${chunk.index}.txt`);
+        fs.writeFileSync(clipsConcatPath, clipPaths.map(p => `file '${p}'`).join('\n'), 'utf8');
+
+        await new Promise<void>((resolve, reject) => {
+          ffmpeg()
+            .input(clipsConcatPath)
+            .inputOptions(['-f', 'concat', '-safe', '0'])
+            .outputOptions(['-c', 'copy', '-y'])
+            .output(chunk.outputPath)
+            .on('error', reject)
+            .on('end', resolve)
+            .run();
+        });
+
+        // Cleanup clip files
+        for (const clipPath of clipPaths) {
+          try { fs.unlinkSync(clipPath); } catch (e) { /* ignore */ }
+        }
+        try { fs.unlinkSync(clipsConcatPath); } catch (e) { /* ignore */ }
+
+        progress.chunkProgress.set(chunk.index, 100);
+        progress.chunksCompleted++;
+        console.log(`Chunk ${chunk.index + 1} Ken Burns complete (${progress.chunksCompleted}/${numChunks})`);
+        return;
+      }
 
       const rawChunkPath = path.join(tempDir!, `chunk_raw_${chunk.index}.mp4`);
 
