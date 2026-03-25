@@ -437,9 +437,42 @@ const Index = () => {
       // Disable fullAutomation when viewing a project
       setSettings(prev => ({ ...prev, fullAutomation: false }));
 
-      // Restore state from project
+      // CRITICAL: Reset ALL state first before loading new project
+      // Without this, old project data persists when new project lacks certain fields
+      setPendingScript("");
+      setConfirmedScript("");
+      setPendingAudioUrl("");
+      setAudioUrl("");
+      setPendingAudioDuration(0);
+      setPendingAudioSegments([]);
+      setSegmentsNeedRecombine(false);
+      setPendingSrtContent("");
+      setSrtContent("");
+      setPendingSrtUrl("");
+      setPendingImages([]);
+      setImagePrompts([]);
+      setClipPrompts([]);
+      setGeneratedClips([]);
+      setVideoUrl(undefined);
+      setVideoUrlCaptioned(undefined);
+      setEmbersVideoUrl(undefined);
+      setSmokeEmbersVideoUrl(undefined);
+      setKenBurnsVideoUrl(undefined);
+      setRenderedVideoUrl(undefined);
+      setGeneratedThumbnails([]);
+      setSelectedThumbnailIndex(undefined);
+      setFavoriteThumbnails([]);
+      setApprovedSteps([]);
+      setYoutubeTitle("");
+      setYoutubeDescription("");
+      setYoutubeTags("");
+      setYoutubeCategoryId("27");
+      setYoutubePlaylistId(null);
+      setGeneratedAssets([]);
+
+      // Now restore state from project
       setProjectId(project.id);
-      setSourceUrl(project.sourceUrl);
+      setSourceUrl(project.sourceUrl || "");
       setVideoTitle(project.videoTitle);
       // Restore pipeline status
       if (project.status) {
