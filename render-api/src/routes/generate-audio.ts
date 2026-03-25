@@ -194,8 +194,9 @@ function normalizeText(text: string): string {
   // NOTE: Pronunciation fixes are NOT applied here - they're applied in applyPronunciationFixes()
   // This keeps the display text readable ("Regency" not "REE-jen-see")
 
-  // Convert numbers to words for better TTS pronunciation
-  result = convertNumbersToWords(result);
+  // DISABLED: Number-to-words conversion removed - Fish Speech handles numbers naturally
+  // and the conversion was making dates sound unnatural ("seventeen eighty-three" instead of "1783")
+  // result = convertNumbersToWords(result);
 
   return result
     .replace(/[^\x00-\x7F]/g, "") // Remove remaining non-ASCII AFTER conversions
