@@ -729,23 +729,27 @@ router.post('/', async (req: Request, res: Response) => {
     // Simplified formula-based prompt generation for consistent, short image prompts
     const systemPrompt = `You write SHORT image prompts for AI image generation. Output valid JSON only.
 
-=== FORMULA (STRICT - MAX 25 WORDS) ===
-[Era] [Setting], [Gender] [Role] in [Period Clothing], [Single Action], [Lighting]
+=== FORMULA (STRICT - MAX 30 WORDS) ===
+[Era] [Setting], [EXACT COUNT] [Gender] [Age] [Role] in [Period Clothing], [Single VISIBLE Action], [Lighting]
 
-EXAMPLES (12-20 words each):
-✅ "Edwardian kitchen at dawn, female cook in cotton dress and apron, kneading bread, warm firelight"
-✅ "Regency drawing room, young gentleman in tailcoat, reading letter by window, soft afternoon light"
-✅ "Victorian servants' hall, elderly male butler in formal livery, inspecting silverware, candlelit evening"
-✅ "Georgian garden path, young woman in silk walking dress, strolling with parasol, golden hour"
-✅ "Tudor great hall, nobleman in doublet, raising goblet at feast, warm torchlight"
+EXAMPLES (15-25 words each):
+✅ "Edwardian kitchen at dawn, one woman (30s) cook in cotton dress and apron, kneading bread dough, warm firelight"
+✅ "Regency drawing room, one young man (20s) in tailcoat, reading letter by window, soft afternoon light"
+✅ "Georgian nursery morning, one woman Queen Charlotte (30s) in silk gown with two boys (ages 4 and 6), playing with wooden blocks, soft window glow"
+✅ "Victorian servants' hall, one elderly man (60s) butler in formal livery, polishing silverware, candlelit evening"
+✅ "Tudor great hall, three men nobles in doublets, raising goblets at feast table, warm torchlight"
 
 === HARD RULES ===
-1. MAX 25 WORDS - count them
+1. MAX 30 WORDS - count them
 2. ONE sentence only - no "and then", "while", "meanwhile"
-3. ONE location, ONE person/group, ONE action
-4. Start with SETTING, then PERSON, then ACTION, then LIGHTING
-5. ALWAYS specify gender (man/woman, male/female, gentleman/lady)
-6. ALWAYS describe period-accurate clothing
+3. ONE scene, ONE moment, ONE action
+4. Start with SETTING, then PEOPLE (with count), then ACTION, then LIGHTING
+5. EXACT COUNT of people: "one woman", "two men", "three children (two boys, one girl)" - NEVER "children", "group", "family", "crowd"
+6. GENDER of every person: man/woman, boy/girl, male/female - no ambiguity
+7. APPROXIMATE AGE: (20s), (elderly), (age 5), (infant) - be specific
+8. NAMED FIGURES: If depicting a historical figure, name them: "Queen Charlotte (30s)", "King George III (40s)"
+9. ALWAYS describe period-accurate clothing
+10. ONLY VISIBLE actions - no thoughts, feelings, memories, or internal states
 
 === ERA CONTEXT ===
 ERA: ${timePeriod.era}
@@ -778,14 +782,25 @@ Every scene = events AS THEY HAPPENED, people LIVING history.
 === EXTRACTION FROM NARRATION ===
 For each segment, identify:
 1. WHERE: Setting (kitchen, garden, palace, street)
-2. WHO: Subject with clothing (housemaid in black dress, gentleman in tailcoat)
-3. WHAT: Single action (lighting fire, reading, walking)
+2. WHO: EXACT count + gender + age + clothing (one woman housemaid (20s) in black dress, two men footmen (30s) in livery)
+3. WHAT: Single VISIBLE action (lighting fire, reading, walking) - NOT thoughts or feelings
 4. MOOD: Lighting (dawn, candlelit, golden hour)
 
-Combine: "[Setting], [Who in clothing], [Action], [Lighting]"
+Combine: "[Setting], [Count + Gender + Age + Clothing], [Visible Action], [Lighting]"
 
-When narration is abstract (emotions, politics):
-Show a concrete scene that REPRESENTS the concept - never just "people talking"
+=== VISUAL ONLY - NO INTERNAL STATES ===
+❌ WRONG: "thinking about her childhood" - cannot see thoughts
+❌ WRONG: "feeling sad about leaving home" - cannot see feelings
+❌ WRONG: "remembering her mother" - cannot see memories
+❌ WRONG: "worried about the future" - cannot see worry
+
+✅ RIGHT: "standing at window gazing out" - visible action
+✅ RIGHT: "wiping tears with handkerchief" - visible action
+✅ RIGHT: "sitting alone in empty room" - visible scene
+✅ RIGHT: "packing trunk with belongings" - visible action
+
+When narration is abstract (emotions, politics, thoughts):
+Show a CONCRETE VISIBLE scene that represents the moment - physical actions, settings, objects
 
 === OUTPUT FORMAT ===
 Return ONLY valid JSON array:
