@@ -730,25 +730,30 @@ router.post('/', async (req: Request, res: Response) => {
     const systemPrompt = `You write SHORT image prompts for AI image generation. Output valid JSON only.
 
 === FORMULA (STRICT - MAX 30 WORDS) ===
-[Era] [Setting], [EXACT COUNT] [Gender] [Age] [Role] in [Period Clothing], [Single VISIBLE Action], [Lighting]
+[Era] [Setting], [EXACT COUNT] [Gender] [Age] [Role] in [ERA-SPECIFIC Clothing], [Single VISIBLE Action], [Lighting]
 
 EXAMPLES (15-25 words each):
-✅ "Edwardian kitchen at dawn, one woman (30s) cook in cotton dress and apron, kneading bread dough, warm firelight"
-✅ "Regency drawing room, one young man (20s) in tailcoat, reading letter by window, soft afternoon light"
-✅ "Georgian nursery morning, one woman Queen Charlotte (30s) in silk gown with two boys (ages 4 and 6), playing with wooden blocks, soft window glow"
-✅ "Victorian servants' hall, one elderly man (60s) butler in formal livery, polishing silverware, candlelit evening"
-✅ "Tudor great hall, three men nobles in doublets, raising goblets at feast table, warm torchlight"
+✅ "Edwardian kitchen 1905, one woman (30s) cook in high-necked black dress with white apron and cap, kneading bread dough, warm firelight"
+✅ "Regency drawing room 1815, one young man (20s) in dark tailcoat with high collar and cravat, reading letter by window, soft afternoon light"
+✅ "Georgian nursery 1785, one woman Queen Charlotte (30s) in wide-skirted silk gown with two boys (ages 4 and 6) in breeches and waistcoats, playing with wooden blocks, soft window glow"
+✅ "Victorian servants' hall 1870, one elderly man (60s) butler in black tailcoat with white gloves, polishing silverware, candlelit evening"
+✅ "Tudor great hall 1540, three men nobles in padded doublets with slashed sleeves, raising pewter goblets at feast table, warm torchlight"
 
 === HARD RULES ===
 1. MAX 30 WORDS - count them
 2. ONE sentence only - no "and then", "while", "meanwhile"
 3. ONE scene, ONE moment, ONE action
-4. Start with SETTING, then PEOPLE (with count), then ACTION, then LIGHTING
+4. Start with ERA + SETTING, then PEOPLE (with count), then ACTION, then LIGHTING
 5. EXACT COUNT of people: "one woman", "two men", "three children (two boys, one girl)" - NEVER "children", "group", "family", "crowd"
 6. GENDER of every person: man/woman, boy/girl, male/female - no ambiguity
 7. APPROXIMATE AGE: (20s), (elderly), (age 5), (infant) - be specific
 8. NAMED FIGURES: If depicting a historical figure, name them: "Queen Charlotte (30s)", "King George III (40s)"
-9. ALWAYS describe period-accurate clothing
+9. ERA-SPECIFIC CLOTHING: Describe garments accurate to the exact era - NOT generic "dress" or "suit"
+   - Georgian (1714-1830): wide skirts, powdered wigs, breeches, waistcoats, tricorn hats
+   - Regency (1811-1820): empire waists, tailcoats, cravats, high collars, bonnets
+   - Victorian (1837-1901): crinolines, bustles, top hats, frock coats, bonnets
+   - Edwardian (1901-1910): S-bend corsets, high necks, boater hats, morning suits
+   - Tudor (1485-1603): doublets, ruffs, farthingales, slashed sleeves, codpieces
 10. ONLY VISIBLE actions - no thoughts, feelings, memories, or internal states
 
 === ERA CONTEXT ===
