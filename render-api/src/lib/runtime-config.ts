@@ -40,6 +40,7 @@ export const allowedAssetHosts = splitList(
     'historygenai.netlify.app',
     // Video generation services (Kie.ai, etc.)
     'kie.ai',
+    'aiquickdraw.com',   // Kie.ai temp file CDN
     'piapi.ai',
     'r2.cloudflarestorage.com',
     'cloudflare-ipfs.com',
