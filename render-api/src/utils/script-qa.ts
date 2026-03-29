@@ -2,6 +2,8 @@
  * Script QA - Compare original script to Whisper transcription
  * Detects TTS mistakes by finding mismatches between what was supposed to be said
  * and what Whisper actually heard.
+ *
+ * Includes both sentence-level and word-level comparison.
  */
 
 export interface QAIssue {
@@ -12,12 +14,21 @@ export interface QAIssue {
   severity: 'warning' | 'error';
 }
 
+export interface WordIssue {
+  type: 'missing_word' | 'extra_word' | 'wrong_word' | 'clipped_word';
+  scriptWord: string;
+  transcribedWord: string;
+  context: string;  // Surrounding words for reference
+  severity: 'warning' | 'error';
+}
+
 export interface QAResult {
   score: number;              // 0-100% match
   totalScriptSentences: number;
   matchedSentences: number;
   issues: QAIssue[];
-  needsReview: boolean;       // true if score < 95%
+  wordIssues: WordIssue[];    // NEW: Word-level issues
+  needsReview: boolean;       // true if score < 95% or has word issues
 }
 
 /**
@@ -29,6 +40,243 @@ function normalizeText(text: string): string {
     .replace(/[^\w\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Calculate Levenshtein distance between two strings
+ * Used for fuzzy word matching (e.g., "didn" vs "didnt")
+ */
+function levenshteinDistance(str1: string, str2: string): number {
+  const m = str1.length;
+  const n = str2.length;
+
+  // Create matrix
+  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+  // Initialize first row and column
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  // Fill matrix
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (str1[i - 1] === str2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1];
+      } else {
+        dp[i][j] = 1 + Math.min(
+          dp[i - 1][j],     // deletion
+          dp[i][j - 1],     // insertion
+          dp[i - 1][j - 1]  // substitution
+        );
+      }
+    }
+  }
+
+  return dp[m][n];
+}
+
+/**
+ * Check if two words are similar (within edit distance threshold)
+ * Returns true if words are similar but not identical
+ */
+function areWordsSimilar(word1: string, word2: string): boolean {
+  if (word1 === word2) return false; // Identical, not "similar"
+
+  const maxLen = Math.max(word1.length, word2.length);
+  if (maxLen < 3) return false; // Too short to compare
+
+  const distance = levenshteinDistance(word1, word2);
+  const threshold = maxLen <= 5 ? 1 : 2; // Allow 1 edit for short words, 2 for longer
+
+  return distance <= threshold;
+}
+
+/**
+ * Check if a word looks like a clipped version of another
+ * e.g., "didn" is a clipped version of "didnt"
+ */
+function isClippedWord(transcribed: string, script: string): boolean {
+  // Transcribed word is shorter and is a prefix of script word
+  if (transcribed.length < script.length && script.startsWith(transcribed)) {
+    return true;
+  }
+  // Common contractions that get clipped
+  const contractionPairs: [string, string][] = [
+    ['didn', 'didnt'],
+    ['doesn', 'doesnt'],
+    ['wasn', 'wasnt'],
+    ['weren', 'werent'],
+    ['couldn', 'couldnt'],
+    ['wouldn', 'wouldnt'],
+    ['shouldn', 'shouldnt'],
+    ['hasn', 'hasnt'],
+    ['haven', 'havent'],
+    ['hadn', 'hadnt'],
+    ['isn', 'isnt'],
+    ['aren', 'arent'],
+    ['won', 'wont'],
+    ['can', 'cant'],
+    ['don', 'dont'],
+  ];
+
+  for (const [clipped, full] of contractionPairs) {
+    if (transcribed === clipped && script === full) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Find word-level issues by comparing script and transcription word by word
+ * Uses sequence alignment to find insertions, deletions, and substitutions
+ */
+function findWordLevelIssues(script: string, transcription: string): WordIssue[] {
+  const issues: WordIssue[] = [];
+
+  const scriptWords = normalizeText(script).split(' ').filter(w => w.length > 0);
+  const transWords = normalizeText(transcription).split(' ').filter(w => w.length > 0);
+
+  // Use a sliding window approach to find mismatches
+  // This is more practical than full sequence alignment for long texts
+
+  let scriptIdx = 0;
+  let transIdx = 0;
+
+  while (scriptIdx < scriptWords.length && transIdx < transWords.length) {
+    const scriptWord = scriptWords[scriptIdx];
+    const transWord = transWords[transIdx];
+
+    if (scriptWord === transWord) {
+      // Words match, move both pointers
+      scriptIdx++;
+      transIdx++;
+      continue;
+    }
+
+    // Words don't match - figure out what happened
+
+    // Check if it's a clipped word (e.g., "didn" vs "didnt")
+    if (isClippedWord(transWord, scriptWord)) {
+      const contextStart = Math.max(0, scriptIdx - 2);
+      const contextEnd = Math.min(scriptWords.length, scriptIdx + 3);
+      const context = scriptWords.slice(contextStart, contextEnd).join(' ');
+
+      issues.push({
+        type: 'clipped_word',
+        scriptWord,
+        transcribedWord: transWord,
+        context,
+        severity: 'error',  // Clipped words are audio quality issues
+      });
+      scriptIdx++;
+      transIdx++;
+      continue;
+    }
+
+    // Check if it's a similar word (typo/mishearing)
+    if (areWordsSimilar(scriptWord, transWord)) {
+      const contextStart = Math.max(0, scriptIdx - 2);
+      const contextEnd = Math.min(scriptWords.length, scriptIdx + 3);
+      const context = scriptWords.slice(contextStart, contextEnd).join(' ');
+
+      issues.push({
+        type: 'wrong_word',
+        scriptWord,
+        transcribedWord: transWord,
+        context,
+        severity: 'warning',
+      });
+      scriptIdx++;
+      transIdx++;
+      continue;
+    }
+
+    // Look ahead to see if script word appears soon in transcription (missing word in trans)
+    const lookAheadTrans = transWords.slice(transIdx, transIdx + 5);
+    const foundInTrans = lookAheadTrans.indexOf(scriptWord);
+
+    // Look ahead to see if trans word appears soon in script (extra word in trans)
+    const lookAheadScript = scriptWords.slice(scriptIdx, scriptIdx + 5);
+    const foundInScript = lookAheadScript.indexOf(transWord);
+
+    if (foundInTrans > 0 && (foundInScript < 0 || foundInTrans <= foundInScript)) {
+      // Script word found ahead in transcription - there are extra words in transcription
+      for (let i = 0; i < foundInTrans; i++) {
+        const contextStart = Math.max(0, scriptIdx - 2);
+        const contextEnd = Math.min(scriptWords.length, scriptIdx + 3);
+        const context = scriptWords.slice(contextStart, contextEnd).join(' ');
+
+        issues.push({
+          type: 'extra_word',
+          scriptWord: '',
+          transcribedWord: transWords[transIdx + i],
+          context,
+          severity: 'warning',
+        });
+      }
+      transIdx += foundInTrans;
+    } else if (foundInScript > 0) {
+      // Trans word found ahead in script - script words are missing from transcription
+      for (let i = 0; i < foundInScript; i++) {
+        const contextStart = Math.max(0, scriptIdx + i - 2);
+        const contextEnd = Math.min(scriptWords.length, scriptIdx + i + 3);
+        const context = scriptWords.slice(contextStart, contextEnd).join(' ');
+
+        issues.push({
+          type: 'missing_word',
+          scriptWord: scriptWords[scriptIdx + i],
+          transcribedWord: '',
+          context,
+          severity: 'error',
+        });
+      }
+      scriptIdx += foundInScript;
+    } else {
+      // Can't align - treat as wrong word and move on
+      const contextStart = Math.max(0, scriptIdx - 2);
+      const contextEnd = Math.min(scriptWords.length, scriptIdx + 3);
+      const context = scriptWords.slice(contextStart, contextEnd).join(' ');
+
+      issues.push({
+        type: 'wrong_word',
+        scriptWord,
+        transcribedWord: transWord,
+        context,
+        severity: 'warning',
+      });
+      scriptIdx++;
+      transIdx++;
+    }
+  }
+
+  // Handle remaining words
+  while (scriptIdx < scriptWords.length) {
+    const contextStart = Math.max(0, scriptIdx - 2);
+    const contextEnd = Math.min(scriptWords.length, scriptIdx + 3);
+    const context = scriptWords.slice(contextStart, contextEnd).join(' ');
+
+    issues.push({
+      type: 'missing_word',
+      scriptWord: scriptWords[scriptIdx],
+      transcribedWord: '',
+      context,
+      severity: 'error',
+    });
+    scriptIdx++;
+  }
+
+  while (transIdx < transWords.length) {
+    issues.push({
+      type: 'extra_word',
+      scriptWord: '',
+      transcribedWord: transWords[transIdx],
+      context: transWords.slice(Math.max(0, transIdx - 2), transIdx + 3).join(' '),
+      severity: 'warning',
+    });
+    transIdx++;
+  }
+
+  return issues;
 }
 
 /**
@@ -165,16 +413,45 @@ export function compareScriptToTranscription(
     }
   }
 
+  // NEW: Word-level comparison
+  const wordIssues = findWordLevelIssues(script, transcription);
+
+  // Filter word issues to only significant ones (avoid noise)
+  const significantWordIssues = wordIssues.filter(issue => {
+    // Always keep clipped words (TTS quality issues)
+    if (issue.type === 'clipped_word') return true;
+
+    // Keep wrong words that look like mishearings (not common words)
+    if (issue.type === 'wrong_word') {
+      const commonWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'it', 'its', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'our', 'their']);
+      // Keep if neither word is a common word (likely a proper noun mishearing)
+      return !commonWords.has(issue.scriptWord) || !commonWords.has(issue.transcribedWord);
+    }
+
+    // Keep missing words that aren't common filler words
+    if (issue.type === 'missing_word') {
+      const fillerWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'so', 'just', 'very', 'really']);
+      return !fillerWords.has(issue.scriptWord);
+    }
+
+    return false;
+  });
+
   // Calculate overall score
   const totalSentences = scriptSentences.filter(s => normalizeText(s).split(' ').length >= 3).length;
   const score = totalSentences > 0 ? Math.round((matchedCount / totalSentences) * 100) : 100;
+
+  // Determine if review is needed
+  const hasClippedWords = significantWordIssues.some(i => i.type === 'clipped_word');
+  const hasManyWordIssues = significantWordIssues.length > 5;
 
   return {
     score,
     totalScriptSentences: scriptSentences.length,
     matchedSentences: Math.round(matchedCount),
     issues,
-    needsReview: score < 95,
+    wordIssues: significantWordIssues,
+    needsReview: score < 95 || hasClippedWords || hasManyWordIssues,
   };
 }
 

@@ -729,88 +729,75 @@ router.post('/', async (req: Request, res: Response) => {
     // Simplified formula-based prompt generation for consistent, short image prompts
     const systemPrompt = `You write SHORT image prompts for AI image generation. Output valid JSON only.
 
-=== FORMULA (STRICT - MAX 30 WORDS) ===
+=== ABSOLUTE WORD LIMIT: 30 WORDS MAXIMUM ===
+CRITICAL: Count your words. If over 30 words, DELETE words until under 30. This is non-negotiable.
+Prompts over 30 words will be REJECTED and you will need to regenerate.
+
+=== FORMULA ===
 [Era] [Setting], [EXACT COUNT] [Gender] [Age] [Role] in [ERA-SPECIFIC Clothing], [Single VISIBLE Action], [Lighting]
 
-EXAMPLES (15-25 words each):
-✅ "Edwardian kitchen 1905, one woman (30s) cook in high-necked black dress with white apron and cap, kneading bread dough, warm firelight"
-✅ "Regency drawing room 1815, one young man (20s) in dark tailcoat with high collar and cravat, reading letter by window, soft afternoon light"
-✅ "Georgian nursery 1785, one woman Queen Charlotte (30s) in wide-skirted silk gown with two boys (ages 4 and 6) in breeches and waistcoats, playing with wooden blocks, soft window glow"
-✅ "Victorian servants' hall 1870, one elderly man (60s) butler in black tailcoat with white gloves, polishing silverware, candlelit evening"
-✅ "Tudor great hall 1540, three men nobles in padded doublets with slashed sleeves, raising pewter goblets at feast table, warm torchlight"
+EXAMPLES (15-25 words each - notice they are SHORT):
+✅ "Edwardian kitchen 1905, one woman (30s) cook in black dress with white apron, kneading bread dough, warm firelight" (18 words)
+✅ "Regency drawing room 1815, one young man (20s) in dark tailcoat with cravat, reading letter by window, afternoon light" (19 words)
+✅ "Victorian servants' hall 1870, one elderly man (60s) butler in black tailcoat, polishing silverware, candlelit" (15 words)
+✅ "Tudor great hall 1540, three men nobles in padded doublets, raising pewter goblets at feast, torchlight" (16 words)
 
 === HARD RULES ===
-1. MAX 30 WORDS - count them
-2. ONE sentence only - no "and then", "while", "meanwhile"
+1. **MAX 30 WORDS** - count every word, delete extras
+2. ONE sentence only - no "and then", "while", "as", "meanwhile"
 3. ONE scene, ONE moment, ONE action
-4. Start with ERA + SETTING, then PEOPLE (with count), then ACTION, then LIGHTING
-5. EXACT COUNT of people: "one woman", "two men", "three children (two boys, one girl)" - NEVER "children", "group", "family", "crowd"
-6. GENDER of every person: man/woman, boy/girl, male/female - no ambiguity
-7. APPROXIMATE AGE: (20s), (elderly), (age 5), (infant) - be specific
-8. NAMED FIGURES: If depicting a historical figure, name them: "Queen Charlotte (30s)", "King George III (40s)"
-9. ERA-SPECIFIC CLOTHING: Describe garments accurate to the exact era - NOT generic "dress" or "suit"
-   - Georgian (1714-1830): wide skirts, powdered wigs, breeches, waistcoats, tricorn hats
-   - Regency (1811-1820): empire waists, tailcoats, cravats, high collars, bonnets
-   - Victorian (1837-1901): crinolines, bustles, top hats, frock coats, bonnets
-   - Edwardian (1901-1910): S-bend corsets, high necks, boater hats, morning suits
-   - Tudor (1485-1603): doublets, ruffs, farthingales, slashed sleeves, codpieces
-10. ONLY VISIBLE actions - no thoughts, feelings, memories, or internal states
+4. EXACT COUNT of people: "one woman", "two men" - NEVER "group", "crowd"
+5. GENDER + AGE: "woman (30s)", "boy (age 5)" - always specify
+6. ERA-SPECIFIC CLOTHING (see guide below)
+7. ONLY VISIBLE elements - nothing you cannot photograph
+
+=== VISUAL ONLY - THIS IS CRITICAL ===
+You can ONLY describe what a CAMERA can capture. Delete anything invisible.
+
+**BANNED - NON-VISUAL SENSORY DETAILS:**
+❌ SCENTS: "scent of polish", "perfume of honeysuckle", "smell of bread", "aroma", "fragrance"
+❌ SOUNDS: "sound of laughter", "bells ringing", "whispered words", "quiet murmurs"
+❌ TEMPERATURES: "warm air", "cold breeze", "chill", "heat from the fire"
+❌ TEXTURES: "soft fabric", "rough stone", "smooth wood" (unless describing visible appearance)
+❌ TASTES: "sweet tea", "bitter medicine"
+
+**BANNED - INTERNAL STATES:**
+❌ THOUGHTS: "thinking about", "wondering", "pondering", "contemplating"
+❌ FEELINGS: "feeling sad", "happy about", "worried", "anxious", "hopeful"
+❌ MEMORIES: "remembering", "recalling", "her mind drifted to"
+❌ INTENTIONS: "about to", "planning to", "hoping to"
+
+**WRONG vs RIGHT EXAMPLES:**
+❌ WRONG (47 words, has scents): "Victorian parlor 1865, one housemaid (25) in black dress kneels beside mahogany table rubbing beeswax into wood, the scent of polish mixing with coal smoke, golden afternoon light, the perfume of honeysuckle from the garden"
+✅ RIGHT (22 words): "Victorian parlor 1865, one woman housemaid (25) in black dress with white cap, polishing mahogany table, golden afternoon light"
+
+❌ WRONG (has temperature): "Georgian kitchen, warm air rising from the hearth as cook stirs pot"
+✅ RIGHT: "Georgian kitchen 1780, one woman cook (40s) in linen cap and apron, stirring iron pot over hearth fire, morning light"
+
+❌ WRONG (has thoughts): "She stood at the window thinking of her lost love"
+✅ RIGHT: "Regency bedroom 1815, one young woman (20s) in white muslin gown, standing at window gazing out, soft morning light"
+
+=== ERA-SPECIFIC CLOTHING GUIDE ===
+- Georgian (1714-1830): wide skirts, powdered wigs, breeches, waistcoats, tricorn hats
+- Regency (1811-1820): empire waists, tailcoats, cravats, high collars, bonnets
+- Victorian (1837-1901): crinolines, bustles, top hats, frock coats
+- Edwardian (1901-1910): S-bend corsets, high necks, boater hats, morning suits
+- Tudor (1485-1603): doublets, ruffs, farthingales, slashed sleeves
 
 === ERA CONTEXT ===
 ERA: ${timePeriod.era}
 REGION: ${timePeriod.region}
-${eraTopic ? `TOPIC: ${eraTopic} - ALL clothing, architecture, objects must match this era exactly.` : ''}
-${storySubjectFocus ? `
-SUBJECT FOCUS: ${storySubjectFocus}
-- 80% of images MUST show ${storySubjectFocus} as visible people
-- Show THEIR world: kitchens, workshops, daily tasks - not aristocratic ballrooms
-` : ''}
+${eraTopic ? `TOPIC: ${eraTopic}` : ''}
+${storySubjectFocus ? `SUBJECT FOCUS: ${storySubjectFocus} - 80% of images must show them` : ''}
 
-=== CONTENT SAFETY (STRICTLY ENFORCED) ===
-BANNED - prompts with these will be rejected:
-- Blood, wounds, death, corpses, illness, surgery, medical procedures
-- Violence, fighting, weapons in use, combat, torture
-- Nudity, bathing, revealing clothing, kissing, embracing
-- Pain, suffering, distress, crying, screaming
-- Dark, scary, disturbing imagery
-
-ALTERNATIVES for difficult topics:
-- Death → Show mourning family or person in happier times
-- Illness → Family at bedside, no medical procedure visible
-- Battle → Soldiers preparing before, or peaceful aftermath
-- Romance → Couple holding hands, sitting side by side, gazing across room
-
-=== FORBIDDEN FRAMING ===
-NEVER show museums, exhibits, researchers, historians, artifacts on display, documents being studied.
-Every scene = events AS THEY HAPPENED, people LIVING history.
-
-=== EXTRACTION FROM NARRATION ===
-For each segment, identify:
-1. WHERE: Setting (kitchen, garden, palace, street)
-2. WHO: EXACT count + gender + age + clothing (one woman housemaid (20s) in black dress, two men footmen (30s) in livery)
-3. WHAT: Single VISIBLE action (lighting fire, reading, walking) - NOT thoughts or feelings
-4. MOOD: Lighting (dawn, candlelit, golden hour)
-
-Combine: "[Setting], [Count + Gender + Age + Clothing], [Visible Action], [Lighting]"
-
-=== VISUAL ONLY - NO INTERNAL STATES ===
-❌ WRONG: "thinking about her childhood" - cannot see thoughts
-❌ WRONG: "feeling sad about leaving home" - cannot see feelings
-❌ WRONG: "remembering her mother" - cannot see memories
-❌ WRONG: "worried about the future" - cannot see worry
-
-✅ RIGHT: "standing at window gazing out" - visible action
-✅ RIGHT: "wiping tears with handkerchief" - visible action
-✅ RIGHT: "sitting alone in empty room" - visible scene
-✅ RIGHT: "packing trunk with belongings" - visible action
-
-When narration is abstract (emotions, politics, thoughts):
-Show a CONCRETE VISIBLE scene that represents the moment - physical actions, settings, objects
+=== CONTENT SAFETY ===
+BANNED: blood, wounds, death, illness, violence, nudity, kissing
+ALTERNATIVES: Death → mourning family; Illness → bedside vigil; Battle → soldiers preparing
 
 === OUTPUT FORMAT ===
-Return ONLY valid JSON array:
+Return ONLY valid JSON array. Each sceneDescription must be UNDER 30 WORDS:
 [
-  {"index": 1, "sceneDescription": "[25 words max following the formula]"},
+  {"index": 1, "sceneDescription": "[15-25 words max]"},
   {"index": 2, "sceneDescription": "..."}
 ]`;
 

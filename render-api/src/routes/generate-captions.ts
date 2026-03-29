@@ -777,7 +777,15 @@ router.post('/', async (req: Request, res: Response) => {
 
           console.log(`[Captions] Script QA: ${scriptQa.score}% match (${scriptQa.matchedSentences}/${scriptQa.totalScriptSentences} sentences)`);
           if (scriptQa.issues.length > 0) {
-            console.log(`[Captions] Script QA issues:`, scriptQa.issues.slice(0, 5));
+            console.log(`[Captions] Script QA sentence issues:`, scriptQa.issues.slice(0, 5));
+          }
+          if (scriptQa.wordIssues && scriptQa.wordIssues.length > 0) {
+            console.log(`[Captions] Script QA word issues (${scriptQa.wordIssues.length}):`, scriptQa.wordIssues.slice(0, 10));
+            // Log clipped words specifically as they indicate TTS quality problems
+            const clippedWords = scriptQa.wordIssues.filter(i => i.type === 'clipped_word');
+            if (clippedWords.length > 0) {
+              console.warn(`[Captions] ⚠️ CLIPPED WORDS DETECTED: ${clippedWords.map(w => `"${w.transcribedWord}" should be "${w.scriptWord}"`).join(', ')}`);
+            }
           }
         }
       } catch (qaErr) {
