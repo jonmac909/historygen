@@ -873,14 +873,22 @@ IMAGE SEGMENTS:
 ${windowDescriptions}
 
 ${hasIntroImages ? `
-=== INTRO IMAGES (Topic/Focus-Driven) ===
-Images marked as "INTRO SCENE" are for the video introduction (first ${clipCount || 12} images = 1 minute).
-These should be THEMATIC and ESTABLISHING, NOT tied to specific script narration.
-- Image 1: Grand establishing shot of the era/location (CAN include people for scale/life)
-- Images 2-${clipCount || 12}: Varied thematic scenes showing PEOPLE in ${eraTopic || timePeriod.era}
-${storySubjectFocus ? `- Show ${storySubjectFocus} doing activities: working, walking, interacting` : ''}
-- Mix: exteriors WITH people, interiors WITH people, individual moments, group scenes
-- 80-90% of intro images should include VISIBLE PEOPLE doing era-appropriate activities
+=== INTRO IMAGES (First ${clipCount || 12} images become VIDEO CLIPS) ===
+CRITICAL: These images become animated video clips. They must work as STANDALONE visuals.
+
+**IMAGE 1 MUST BE A WIDE ESTABLISHING SHOT:**
+- Wide/aerial view of the era's world - a street, cityscape, estate exterior, landscape
+- Shows the TIME PERIOD and SETTING at a glance
+- Can include tiny distant people for scale, but NO close-ups of faces
+- Example: "Victorian London 1870, wide view of foggy cobblestone street with horse carriages and gas lamps, distant pedestrians in period dress, morning mist"
+- NOT a close-up, NOT people doing specific actions, NOT an interior room
+
+**IMAGES 2-${clipCount || 12} - VARIED THEMATIC SCENES:**
+- Mix of exteriors and interiors
+- Show PEOPLE in the era doing activities (but not the specific script narration yet)
+${storySubjectFocus ? `- Feature ${storySubjectFocus} doing era-appropriate activities: working, walking, interacting` : ''}
+- 80-90% should include VISIBLE PEOPLE
+- Vary the compositions: some wide shots, some medium shots, some with one person, some with groups
 ` : ''}
 ${hasScriptImages ? `
 === SCRIPT-SYNCED IMAGES ===
