@@ -789,11 +789,16 @@ You can ONLY describe what a CAMERA can capture. Delete anything invisible.
 - Edwardian (1901-1910): S-bend corsets, high necks, boater hats, morning suits
 - Tudor (1485-1603): doublets, ruffs, farthingales, slashed sleeves
 
-=== ERA CONTEXT ===
-ERA: ${timePeriod.era}
-REGION: ${timePeriod.region}
-${eraTopic ? `TOPIC: ${eraTopic}` : ''}
-${storySubjectFocus ? `SUBJECT FOCUS: ${storySubjectFocus} - 80% of images must show them` : ''}
+=== ERA AND TOPIC (CRITICAL - READ THIS FIRST) ===
+**ERA: ${timePeriod.era}** - ALL clothing, architecture, objects MUST match this era exactly
+**REGION: ${timePeriod.region}**
+${eraTopic ? `**TOPIC: ${eraTopic}** - This is what the documentary is ABOUT. Show scenes relevant to this topic.` : ''}
+${storySubjectFocus ? `**SUBJECT FOCUS: ${storySubjectFocus}**
+CRITICAL: 80% of images MUST show ${storySubjectFocus} performing TOPIC-RELEVANT actions.
+- If topic is "etiquette": show curtseying, bowing, formal greetings, proper dining, card leaving
+- If topic is "servants": show cleaning, serving, carrying trays, polishing, cooking
+- If topic is "fashion": show dressing, fitting gowns, looking in mirrors, shopping
+The action should MATCH the topic, not just generic "standing" or "sitting".` : ''}
 
 === CONTENT SAFETY ===
 BANNED: blood, wounds, death, illness, violence, nudity, kissing
