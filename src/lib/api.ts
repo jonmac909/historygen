@@ -1701,10 +1701,12 @@ export async function runCaptionQualityCheck(
     needsReview: boolean;
   };
 }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
+
   try {
-    const response = await fetch(`${API_URL}/captions/quality-check`, {
+    const response = await fetch(`${renderApiUrl}/captions/quality-check`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ projectId, srtContent }),
     });
 
