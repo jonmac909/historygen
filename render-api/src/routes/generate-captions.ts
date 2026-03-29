@@ -425,11 +425,13 @@ async function transcribeChunk(audioData: Uint8Array | Buffer, groqApiKey: strin
       });
 
       // Extract quality issues from Whisper verbose_json response
+      // NOTE: Stricter thresholds to catch garbled audio that sounds bad
       const qualityIssues: QualityIssue[] = [];
       if (result.segments) {
         result.segments.forEach((seg: any, idx: number) => {
           // Check for likely silence/noise (high no_speech_prob)
-          if (seg.no_speech_prob > 0.8) {
+          // Lowered from 0.8 to 0.5 - be more sensitive
+          if (seg.no_speech_prob > 0.5) {
             qualityIssues.push({
               segmentIndex: idx,
               chunkIndex,
@@ -441,7 +443,8 @@ async function transcribeChunk(audioData: Uint8Array | Buffer, groqApiKey: strin
             });
           }
           // Check for low confidence transcription
-          if (seg.avg_logprob < -1.0) {
+          // STRICTER: raised from -1.0 to -0.7 (good speech is around -0.3 to -0.5)
+          if (seg.avg_logprob < -0.7) {
             qualityIssues.push({
               segmentIndex: idx,
               chunkIndex,
@@ -453,7 +456,8 @@ async function transcribeChunk(audioData: Uint8Array | Buffer, groqApiKey: strin
             });
           }
           // Check for repetitive/hallucinated content
-          if (seg.compression_ratio > 2.4) {
+          // Lowered from 2.4 to 2.0 - be more sensitive
+          if (seg.compression_ratio > 2.0) {
             qualityIssues.push({
               segmentIndex: idx,
               chunkIndex,

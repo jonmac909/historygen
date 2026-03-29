@@ -440,6 +440,36 @@ export function VideoClipsPreviewModal({
             {isDownloading ? 'Downloading...' : 'Download All'}
           </Button>
 
+          {/* Multi-select regeneration controls */}
+          {onRegenerateMultiple && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  if (selectedIndices.size === clips.length) {
+                    onSelectionChange?.(new Set());
+                  } else {
+                    onSelectionChange?.(new Set(clips.map(c => c.index)));
+                  }
+                }}
+              >
+                {selectedIndices.size === clips.length ? 'Deselect All' : 'Select All'}
+              </Button>
+
+              {selectedIndices.size > 0 && (
+                <Button
+                  variant="default"
+                  onClick={() => onRegenerateMultiple(Array.from(selectedIndices))}
+                  disabled={isRegenerating}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-1 ${isRegenerating ? 'animate-spin' : ''}`} />
+                  Regenerate {selectedIndices.size} Selected
+                </Button>
+              )}
+            </>
+          )}
+
           <div className="flex-1" />
 
           <span className="text-sm text-muted-foreground">
@@ -458,6 +488,17 @@ export function VideoClipsPreviewModal({
                 onRegenerate={onRegenerate ? (editedPrompt) => onRegenerate(clip.index, editedPrompt) : undefined}
                 isRegenerating={regeneratingIndices.has(clip.index)}
                 onOpenFullscreen={() => setFullscreenClip(clip)}
+                showSelection={!!onRegenerateMultiple}
+                isSelected={selectedIndices.has(clip.index)}
+                onToggleSelect={() => {
+                  const newSelection = new Set(selectedIndices);
+                  if (newSelection.has(clip.index)) {
+                    newSelection.delete(clip.index);
+                  } else {
+                    newSelection.add(clip.index);
+                  }
+                  onSelectionChange?.(newSelection);
+                }}
               />
             ))}
           </div>

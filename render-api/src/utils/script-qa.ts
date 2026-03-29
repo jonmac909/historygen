@@ -280,19 +280,35 @@ function findWordLevelIssues(script: string, transcription: string): WordIssue[]
 }
 
 /**
- * Calculate Jaccard similarity between two strings (word-level)
+ * Calculate sequence-based similarity using Longest Common Subsequence (LCS)
+ * Unlike Jaccard, this CARES about word ORDER which catches garbled audio
  */
 function calculateSimilarity(str1: string, str2: string): number {
-  const words1 = new Set(str1.split(' ').filter(w => w.length > 0));
-  const words2 = new Set(str2.split(' ').filter(w => w.length > 0));
+  const words1 = str1.split(' ').filter(w => w.length > 0);
+  const words2 = str2.split(' ').filter(w => w.length > 0);
 
-  if (words1.size === 0 && words2.size === 0) return 1;
-  if (words1.size === 0 || words2.size === 0) return 0;
+  if (words1.length === 0 && words2.length === 0) return 1;
+  if (words1.length === 0 || words2.length === 0) return 0;
 
-  const intersection = new Set([...words1].filter(w => words2.has(w)));
-  const union = new Set([...words1, ...words2]);
+  // LCS dynamic programming
+  const m = words1.length;
+  const n = words2.length;
+  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
 
-  return intersection.size / union.size;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      if (words1[i - 1] === words2[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  const lcsLength = dp[m][n];
+  // Score based on how much of the original script is preserved in order
+  // Use max length as denominator to penalize extra/missing words
+  return lcsLength / Math.max(m, n);
 }
 
 /**
@@ -357,8 +373,8 @@ export function compareScriptToTranscription(
 
     const match = findBestMatch(scriptSentence, transcriptionSentences, usedTranscriptionIndices);
 
-    if (!match || match.similarity < 0.5) {
-      // Sentence is missing or severely garbled
+    if (!match || match.similarity < 0.6) {
+      // Sentence is missing or severely garbled (raised from 0.5 to 0.6)
       issues.push({
         type: 'missing',
         originalText: scriptSentence.substring(0, 100) + (scriptSentence.length > 100 ? '...' : ''),
@@ -366,8 +382,8 @@ export function compareScriptToTranscription(
         similarity: match?.similarity,
         severity: 'error',
       });
-    } else if (match.similarity < 0.85) {
-      // Sentence exists but has issues
+    } else if (match.similarity < 0.92) {
+      // Sentence exists but has issues (raised from 0.85 to 0.92 - stricter)
       usedTranscriptionIndices.add(match.index);
       issues.push({
         type: 'garbled',
@@ -378,7 +394,7 @@ export function compareScriptToTranscription(
       });
       matchedCount += match.similarity; // Partial credit
     } else {
-      // Good match
+      // Good match (requires 92%+ LCS similarity now)
       usedTranscriptionIndices.add(match.index);
       matchedCount++;
     }
@@ -413,37 +429,39 @@ export function compareScriptToTranscription(
     }
   }
 
-  // NEW: Word-level comparison
+  // Word-level comparison - show ALL issues, don't hide them
   const wordIssues = findWordLevelIssues(script, transcription);
 
-  // Filter word issues to only significant ones (avoid noise)
+  // Only filter out very minor issues (single-character filler words)
   const significantWordIssues = wordIssues.filter(issue => {
     // Always keep clipped words (TTS quality issues)
     if (issue.type === 'clipped_word') return true;
 
-    // Keep wrong words that look like mishearings (not common words)
-    if (issue.type === 'wrong_word') {
-      const commonWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'is', 'are', 'was', 'were', 'be', 'been', 'being', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'it', 'its', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'we', 'they', 'me', 'him', 'her', 'us', 'them', 'my', 'your', 'his', 'our', 'their']);
-      // Keep if neither word is a common word (likely a proper noun mishearing)
-      return !commonWords.has(issue.scriptWord) || !commonWords.has(issue.transcribedWord);
-    }
+    // Always keep wrong words - these indicate garbled audio
+    if (issue.type === 'wrong_word') return true;
 
-    // Keep missing words that aren't common filler words
+    // Keep missing words unless they're single-letter articles
     if (issue.type === 'missing_word') {
-      const fillerWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'so', 'just', 'very', 'really']);
-      return !fillerWords.has(issue.scriptWord);
+      return issue.scriptWord.length > 1; // Keep anything longer than 1 char
     }
 
-    return false;
+    // Keep extra words unless they're very short filler sounds
+    if (issue.type === 'extra_word') {
+      return issue.transcribedWord.length > 2; // Keep anything longer than 2 chars
+    }
+
+    return true;
   });
 
   // Calculate overall score
   const totalSentences = scriptSentences.filter(s => normalizeText(s).split(' ').length >= 3).length;
   const score = totalSentences > 0 ? Math.round((matchedCount / totalSentences) * 100) : 100;
 
-  // Determine if review is needed
+  // Determine if review is needed - STRICTER thresholds
   const hasClippedWords = significantWordIssues.some(i => i.type === 'clipped_word');
-  const hasManyWordIssues = significantWordIssues.length > 5;
+  const hasWrongWords = significantWordIssues.some(i => i.type === 'wrong_word');
+  const hasMissingWords = significantWordIssues.filter(i => i.type === 'missing_word').length > 2;
+  const hasManyWordIssues = significantWordIssues.length > 3; // Was 5, now 3
 
   return {
     score,
@@ -451,7 +469,8 @@ export function compareScriptToTranscription(
     matchedSentences: Math.round(matchedCount),
     issues,
     wordIssues: significantWordIssues,
-    needsReview: score < 95 || hasClippedWords || hasManyWordIssues,
+    // Flag for review if: score < 98% (was 95), OR any wrong/clipped words, OR many issues
+    needsReview: score < 98 || hasClippedWords || hasWrongWords || hasMissingWords || hasManyWordIssues,
   };
 }
 
