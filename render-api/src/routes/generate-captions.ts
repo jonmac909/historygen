@@ -358,7 +358,7 @@ interface QualityIssue {
   start: number;
   end: number;
   text: string;
-  issue: 'silence' | 'low_confidence' | 'repetitive';
+  issue: 'silence' | 'garbled' | 'repetitive';
   value: number;
 }
 
