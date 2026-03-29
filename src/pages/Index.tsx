@@ -5027,6 +5027,8 @@ const Index = () => {
         qualityIssues={captionQualityIssues}
         qualityWarning={captionQualityWarning}
         scriptQa={scriptQaResult}
+        projectId={projectId}
+        onScriptQaUpdate={setScriptQaResult}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}

@@ -857,4 +857,67 @@ router.post('/', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * POST /quality-check
+ * Run QA comparison between script and existing captions
+ * Used for manual quality checking without regenerating captions
+ */
+router.post('/quality-check', async (req: Request, res: Response) => {
+  const { projectId, srtContent } = req.body;
+
+  if (!projectId) {
+    return res.status(400).json({ error: 'projectId is required' });
+  }
+
+  if (!srtContent) {
+    return res.status(400).json({ error: 'srtContent is required' });
+  }
+
+  try {
+    // Get the project's script
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://udqfdeoullsxttqguupz.supabase.co';
+    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY || '';
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    const { data: project, error: projectError } = await supabase
+      .from('generation_projects')
+      .select('script_content')
+      .eq('id', projectId)
+      .single();
+
+    if (projectError || !project) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    if (!project.script_content) {
+      return res.status(400).json({ error: 'Project has no script content' });
+    }
+
+    // Extract text from SRT content
+    const lines = srtContent.split('\n');
+    const textLines: string[] = [];
+    for (const line of lines) {
+      const trimmed = line.trim();
+      // Skip empty lines, index numbers, and timestamp lines
+      if (trimmed && !/^\d+$/.test(trimmed) && !trimmed.includes('-->')) {
+        textLines.push(trimmed);
+      }
+    }
+    const transcription = textLines.join(' ');
+
+    // Run QA comparison
+    const qaResult = compareScriptToTranscription(project.script_content, transcription);
+
+    console.log(`[QA Check] Project ${projectId}: ${qaResult.score}% match, ${qaResult.wordIssues.length} word issues`);
+
+    return res.json({
+      success: true,
+      scriptQa: qaResult,
+    });
+  } catch (error) {
+    console.error('[QA Check] Error:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to run quality check' });
+  }
+});
+
 export default router;

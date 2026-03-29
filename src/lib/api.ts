@@ -1682,6 +1682,44 @@ async function generateCaptionsStreaming(
   }
 }
 
+/**
+ * Run quality check on existing captions
+ * Compares script to transcription to detect garbled audio
+ */
+export async function runCaptionQualityCheck(
+  projectId: string,
+  srtContent: string
+): Promise<{
+  success: boolean;
+  error?: string;
+  scriptQa?: {
+    score: number;
+    totalScriptSentences: number;
+    matchedSentences: number;
+    issues: Array<{ type: string; originalText: string; transcribedText: string; severity: string }>;
+    wordIssues: Array<{ type: string; scriptWord: string; transcribedWord: string; context: string; severity: string }>;
+    needsReview: boolean;
+  };
+}> {
+  try {
+    const response = await fetch(`${API_URL}/captions/quality-check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ projectId, srtContent }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Quality check error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to run quality check' };
+  }
+}
+
 export interface VideoResult {
   success: boolean;
   error?: string;

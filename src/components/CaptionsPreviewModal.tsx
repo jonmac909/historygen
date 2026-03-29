@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
-import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2 } from "lucide-react";
+import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw } from "lucide-react";
+import { runCaptionQualityCheck } from "@/lib/api";
 import {
   Dialog,
   DialogContent,
@@ -55,6 +56,8 @@ interface CaptionsPreviewModalProps {
   qualityIssues?: QualityIssue[];  // Audio quality issues from Whisper
   qualityWarning?: string;  // Summary warning message
   scriptQa?: ScriptQAResult;  // Script vs transcription QA results
+  projectId?: string;  // For running quality checks
+  onScriptQaUpdate?: (qa: ScriptQAResult) => void;  // Callback when QA check completes
 }
 
 // Format seconds to MM:SS
@@ -110,12 +113,32 @@ export function CaptionsPreviewModal({
   qualityIssues,
   qualityWarning,
   scriptQa,
+  projectId,
+  onScriptQaUpdate,
 }: CaptionsPreviewModalProps) {
   const [editedSrt, setEditedSrt] = useState(srtContent);
   const [isEditing, setIsEditing] = useState(false);
   const [segments, setSegments] = useState<ParsedSegment[]>([]);
   const [isQualityExpanded, setIsQualityExpanded] = useState(false);
   const [isScriptQaExpanded, setIsScriptQaExpanded] = useState(false);
+  const [isCheckingQuality, setIsCheckingQuality] = useState(false);
+
+  // Run quality check
+  const handleQualityCheck = async () => {
+    if (!projectId || !editedSrt) return;
+
+    setIsCheckingQuality(true);
+    try {
+      const result = await runCaptionQualityCheck(projectId, editedSrt);
+      if (result.success && result.scriptQa) {
+        onScriptQaUpdate?.(result.scriptQa);
+      }
+    } catch (error) {
+      console.error('Quality check failed:', error);
+    } finally {
+      setIsCheckingQuality(false);
+    }
+  };
 
   // Sync state when srtContent prop changes
   useEffect(() => {
@@ -164,18 +187,32 @@ export function CaptionsPreviewModal({
         {qualityIssues && qualityIssues.length > 0 ? (
           // Warning banner when issues found
           <div className="border border-amber-500/30 rounded-lg bg-amber-500/10">
-            <button
-              onClick={() => setIsQualityExpanded(!isQualityExpanded)}
-              className="w-full flex items-center justify-between p-3 text-left hover:bg-amber-500/5 transition-colors"
-            >
-              <div className="flex items-center gap-2 text-amber-600">
-                <AlertTriangle className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  {qualityWarning || `${qualityIssues.length} potential audio quality issue${qualityIssues.length > 1 ? 's' : ''}`}
-                </span>
-              </div>
-              <ChevronDown className={`w-4 h-4 text-amber-600 transition-transform ${isQualityExpanded ? 'rotate-180' : ''}`} />
-            </button>
+            <div className="flex items-center justify-between p-3">
+              <button
+                onClick={() => setIsQualityExpanded(!isQualityExpanded)}
+                className="flex-1 flex items-center justify-between text-left hover:bg-amber-500/5 transition-colors"
+              >
+                <div className="flex items-center gap-2 text-amber-600">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span className="text-sm font-medium">
+                    {qualityWarning || `${qualityIssues.length} potential audio quality issue${qualityIssues.length > 1 ? 's' : ''}`}
+                  </span>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-amber-600 transition-transform ${isQualityExpanded ? 'rotate-180' : ''}`} />
+              </button>
+              {projectId && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleQualityCheck}
+                  disabled={isCheckingQuality}
+                  className="h-7 text-xs ml-2"
+                >
+                  <RefreshCw className={`w-3 h-3 mr-1 ${isCheckingQuality ? 'animate-spin' : ''}`} />
+                  {isCheckingQuality ? 'Checking...' : 'Re-check'}
+                </Button>
+              )}
+            </div>
             {isQualityExpanded && (
               <div className="px-3 pb-3 space-y-2 max-h-40 overflow-y-auto">
                 {qualityIssues.map((issue, idx) => (
@@ -198,11 +235,25 @@ export function CaptionsPreviewModal({
         ) : captionCount > 0 ? (
           // Success banner when audio is clean
           <div className="border border-green-500/30 rounded-lg bg-green-500/10 p-3">
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle2 className="w-4 h-4" />
-              <span className="text-sm font-medium">
-                Audio quality: Good ({captionCount.toLocaleString()} segments scanned)
-              </span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-green-600">
+                <CheckCircle2 className="w-4 h-4" />
+                <span className="text-sm font-medium">
+                  Audio quality: Good ({captionCount.toLocaleString()} segments scanned)
+                </span>
+              </div>
+              {projectId && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={handleQualityCheck}
+                  disabled={isCheckingQuality}
+                  className="h-7 text-xs"
+                >
+                  <RefreshCw className={`w-3 h-3 mr-1 ${isCheckingQuality ? 'animate-spin' : ''}`} />
+                  {isCheckingQuality ? 'Checking...' : 'Quality Check'}
+                </Button>
+              )}
             </div>
           </div>
         ) : null}
