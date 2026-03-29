@@ -442,7 +442,7 @@ async function transcribeChunk(audioData: Uint8Array | Buffer, groqApiKey: strin
               value: seg.no_speech_prob,
             });
           }
-          // Check for low confidence transcription
+          // Check for garbled/unclear speech
           // STRICTER: raised from -1.0 to -0.7 (good speech is around -0.3 to -0.5)
           if (seg.avg_logprob < -0.7) {
             qualityIssues.push({
@@ -451,7 +451,7 @@ async function transcribeChunk(audioData: Uint8Array | Buffer, groqApiKey: strin
               start: seg.start,
               end: seg.end,
               text: seg.text?.substring(0, 50) || '',
-              issue: 'low_confidence',
+              issue: 'garbled',
               value: seg.avg_logprob,
             });
           }

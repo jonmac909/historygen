@@ -26,7 +26,7 @@ interface QualityIssue {
   start: number;
   end: number;
   text: string;
-  issue: 'silence' | 'low_confidence' | 'repetitive';
+  issue: 'silence' | 'low_confidence' | 'garbled' | 'repetitive';
   value: number;
 }
 
@@ -182,12 +182,12 @@ export function CaptionsPreviewModal({
                   <div key={idx} className="text-xs bg-background/50 rounded p-2 flex justify-between">
                     <span className="text-muted-foreground">
                       {formatTime(issue.start)} - {issue.issue === 'silence' ? 'Possible silence/noise' :
-                       issue.issue === 'low_confidence' ? 'Low confidence transcription' :
+                       issue.issue === 'garbled' || issue.issue === 'low_confidence' ? 'Garbled audio detected' :
                        'Possible repetitive content'}
                     </span>
                     <span className="text-amber-600 font-mono">
                       {issue.issue === 'silence' ? `${(issue.value * 100).toFixed(0)}% noise` :
-                       issue.issue === 'low_confidence' ? `conf: ${issue.value.toFixed(2)}` :
+                       issue.issue === 'garbled' || issue.issue === 'low_confidence' ? `quality: ${Math.abs(issue.value).toFixed(1)}` :
                        `ratio: ${issue.value.toFixed(1)}`}
                     </span>
                   </div>
