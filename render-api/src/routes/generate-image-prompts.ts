@@ -744,12 +744,17 @@ EXAMPLES (15-25 words each - notice they are SHORT):
 
 === HARD RULES ===
 1. **MAX 30 WORDS** - count every word, delete extras
-2. ONE sentence only - no "and then", "while", "as", "meanwhile"
-3. ONE scene, ONE moment, ONE action
+2. **ONE LOCATION** - a single clear place (kitchen, drawing room, street, ballroom)
+3. **ONE ACTION** - a single verb (standing, reading, pouring, walking) - NOT multiple actions
 4. EXACT COUNT of people: "one woman", "two men" - NEVER "group", "crowd"
 5. GENDER + AGE: "woman (30s)", "boy (age 5)" - always specify
 6. ERA-SPECIFIC CLOTHING (see guide below)
 7. ONLY VISIBLE elements - nothing you cannot photograph
+8. **PLAIN VOCABULARY** - use simple words the AI understands:
+   - ❌ "gilt box" → ✅ "opera balcony"
+   - ❌ "escritoire" → ✅ "writing desk"
+   - ❌ "chatelaine" → ✅ "keys on belt"
+   - ❌ "reticule" → ✅ "small handbag"
 
 === VISUAL ONLY - THIS IS CRITICAL ===
 You can ONLY describe what a CAMERA can capture. Delete anything invisible.
