@@ -1692,6 +1692,8 @@ export async function runCaptionQualityCheck(
 ): Promise<{
   success: boolean;
   error?: string;
+  scriptText?: string;
+  transcriptText?: string;
   scriptQa?: {
     score: number;
     totalScriptSentences: number;
