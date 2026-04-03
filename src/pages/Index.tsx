@@ -5029,6 +5029,7 @@ const Index = () => {
         scriptQa={scriptQaResult}
         projectId={projectId}
         onScriptQaUpdate={setScriptQaResult}
+        audioUrl={pendingAudioUrl}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}

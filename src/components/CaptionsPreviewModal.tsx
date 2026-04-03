@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw, Play, Square } from "lucide-react";
 import { runCaptionQualityCheck } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -60,6 +60,7 @@ interface CaptionsPreviewModalProps {
   scriptQa?: ScriptQAResult;  // Script vs transcription QA results
   projectId?: string;  // For running quality checks
   onScriptQaUpdate?: (qa: ScriptQAResult) => void;  // Callback when QA check completes
+  audioUrl?: string;  // Audio URL for playing segments
 }
 
 // Format seconds to MM:SS
@@ -67,6 +68,14 @@ function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Convert SRT timestamp (00:00:05,123) to seconds
+function srtTimeToSeconds(srtTime: string): number {
+  const match = srtTime.match(/(\d{2}):(\d{2}):(\d{2})[,.]?(\d{0,3})/);
+  if (!match) return 0;
+  const [, hours, minutes, seconds, ms] = match;
+  return parseInt(hours) * 3600 + parseInt(minutes) * 60 + parseInt(seconds) + (parseInt(ms || '0') / 1000);
 }
 
 // Parse SRT content into individual segments
@@ -117,10 +126,14 @@ export function CaptionsPreviewModal({
   scriptQa,
   projectId,
   onScriptQaUpdate,
+  audioUrl,
 }: CaptionsPreviewModalProps) {
   const { toast } = useToast();
   const [editedSrt, setEditedSrt] = useState(srtContent);
   const [isEditing, setIsEditing] = useState(false);
+  const [expandedIssueIdx, setExpandedIssueIdx] = useState<number | null>(null);
+  const [playingSegment, setPlayingSegment] = useState<number | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [segments, setSegments] = useState<ParsedSegment[]>([]);
   const [isQualityExpanded, setIsQualityExpanded] = useState(false);
   const [isScriptQaExpanded, setIsScriptQaExpanded] = useState(false);
@@ -171,6 +184,64 @@ export function CaptionsPreviewModal({
       });
     } finally {
       setIsCheckingQuality(false);
+    }
+  };
+
+  // Play audio for a specific segment
+  const playSegment = (segmentNumber: number) => {
+    if (!audioUrl) {
+      toast({ title: "No audio available", variant: "destructive" });
+      return;
+    }
+
+    // Find the segment in parsed SRT
+    const segment = segments.find(s => s.index === segmentNumber);
+    if (!segment) {
+      toast({ title: "Segment not found", variant: "destructive" });
+      return;
+    }
+
+    const startTime = srtTimeToSeconds(segment.startTime);
+    const endTime = srtTimeToSeconds(segment.endTime);
+
+    // Stop current playback if any
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+
+    // Create or reuse audio element
+    if (!audioRef.current) {
+      audioRef.current = new Audio(audioUrl);
+    } else if (audioRef.current.src !== audioUrl) {
+      audioRef.current.src = audioUrl;
+    }
+
+    const audio = audioRef.current;
+    audio.currentTime = startTime;
+    setPlayingSegment(segmentNumber);
+
+    // Stop at end time
+    const handleTimeUpdate = () => {
+      if (audio.currentTime >= endTime) {
+        audio.pause();
+        setPlayingSegment(null);
+        audio.removeEventListener('timeupdate', handleTimeUpdate);
+      }
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', () => setPlayingSegment(null), { once: true });
+    audio.play().catch(err => {
+      console.error('Audio play failed:', err);
+      setPlayingSegment(null);
+    });
+  };
+
+  // Stop audio playback
+  const stopPlayback = () => {
+    if (audioRef.current) {
+      audioRef.current.pause();
+      setPlayingSegment(null);
     }
   };
 
@@ -310,25 +381,86 @@ export function CaptionsPreviewModal({
                 <ChevronDown className={`w-4 h-4 transition-transform ${isScriptQaExpanded ? 'rotate-180' : ''}`} />
               </button>
               {isScriptQaExpanded && scriptQa.issues.length > 0 && (
-                <div className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto">
-                  {scriptQa.issues.map((issue, idx) => (
-                    <div key={idx} className="text-xs py-1.5 border-b border-amber-500/20 last:border-0">
-                      <span className={`font-medium ${issue.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
-                        {issue.segmentNumber ? `Seg ${issue.segmentNumber}` : `#${idx + 1}`}:
-                      </span>
-                      {' '}
-                      {issue.originalText && (
-                        <span className="text-green-600">"{issue.originalText.slice(0, 35)}{issue.originalText.length > 35 ? '...' : ''}"</span>
-                      )}
-                      {issue.originalText && issue.transcribedText && ' vs '}
-                      {issue.transcribedText && (
-                        <span className="text-red-500">"{issue.transcribedText.slice(0, 35)}{issue.transcribedText.length > 35 ? '...' : ''}"</span>
-                      )}
-                      {!issue.transcribedText && issue.type === 'missing' && (
-                        <span className="text-red-500 italic">(not in audio)</span>
-                      )}
-                    </div>
-                  ))}
+                <div className="px-3 pb-3 space-y-1 max-h-64 overflow-y-auto">
+                  {scriptQa.issues.map((issue, idx) => {
+                    const isExpanded = expandedIssueIdx === idx;
+                    const segNum = issue.segmentNumber;
+                    const isPlaying = playingSegment === segNum;
+
+                    return (
+                      <div key={idx} className="border-b border-amber-500/20 last:border-0">
+                        {/* Collapsed row - clickable to expand */}
+                        <button
+                          onClick={() => setExpandedIssueIdx(isExpanded ? null : idx)}
+                          className="w-full text-left text-xs py-1.5 hover:bg-black/5 flex items-center gap-1"
+                        >
+                          <ChevronDown className={`w-3 h-3 flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                          <span className={`font-medium ${issue.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                            {segNum ? `Seg ${segNum}` : `#${idx + 1}`}:
+                          </span>
+                          {' '}
+                          {!isExpanded && (
+                            <>
+                              {issue.originalText && (
+                                <span className="text-green-600 truncate">"{issue.originalText.slice(0, 30)}{issue.originalText.length > 30 ? '...' : ''}"</span>
+                              )}
+                              {issue.originalText && issue.transcribedText && <span className="flex-shrink-0"> vs </span>}
+                              {issue.transcribedText && (
+                                <span className="text-red-500 truncate">"{issue.transcribedText.slice(0, 30)}{issue.transcribedText.length > 30 ? '...' : ''}"</span>
+                              )}
+                              {!issue.transcribedText && issue.type === 'missing' && (
+                                <span className="text-red-500 italic">(missing)</span>
+                              )}
+                            </>
+                          )}
+                        </button>
+
+                        {/* Expanded content */}
+                        {isExpanded && (
+                          <div className="pl-5 pb-2 space-y-2">
+                            {/* Full script text */}
+                            {issue.originalText && (
+                              <div>
+                                <span className="text-[10px] text-muted-foreground uppercase">Script:</span>
+                                <p className="text-xs text-green-600 bg-green-50 p-1.5 rounded mt-0.5">"{issue.originalText}"</p>
+                              </div>
+                            )}
+                            {/* Full transcribed text */}
+                            {issue.transcribedText && (
+                              <div>
+                                <span className="text-[10px] text-muted-foreground uppercase">Heard:</span>
+                                <p className="text-xs text-red-500 bg-red-50 p-1.5 rounded mt-0.5">"{issue.transcribedText}"</p>
+                              </div>
+                            )}
+                            {!issue.transcribedText && issue.type === 'missing' && (
+                              <p className="text-xs text-red-500 italic">(This text was not found in the audio)</p>
+                            )}
+                            {/* Play button */}
+                            {audioUrl && segNum && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (isPlaying) {
+                                    stopPlayback();
+                                  } else {
+                                    playSegment(segNum);
+                                  }
+                                }}
+                                className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${
+                                  isPlaying
+                                    ? 'bg-blue-500 text-white'
+                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                }`}
+                              >
+                                {isPlaying ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                                {isPlaying ? 'Stop' : 'Play Segment'}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
 
                   {/* Word-level issues - compact badges */}
                   {scriptQa.wordIssues && scriptQa.wordIssues.length > 0 && (
