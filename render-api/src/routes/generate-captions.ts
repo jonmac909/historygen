@@ -879,6 +879,8 @@ router.post('/quality-check', async (req: Request, res: Response) => {
     const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY || '';
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    console.log(`[QA Check] Looking up project: ${projectId}`);
+
     const { data: project, error: projectError } = await supabase
       .from('generation_projects')
       .select('script_content')
@@ -886,7 +888,8 @@ router.post('/quality-check', async (req: Request, res: Response) => {
       .single();
 
     if (projectError || !project) {
-      return res.status(404).json({ error: 'Project not found' });
+      console.error(`[QA Check] Project lookup failed for ${projectId}:`, projectError?.message || 'No data');
+      return res.status(404).json({ error: `Project not found: ${projectId}` });
     }
 
     if (!project.script_content) {
