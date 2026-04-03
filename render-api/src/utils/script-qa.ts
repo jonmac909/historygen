@@ -12,6 +12,7 @@ export interface QAIssue {
   transcribedText: string;
   similarity?: number;
   severity: 'warning' | 'error';
+  segmentNumber?: number;  // Which SRT segment this issue relates to
 }
 
 export interface WordIssue {

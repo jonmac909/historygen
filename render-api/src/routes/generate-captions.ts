@@ -893,25 +893,49 @@ router.post('/quality-check', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Project has no script content' });
     }
 
-    // Extract text from SRT content
-    const lines = srtContent.split('\n');
-    const textLines: string[] = [];
-    for (const line of lines) {
-      const trimmed = line.trim();
-      // Skip empty lines, index numbers, and timestamp lines
-      if (trimmed && !/^\d+$/.test(trimmed) && !trimmed.includes('-->')) {
-        textLines.push(trimmed);
+    // Parse SRT into segments with indices
+    interface SrtSegment { index: number; text: string; }
+    const segments: SrtSegment[] = [];
+    const blocks = srtContent.split(/\n\n+/);
+    for (const block of blocks) {
+      const lines = block.trim().split('\n');
+      if (lines.length >= 3) {
+        const index = parseInt(lines[0], 10);
+        // Skip timestamp line (lines[1]), get text lines (lines[2+])
+        const textLines = lines.slice(2);
+        if (!isNaN(index)) {
+          segments.push({ index, text: textLines.join(' ') });
+        }
       }
     }
-    const transcription = textLines.join(' ');
+    const transcription = segments.map(s => s.text).join(' ');
 
     // Run QA comparison
     const qaResult = compareScriptToTranscription(project.script_content, transcription);
+
+    // Map each issue to its SRT segment by searching for the transcribed text
+    for (const issue of qaResult.issues) {
+      if (issue.transcribedText) {
+        // Normalize the search text (first 40 chars, lowercase, no punctuation)
+        const searchText = issue.transcribedText.toLowerCase().replace(/[^\w\s]/g, '').slice(0, 40);
+        for (const seg of segments) {
+          const segText = seg.text.toLowerCase().replace(/[^\w\s]/g, '');
+          // Check if segment contains this text or vice versa
+          if (segText.includes(searchText) || searchText.includes(segText.slice(0, 40))) {
+            issue.segmentNumber = seg.index;
+            break;
+          }
+        }
+      }
+    }
 
     console.log(`[QA Check] Project ${projectId}: ${qaResult.score}% match, ${qaResult.wordIssues.length} word issues`);
 
     return res.json({
       success: true,
+      // Include full texts for side-by-side comparison
+      scriptText: project.script_content,
+      transcriptText: transcription,
       scriptQa: qaResult,
     });
   } catch (error) {

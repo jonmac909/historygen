@@ -36,7 +36,7 @@ interface ScriptQAResult {
   score: number;
   totalScriptSentences: number;
   matchedSentences: number;
-  issues: { type: string; originalText: string; transcribedText: string; severity: string; similarity?: number }[];
+  issues: { type: string; originalText: string; transcribedText: string; severity: string; similarity?: number; segmentNumber?: number }[];
   wordIssues?: { type: string; scriptWord: string; transcribedWord: string; context: string; severity: string }[];
   needsReview: boolean;
 }
@@ -292,10 +292,10 @@ export function CaptionsPreviewModal({
           </div>
         ) : null}
 
-        {/* Script QA: Compare TTS audio to original script */}
+        {/* Script QA: Compare TTS audio to original script - Compact Accordion */}
         {scriptQa && (
           scriptQa.needsReview ? (
-            // Warning when score is low
+            // Warning when score is low - compact accordion format
             <div className={`border rounded-lg ${scriptQa.score < 85 ? 'border-red-500/30 bg-red-500/10' : 'border-amber-500/30 bg-amber-500/10'}`}>
               <button
                 onClick={() => setIsScriptQaExpanded(!isScriptQaExpanded)}
@@ -304,71 +304,52 @@ export function CaptionsPreviewModal({
                 <div className={`flex items-center gap-2 ${scriptQa.score < 85 ? 'text-red-600' : 'text-amber-600'}`}>
                   <AlertTriangle className="w-4 h-4" />
                   <span className="text-sm font-medium">
-                    Script match: {scriptQa.score}% - {scriptQa.issues.length} issue{scriptQa.issues.length !== 1 ? 's' : ''} detected
+                    Script match: {scriptQa.score}% - {scriptQa.issues.length} issue{scriptQa.issues.length !== 1 ? 's' : ''}
                   </span>
                 </div>
                 <ChevronDown className={`w-4 h-4 transition-transform ${isScriptQaExpanded ? 'rotate-180' : ''}`} />
               </button>
               {isScriptQaExpanded && scriptQa.issues.length > 0 && (
-                <div className="px-3 pb-3 space-y-2 max-h-60 overflow-y-auto">
-                  {scriptQa.issues.slice(0, 15).map((issue, idx) => (
-                    <div key={idx} className="text-xs bg-background/50 rounded p-2 border-l-2 border-l-amber-500">
-                      <div className="flex justify-between mb-1">
-                        <span className={`font-medium ${issue.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
-                          #{idx + 1} {issue.type === 'missing' ? 'MISSING - Not in audio' :
-                           issue.type === 'garbled' ? 'GARBLED - Audio differs' :
-                           issue.type === 'extra' ? 'EXTRA - Not in script' : 'MISMATCH'}
-                          {(issue as any).similarity !== undefined && ` (${Math.round((issue as any).similarity * 100)}% match)`}
-                        </span>
-                      </div>
+                <div className="px-3 pb-3 space-y-1 max-h-48 overflow-y-auto">
+                  {scriptQa.issues.map((issue, idx) => (
+                    <div key={idx} className="text-xs py-1.5 border-b border-amber-500/20 last:border-0">
+                      <span className={`font-medium ${issue.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
+                        {issue.segmentNumber ? `Seg ${issue.segmentNumber}` : `#${idx + 1}`}:
+                      </span>
+                      {' '}
                       {issue.originalText && (
-                        <div className="text-muted-foreground mb-1">
-                          <span className="text-green-600 font-medium">Script:</span> "{issue.originalText}"
-                        </div>
+                        <span className="text-green-600">"{issue.originalText.slice(0, 35)}{issue.originalText.length > 35 ? '...' : ''}"</span>
                       )}
+                      {issue.originalText && issue.transcribedText && ' vs '}
                       {issue.transcribedText && (
-                        <div className="text-muted-foreground">
-                          <span className="text-red-500 font-medium">Heard:</span> "{issue.transcribedText}"
-                        </div>
+                        <span className="text-red-500">"{issue.transcribedText.slice(0, 35)}{issue.transcribedText.length > 35 ? '...' : ''}"</span>
                       )}
                       {!issue.transcribedText && issue.type === 'missing' && (
-                        <div className="text-red-500 italic">
-                          (Not found in audio transcription)
-                        </div>
+                        <span className="text-red-500 italic">(not in audio)</span>
                       )}
                     </div>
                   ))}
-                  {scriptQa.issues.length > 15 && (
-                    <div className="text-xs text-muted-foreground text-center py-1">
-                      +{scriptQa.issues.length - 15} more issues
-                    </div>
-                  )}
 
-                  {/* Word-level issues */}
+                  {/* Word-level issues - compact badges */}
                   {scriptQa.wordIssues && scriptQa.wordIssues.length > 0 && (
-                    <>
-                      <div className="text-xs font-medium text-amber-600 mt-3 mb-1 border-t pt-2">
-                        Word-level issues ({scriptQa.wordIssues.length}):
-                      </div>
-                      <div className="flex flex-wrap gap-1">
-                        {scriptQa.wordIssues.slice(0, 20).map((wi, idx) => (
-                          <span key={idx} className={`text-xs px-1.5 py-0.5 rounded ${
-                            wi.type === 'wrong_word' ? 'bg-red-100 text-red-700' :
-                            wi.type === 'missing_word' ? 'bg-amber-100 text-amber-700' :
-                            wi.type === 'clipped_word' ? 'bg-orange-100 text-orange-700' :
-                            'bg-blue-100 text-blue-700'
-                          }`}>
-                            {wi.type === 'wrong_word' && `"${wi.scriptWord}" → "${wi.transcribedWord}"`}
-                            {wi.type === 'missing_word' && `missing: "${wi.scriptWord}"`}
-                            {wi.type === 'clipped_word' && `clipped: "${wi.transcribedWord}"`}
-                            {wi.type === 'extra_word' && `extra: "${wi.transcribedWord}"`}
-                          </span>
-                        ))}
-                        {scriptQa.wordIssues.length > 20 && (
-                          <span className="text-xs text-muted-foreground">+{scriptQa.wordIssues.length - 20} more</span>
-                        )}
-                      </div>
-                    </>
+                    <div className="flex flex-wrap gap-1 pt-2 mt-2 border-t border-amber-500/20">
+                      {scriptQa.wordIssues.slice(0, 15).map((wi, idx) => (
+                        <span key={idx} className={`text-xs px-1.5 py-0.5 rounded ${
+                          wi.type === 'wrong_word' ? 'bg-red-100 text-red-700' :
+                          wi.type === 'missing_word' ? 'bg-amber-100 text-amber-700' :
+                          wi.type === 'clipped_word' ? 'bg-orange-100 text-orange-700' :
+                          'bg-blue-100 text-blue-700'
+                        }`}>
+                          {wi.type === 'wrong_word' && `"${wi.scriptWord}"→"${wi.transcribedWord}"`}
+                          {wi.type === 'missing_word' && `missing:"${wi.scriptWord}"`}
+                          {wi.type === 'clipped_word' && `clipped:"${wi.transcribedWord}"`}
+                          {wi.type === 'extra_word' && `extra:"${wi.transcribedWord}"`}
+                        </span>
+                      ))}
+                      {scriptQa.wordIssues.length > 15 && (
+                        <span className="text-xs text-muted-foreground">+{scriptQa.wordIssues.length - 15} more</span>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
