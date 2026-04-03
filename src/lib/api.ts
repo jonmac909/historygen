@@ -894,7 +894,7 @@ export async function regenerateAudioSegment(
   pronunciationFix?: { word: string; phonetic: string },
   ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number }  // Same TTS settings as original audio
 ): Promise<{ success: boolean; segment?: AudioSegment; error?: string }> {
-  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
 
   try {
     const response = await fetch(`${renderApiUrl}/generate-audio/segment`, {
@@ -939,7 +939,7 @@ export async function regenerateAudioSegment(
 
 // Lookup phonetic spelling for a word (auto-fill for pronunciation fixes)
 export async function lookupPhonetic(word: string): Promise<{ word: string; phonetic: string; found: boolean }> {
-  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
 
   try {
     const response = await fetch(`${renderApiUrl}/generate-audio/phonetic/${encodeURIComponent(word)}`, {
@@ -966,7 +966,7 @@ export async function previewWordPronunciation(
   sentenceContext?: string,  // The full sentence containing the word
   ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number }  // Same TTS settings as original audio
 ): Promise<{ success: boolean; audioUrl?: string; error?: string }> {
-  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
 
   try {
     const response = await fetch(`${renderApiUrl}/generate-audio/word`, {
@@ -1007,7 +1007,7 @@ export async function recombineAudioSegments(
   projectId: string,
   segmentCount: number = 10
 ): Promise<{ success: boolean; audioUrl?: string; duration?: number; size?: number; error?: string }> {
-  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
 
   try {
     const response = await fetch(`${renderApiUrl}/generate-audio/recombine`, {
@@ -1701,7 +1701,7 @@ export async function runCaptionQualityCheck(
     needsReview: boolean;
   };
 }> {
-  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://history-gen-ai-production-f1d4.up.railway.app';
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
 
   try {
     const response = await fetch(`${renderApiUrl}/captions/quality-check`, {
