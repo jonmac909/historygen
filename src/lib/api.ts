@@ -1704,7 +1704,7 @@ export async function runCaptionQualityCheck(
   const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
 
   try {
-    const response = await fetch(`${renderApiUrl}/captions/quality-check`, {
+    const response = await fetch(`${renderApiUrl}/generate-captions/quality-check`, {
       method: 'POST',
       headers: withRenderAuth({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ projectId, srtContent }),
