@@ -8,6 +8,7 @@ import { saveCost } from '../lib/cost-tracker';
 import { Readable } from 'stream';
 import { ReadableStream as WebReadableStream } from 'stream/web';
 import { compareScriptToTranscription, QAResult } from '../utils/script-qa';
+import { getSupabaseClient } from '../lib/supabase-project';
 
 const router = Router();
 
@@ -874,10 +875,12 @@ router.post('/quality-check', async (req: Request, res: Response) => {
   }
 
   try {
-    // Get the project's script
-    const supabaseUrl = process.env.SUPABASE_URL || 'https://udqfdeoullsxttqguupz.supabase.co';
-    const supabaseKey = process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_KEY || '';
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    // Use shared Supabase client with service role key (required for database access)
+    const supabase = getSupabaseClient();
+    if (!supabase) {
+      console.error('[QA Check] Supabase not configured - missing SUPABASE_SERVICE_ROLE_KEY');
+      return res.status(500).json({ error: 'Server configuration error: Supabase not configured' });
+    }
 
     console.log(`[QA Check] Looking up project: ${projectId}`);
 
