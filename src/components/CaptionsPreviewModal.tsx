@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw } from "lucide-react";
 import { runCaptionQualityCheck } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
@@ -116,6 +117,7 @@ export function CaptionsPreviewModal({
   projectId,
   onScriptQaUpdate,
 }: CaptionsPreviewModalProps) {
+  const { toast } = useToast();
   const [editedSrt, setEditedSrt] = useState(srtContent);
   const [isEditing, setIsEditing] = useState(false);
   const [segments, setSegments] = useState<ParsedSegment[]>([]);
@@ -125,16 +127,47 @@ export function CaptionsPreviewModal({
 
   // Run quality check
   const handleQualityCheck = async () => {
-    if (!projectId || !editedSrt) return;
+    if (!projectId || !editedSrt) {
+      toast({
+        title: "Cannot check quality",
+        description: "Missing project ID or captions",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setIsCheckingQuality(true);
     try {
       const result = await runCaptionQualityCheck(projectId, editedSrt);
       if (result.success && result.scriptQa) {
         onScriptQaUpdate?.(result.scriptQa);
+        const qa = result.scriptQa;
+        if (qa.needsReview) {
+          toast({
+            title: `Script match: ${qa.score}%`,
+            description: `${qa.issues.length} issues found - check the yellow/red box below`,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: `Script match: ${qa.score}%`,
+            description: "Audio matches script well!",
+          });
+        }
+      } else {
+        toast({
+          title: "Quality check failed",
+          description: result.error || "Unknown error",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error('Quality check failed:', error);
+      toast({
+        title: "Quality check failed",
+        description: error instanceof Error ? error.message : "Network error",
+        variant: "destructive",
+      });
     } finally {
       setIsCheckingQuality(false);
     }
