@@ -18,7 +18,7 @@ import { ConfigModal, type ScriptTemplate, type ImageTemplate, type CartesiaVoic
 import { ProjectResults, type GeneratedAsset } from "@/components/ProjectResults";
 import { ScriptReviewModal } from "@/components/ScriptReviewModal";
 import { AudioPreviewModal } from "@/components/AudioPreviewModal";
-import { AudioSegmentsPreviewModal } from "@/components/AudioSegmentsPreviewModal";
+import { AudioSegmentsPreviewModal, SegmentIssue } from "@/components/AudioSegmentsPreviewModal";
 import { ImagesPreviewModal } from "@/components/ImagesPreviewModal";
 import { ImagePromptsPreviewModal } from "@/components/ImagePromptsPreviewModal";
 import { CaptionsPreviewModal } from "@/components/CaptionsPreviewModal";
@@ -295,6 +295,7 @@ const Index = () => {
   const [captionQualityIssues, setCaptionQualityIssues] = useState<any[] | undefined>();
   const [captionQualityWarning, setCaptionQualityWarning] = useState<string | undefined>();
   const [scriptQaResult, setScriptQaResult] = useState<{ score: number; needsReview: boolean; issues: any[] } | undefined>();
+  const [audioSegmentIssues, setAudioSegmentIssues] = useState<SegmentIssue[]>([]);
   const [pendingImages, setPendingImages] = useState<string[]>([]);
   const [generatedThumbnails, setGeneratedThumbnails] = useState<string[]>([]);
   const [selectedThumbnailIndex, setSelectedThumbnailIndex] = useState<number | undefined>();
@@ -680,6 +681,24 @@ const Index = () => {
       return () => clearTimeout(timer);
     }
   }, [settings.fullAutomation, projectId, viewState, generatedClips]);
+
+  // Convert QA issues to segment issues for audio modal
+  useEffect(() => {
+    if (scriptQaResult?.issues && scriptQaResult.issues.length > 0) {
+      const issues: SegmentIssue[] = scriptQaResult.issues
+        .filter(issue => issue.segmentNumber) // Only include issues with segment numbers
+        .map(issue => ({
+          segmentIndex: issue.segmentNumber!,
+          type: issue.type as 'missing' | 'garbled' | 'extra' | 'mismatch',
+          originalText: issue.originalText || '',
+          transcribedText: issue.transcribedText || '',
+          severity: issue.severity as 'warning' | 'error',
+        }));
+      setAudioSegmentIssues(issues);
+    } else {
+      setAudioSegmentIssues([]);
+    }
+  }, [scriptQaResult]);
 
   // Auto-save helper - uses unified project store (upsert by id)
   // Fire-and-forget async to avoid blocking UI
@@ -4995,6 +5014,7 @@ const Index = () => {
             const newUrl = await handleRecombineForRender();
             setPendingAudioUrl(newUrl);
           }}
+          segmentIssues={audioSegmentIssues}
         />
       ) : (
         <AudioPreviewModal

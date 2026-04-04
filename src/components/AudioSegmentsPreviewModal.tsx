@@ -20,6 +20,15 @@ interface TTSSettings {
   repetitionPenalty?: number;
 }
 
+// Issues from QA check that map to specific audio segments
+export interface SegmentIssue {
+  segmentIndex: number;  // 1-based segment number from SRT
+  type: 'missing' | 'garbled' | 'extra' | 'mismatch';
+  originalText: string;  // What the script says
+  transcribedText: string;  // What was heard
+  severity: 'warning' | 'error';
+}
+
 interface AudioSegmentsPreviewModalProps {
   isOpen: boolean;
   segments: AudioSegment[];
@@ -39,6 +48,8 @@ interface AudioSegmentsPreviewModalProps {
   // For stale audio detection
   segmentsNeedRecombine?: boolean;
   onRecombineAudio?: () => Promise<void>;
+  // QA issues from captions quality check
+  segmentIssues?: SegmentIssue[];
 }
 
 interface AudioSegmentCardProps {
@@ -619,6 +630,7 @@ export function AudioSegmentsPreviewModal({
   onAudioUpdated,
   segmentsNeedRecombine,
   onRecombineAudio,
+  segmentIssues,
 }: AudioSegmentsPreviewModalProps) {
   const [isPlayingAll, setIsPlayingAll] = useState(false);
   const [allCurrentTime, setAllCurrentTime] = useState(0);
@@ -658,6 +670,15 @@ export function AudioSegmentsPreviewModal({
     }
     return groups;
   }, [segments]);
+
+  // Get QA issues for a specific segment (by 1-based index)
+  const getIssuesForSegment = (segmentIndex: number): SegmentIssue[] => {
+    if (!segmentIssues) return [];
+    return segmentIssues.filter(issue => issue.segmentIndex === segmentIndex);
+  };
+
+  // Check if any segments have issues (for header warning)
+  const hasAnyIssues = segmentIssues && segmentIssues.length > 0;
 
   // Play all segments in a group sequentially
   const playGroup = (groupIndex: number) => {
@@ -856,6 +877,19 @@ export function AudioSegmentsPreviewModal({
             Total duration: {formatTime(totalDuration)}
           </DialogDescription>
         </DialogHeader>
+
+        {/* QA Issues Warning Banner */}
+        {hasAnyIssues && (
+          <div className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-lg">
+            <div className="flex items-center gap-2 text-amber-700 font-medium">
+              <AlertTriangle className="w-4 h-4" />
+              {segmentIssues!.length} segment{segmentIssues!.length !== 1 ? 's need' : ' needs'} regeneration
+            </div>
+            <p className="text-xs text-amber-600 mt-1">
+              Quality check found issues with the audio. Segments with problems are marked below.
+            </p>
+          </div>
+        )}
 
         <div className="py-4 space-y-4">
           {/* Combined Audio Player - Play All */}
@@ -1062,26 +1096,51 @@ export function AudioSegmentsPreviewModal({
                 {/* Expanded Segments */}
                 {isExpanded && (
                   <div className="p-2 space-y-2 bg-muted/20">
-                    {group.segments.map((segment, localIndex) => (
-                      <div key={segment.index} className="relative">
-                        {/* Playing indicator */}
-                        {isPlaying && playingSegmentInGroup === localIndex && (
-                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-l animate-pulse" />
-                        )}
-                        <AudioSegmentCard
-                          segment={segment}
-                          isRegenerating={regeneratingIndex === segment.index}
-                          onRegenerate={(editedText) => handleSegmentRegenerate(segment.index, editedText)}
-                          editedText={editedTexts[segment.index] || segment.text}
-                          onTextChange={(text) => handleTextChange(segment.index, text)}
-                          projectId={projectId}
-                          voiceSampleUrl={voiceSampleUrl}
-                          ttsSettings={ttsSettings}
-                          segmentCount={segments.length}
-                          onAudioUpdated={onAudioUpdated}
-                        />
-                      </div>
-                    ))}
+                    {group.segments.map((segment, localIndex) => {
+                      const segmentIssuesForThis = getIssuesForSegment(segment.index);
+                      const hasIssues = segmentIssuesForThis.length > 0;
+
+                      return (
+                        <div key={segment.index} className="relative">
+                          {/* Playing indicator */}
+                          {isPlaying && playingSegmentInGroup === localIndex && (
+                            <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-l animate-pulse" />
+                          )}
+                          {/* QA Issue warning */}
+                          {hasIssues && (
+                            <div className="mb-1 p-2 bg-amber-50 border border-amber-200 rounded-t text-xs">
+                              <div className="flex items-center gap-1 text-amber-700 font-medium mb-1">
+                                <AlertTriangle className="w-3 h-3" />
+                                QA Issue - Needs regeneration
+                              </div>
+                              {segmentIssuesForThis.map((issue, i) => (
+                                <div key={i} className="pl-4 text-amber-600">
+                                  <span className="text-green-600">"{issue.originalText.slice(0, 40)}{issue.originalText.length > 40 ? '...' : ''}"</span>
+                                  {issue.transcribedText && (
+                                    <>
+                                      {' → heard: '}
+                                      <span className="text-red-500">"{issue.transcribedText.slice(0, 40)}{issue.transcribedText.length > 40 ? '...' : ''}"</span>
+                                    </>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <AudioSegmentCard
+                            segment={segment}
+                            isRegenerating={regeneratingIndex === segment.index}
+                            onRegenerate={(editedText) => handleSegmentRegenerate(segment.index, editedText)}
+                            editedText={editedTexts[segment.index] || segment.text}
+                            onTextChange={(text) => handleTextChange(segment.index, text)}
+                            projectId={projectId}
+                            voiceSampleUrl={voiceSampleUrl}
+                            ttsSettings={ttsSettings}
+                            segmentCount={segments.length}
+                            onAudioUpdated={onAudioUpdated}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
