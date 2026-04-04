@@ -482,3 +482,193 @@ export function quickScoreCheck(script: string, transcription: string): number {
   const result = compareScriptToTranscription(script, transcription);
   return result.score;
 }
+
+/**
+ * Audio segment from Fish Speech TTS
+ */
+export interface AudioSegment {
+  index: number;      // 1-based segment number
+  text: string;       // Original script text sent to TTS
+  duration: number;   // Duration in seconds
+  audioUrl?: string;  // URL to individual segment audio
+}
+
+/**
+ * SRT segment parsed from captions file
+ */
+export interface SrtSegment {
+  index: number;      // 1-based SRT entry number
+  text: string;       // Transcribed text
+  startTime: number;  // Start time in seconds
+  endTime: number;    // End time in seconds
+}
+
+/**
+ * Compare audio segments to SRT segments by TIME RANGE
+ *
+ * This is the correct approach because:
+ * - Each audio segment contains a chunk of script text (e.g., "The gossip around Princess Charlotte...")
+ * - Fish Speech TTS generates audio for that segment
+ * - The combined audio is transcribed by Whisper into SRT
+ * - SRT segments are split into 5-7 word chunks for readability
+ * - So one audio segment maps to MANY SRT segments
+ *
+ * Algorithm:
+ * 1. Calculate time range for each audio segment (cumulative durations)
+ * 2. Find SRT segments that fall within each audio segment's time range
+ * 3. Concatenate those SRT texts
+ * 4. Compare audio segment text vs concatenated SRT text
+ */
+export function compareAudioSegmentsToSRT(
+  audioSegments: AudioSegment[],
+  srtSegments: SrtSegment[]
+): QAResult {
+  const issues: QAIssue[] = [];
+  let totalMatched = 0;
+  let totalSegments = 0;
+
+  // Sort audio segments by index
+  const sortedAudioSegments = [...audioSegments].sort((a, b) => a.index - b.index);
+
+  // Calculate time ranges for each audio segment
+  let cumulativeTime = 0;
+  const audioTimeRanges: { segment: AudioSegment; startTime: number; endTime: number }[] = [];
+
+  for (const seg of sortedAudioSegments) {
+    audioTimeRanges.push({
+      segment: seg,
+      startTime: cumulativeTime,
+      endTime: cumulativeTime + seg.duration,
+    });
+    cumulativeTime += seg.duration;
+  }
+
+  // For each audio segment, find matching SRT segments and compare
+  for (const { segment: audioSeg, startTime, endTime } of audioTimeRanges) {
+    // Skip empty segments
+    if (!audioSeg.text || audioSeg.text.trim().length === 0) continue;
+    totalSegments++;
+
+    // Find all SRT segments within this audio segment's time range
+    // Use a small buffer (0.5s) to account for timing inaccuracies
+    const matchingSrtSegments = srtSegments.filter(srt => {
+      const srtMid = (srt.startTime + srt.endTime) / 2;
+      return srtMid >= startTime - 0.5 && srtMid < endTime + 0.5;
+    });
+
+    // Concatenate SRT texts
+    const transcribedText = matchingSrtSegments
+      .sort((a, b) => a.startTime - b.startTime)
+      .map(s => s.text)
+      .join(' ')
+      .trim();
+
+    // If no SRT segments found, it's missing
+    if (!transcribedText) {
+      issues.push({
+        type: 'missing',
+        originalText: audioSeg.text.substring(0, 150) + (audioSeg.text.length > 150 ? '...' : ''),
+        transcribedText: '',
+        severity: 'error',
+        segmentNumber: audioSeg.index,
+      });
+      continue;
+    }
+
+    // Compare the texts using LCS similarity
+    const normalizedScript = normalizeText(audioSeg.text);
+    const normalizedTranscript = normalizeText(transcribedText);
+    const similarity = calculateSimilarity(normalizedScript, normalizedTranscript);
+
+    if (similarity < 0.6) {
+      // Severely garbled or wrong content
+      issues.push({
+        type: 'garbled',
+        originalText: audioSeg.text.substring(0, 150) + (audioSeg.text.length > 150 ? '...' : ''),
+        transcribedText: transcribedText.substring(0, 150) + (transcribedText.length > 150 ? '...' : ''),
+        similarity,
+        severity: 'error',
+        segmentNumber: audioSeg.index,
+      });
+    } else if (similarity < 0.92) {
+      // Some issues but mostly okay
+      issues.push({
+        type: 'mismatch',
+        originalText: audioSeg.text.substring(0, 150) + (audioSeg.text.length > 150 ? '...' : ''),
+        transcribedText: transcribedText.substring(0, 150) + (transcribedText.length > 150 ? '...' : ''),
+        similarity,
+        severity: 'warning',
+        segmentNumber: audioSeg.index,
+      });
+      totalMatched += similarity;
+    } else {
+      // Good match
+      totalMatched++;
+    }
+  }
+
+  // Calculate overall score
+  const score = totalSegments > 0 ? Math.round((totalMatched / totalSegments) * 100) : 100;
+
+  // Word-level comparison: concatenate all audio segment texts and all SRT texts
+  const fullScript = sortedAudioSegments.map(s => s.text).join(' ');
+  const fullTranscript = srtSegments.sort((a, b) => a.startTime - b.startTime).map(s => s.text).join(' ');
+  const wordIssues = findWordLevelIssues(fullScript, fullTranscript);
+
+  // Filter significant word issues
+  const significantWordIssues = wordIssues.filter(issue => {
+    if (issue.type === 'clipped_word') return true;
+    if (issue.type === 'wrong_word') return true;
+    if (issue.type === 'missing_word') return issue.scriptWord.length > 1;
+    if (issue.type === 'extra_word') return issue.transcribedWord.length > 2;
+    return true;
+  });
+
+  // Determine if review is needed
+  const hasClippedWords = significantWordIssues.some(i => i.type === 'clipped_word');
+  const hasWrongWords = significantWordIssues.some(i => i.type === 'wrong_word');
+  const hasMissingWords = significantWordIssues.filter(i => i.type === 'missing_word').length > 2;
+
+  return {
+    score,
+    totalScriptSentences: totalSegments,
+    matchedSentences: Math.round(totalMatched),
+    issues,
+    wordIssues: significantWordIssues,
+    needsReview: score < 98 || hasClippedWords || hasWrongWords || hasMissingWords || issues.length > 0,
+  };
+}
+
+/**
+ * Parse SRT content into SrtSegment array
+ */
+export function parseSrtToSegments(srtContent: string): SrtSegment[] {
+  const segments: SrtSegment[] = [];
+  const blocks = srtContent.trim().split(/\n\n+/);
+
+  for (const block of blocks) {
+    const lines = block.trim().split('\n');
+    if (lines.length >= 3) {
+      const index = parseInt(lines[0], 10);
+      const timeMatch = lines[1].match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);
+      const text = lines.slice(2).join(' ').trim();
+
+      if (!isNaN(index) && timeMatch) {
+        const startTime =
+          parseInt(timeMatch[1]) * 3600 +
+          parseInt(timeMatch[2]) * 60 +
+          parseInt(timeMatch[3]) +
+          parseInt(timeMatch[4]) / 1000;
+        const endTime =
+          parseInt(timeMatch[5]) * 3600 +
+          parseInt(timeMatch[6]) * 60 +
+          parseInt(timeMatch[7]) +
+          parseInt(timeMatch[8]) / 1000;
+
+        segments.push({ index, text, startTime, endTime });
+      }
+    }
+  }
+
+  return segments;
+}

@@ -5050,6 +5050,31 @@ const Index = () => {
         projectId={projectId}
         onScriptQaUpdate={setScriptQaResult}
         audioUrl={pendingAudioUrl}
+        voiceSampleUrl={settings.voiceSampleUrl || undefined}
+        ttsSettings={{
+          temperature: settings.ttsTemperature,
+          topP: settings.ttsTopP,
+          repetitionPenalty: settings.ttsRepetitionPenalty,
+        }}
+        audioSegments={pendingAudioSegments}
+        onSegmentRegenerated={(segmentNumber, newAudioUrl, newText, duration) => {
+          // Update the audio segment in state
+          setPendingAudioSegments(prev => prev.map(seg =>
+            seg.index === segmentNumber
+              ? { ...seg, audioUrl: newAudioUrl, text: newText, duration }
+              : seg
+          ));
+          // Mark that segments need recombining for next render
+          setSegmentsNeedRecombine(true);
+          // Save to project
+          if (projectId) {
+            saveProject(projectId, { audioSegments: pendingAudioSegments.map(seg =>
+              seg.index === segmentNumber
+                ? { ...seg, audioUrl: newAudioUrl, text: newText, duration }
+                : seg
+            )});
+          }
+        }}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}

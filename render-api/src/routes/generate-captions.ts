@@ -7,7 +7,7 @@ import crypto from 'crypto';
 import { saveCost } from '../lib/cost-tracker';
 import { Readable } from 'stream';
 import { ReadableStream as WebReadableStream } from 'stream/web';
-import { compareScriptToTranscription, QAResult } from '../utils/script-qa';
+import { compareScriptToTranscription, compareAudioSegmentsToSRT, parseSrtToSegments, QAResult, AudioSegment, SrtSegment } from '../utils/script-qa';
 import { getSupabaseClient } from '../lib/supabase-project';
 
 const router = Router();
@@ -861,7 +861,7 @@ router.post('/', async (req: Request, res: Response) => {
 /**
  * POST /quality-check
  * Run QA comparison between script and existing captions
- * Used for manual quality checking without regenerating captions
+ * Uses audio_segments with durations for accurate time-range based comparison
  */
 router.post('/quality-check', async (req: Request, res: Response) => {
   const { projectId, srtContent } = req.body;
@@ -884,9 +884,10 @@ router.post('/quality-check', async (req: Request, res: Response) => {
 
     console.log(`[QA Check] Looking up project: ${projectId}`);
 
+    // Fetch both script_content AND audio_segments
     const { data: project, error: projectError } = await supabase
       .from('generation_projects')
-      .select('script_content')
+      .select('script_content, audio_segments')
       .eq('id', projectId)
       .single();
 
@@ -895,54 +896,57 @@ router.post('/quality-check', async (req: Request, res: Response) => {
       return res.status(404).json({ error: `Project not found: ${projectId}` });
     }
 
-    if (!project.script_content) {
-      return res.status(400).json({ error: 'Project has no script content' });
-    }
+    // Parse SRT into segments with timestamps
+    const srtSegments = parseSrtToSegments(srtContent);
+    const transcription = srtSegments.map(s => s.text).join(' ');
 
-    // Parse SRT into segments with indices
-    interface SrtSegment { index: number; text: string; }
-    const segments: SrtSegment[] = [];
-    const blocks = srtContent.split(/\n\n+/);
-    for (const block of blocks) {
-      const lines = block.trim().split('\n');
-      if (lines.length >= 3) {
-        const index = parseInt(lines[0], 10);
-        // Skip timestamp line (lines[1]), get text lines (lines[2+])
-        const textLines = lines.slice(2);
-        if (!isNaN(index)) {
-          segments.push({ index, text: textLines.join(' ') });
-        }
-      }
-    }
-    const transcription = segments.map(s => s.text).join(' ');
+    let qaResult: QAResult;
 
-    // Run QA comparison
-    const qaResult = compareScriptToTranscription(project.script_content, transcription);
+    // If we have audio_segments with durations, use time-range based comparison (ACCURATE)
+    // Otherwise fall back to old sentence-matching method (less accurate but works)
+    if (project.audio_segments && Array.isArray(project.audio_segments) && project.audio_segments.length > 0) {
+      // Map database audio_segments to our interface
+      const audioSegments: AudioSegment[] = project.audio_segments.map((seg: any) => ({
+        index: seg.index,
+        text: seg.text,
+        duration: seg.duration || 0,
+        audioUrl: seg.audioUrl,
+      }));
 
-    // Map each issue to its SRT segment by searching for the transcribed text
-    for (const issue of qaResult.issues) {
-      if (issue.transcribedText) {
-        // Normalize the search text (first 40 chars, lowercase, no punctuation)
-        const searchText = issue.transcribedText.toLowerCase().replace(/[^\w\s]/g, '').slice(0, 40);
-        for (const seg of segments) {
-          const segText = seg.text.toLowerCase().replace(/[^\w\s]/g, '');
-          // Check if segment contains this text or vice versa
-          if (segText.includes(searchText) || searchText.includes(segText.slice(0, 40))) {
-            issue.segmentNumber = seg.index;
-            break;
+      console.log(`[QA Check] Using time-range comparison: ${audioSegments.length} audio segments → ${srtSegments.length} SRT segments`);
+      qaResult = compareAudioSegmentsToSRT(audioSegments, srtSegments);
+    } else if (project.script_content) {
+      // Fallback: use old sentence-matching method
+      console.log(`[QA Check] No audio_segments found, falling back to sentence matching`);
+      qaResult = compareScriptToTranscription(project.script_content, transcription);
+
+      // Try to map issues to SRT segments by text search
+      for (const issue of qaResult.issues) {
+        if (issue.transcribedText) {
+          const searchText = issue.transcribedText.toLowerCase().replace(/[^\w\s]/g, '').slice(0, 40);
+          for (const seg of srtSegments) {
+            const segText = seg.text.toLowerCase().replace(/[^\w\s]/g, '');
+            if (segText.includes(searchText) || searchText.includes(segText.slice(0, 40))) {
+              issue.segmentNumber = seg.index;
+              break;
+            }
           }
         }
       }
+    } else {
+      return res.status(400).json({ error: 'Project has no script content or audio segments' });
     }
 
-    console.log(`[QA Check] Project ${projectId}: ${qaResult.score}% match, ${qaResult.wordIssues.length} word issues`);
+    console.log(`[QA Check] Project ${projectId}: ${qaResult.score}% match, ${qaResult.issues.length} issues, ${qaResult.wordIssues.length} word issues`);
 
     return res.json({
       success: true,
       // Include full texts for side-by-side comparison
-      scriptText: project.script_content,
+      scriptText: project.script_content || '',
       transcriptText: transcription,
       scriptQa: qaResult,
+      // Include audio segments info for regen modal
+      audioSegmentCount: project.audio_segments?.length || 0,
     });
   } catch (error) {
     console.error('[QA Check] Error:', error);

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw, Play, Square } from "lucide-react";
-import { runCaptionQualityCheck } from "@/lib/api";
+import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw, Play, Square, Wand2 } from "lucide-react";
+import { runCaptionQualityCheck, AudioSegment } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
+import { SegmentRegenerateModal } from "./SegmentRegenerateModal";
 
 interface ParsedSegment {
   index: number;
@@ -61,6 +62,11 @@ interface CaptionsPreviewModalProps {
   projectId?: string;  // For running quality checks
   onScriptQaUpdate?: (qa: ScriptQAResult) => void;  // Callback when QA check completes
   audioUrl?: string;  // Audio URL for playing segments
+  // For audio regeneration
+  voiceSampleUrl?: string;  // Voice sample URL for TTS regeneration
+  ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number };
+  audioSegments?: AudioSegment[];  // Audio segments with durations for time range calculation
+  onSegmentRegenerated?: (segmentNumber: number, newAudioUrl: string, newText: string, duration: number) => void;
 }
 
 // Format seconds to MM:SS
@@ -127,6 +133,10 @@ export function CaptionsPreviewModal({
   projectId,
   onScriptQaUpdate,
   audioUrl,
+  voiceSampleUrl,
+  ttsSettings,
+  audioSegments,
+  onSegmentRegenerated,
 }: CaptionsPreviewModalProps) {
   const { toast } = useToast();
   const [editedSrt, setEditedSrt] = useState(srtContent);
@@ -138,6 +148,72 @@ export function CaptionsPreviewModal({
   const [isQualityExpanded, setIsQualityExpanded] = useState(false);
   const [isScriptQaExpanded, setIsScriptQaExpanded] = useState(false);
   const [isCheckingQuality, setIsCheckingQuality] = useState(false);
+
+  // Regeneration modal state
+  const [regenModalOpen, setRegenModalOpen] = useState(false);
+  const [regenSegmentData, setRegenSegmentData] = useState<{
+    segmentNumber: number;
+    text: string;
+    startTime?: number;
+    endTime?: number;
+  } | null>(null);
+
+  // Calculate time range for an audio segment based on cumulative durations
+  const getAudioSegmentTimeRange = (segmentNumber: number): { startTime: number; endTime: number } | null => {
+    if (!audioSegments || audioSegments.length === 0) return null;
+
+    // Sort segments by index
+    const sortedSegments = [...audioSegments].sort((a, b) => a.index - b.index);
+
+    let cumulativeTime = 0;
+    for (const seg of sortedSegments) {
+      if (seg.index === segmentNumber) {
+        return {
+          startTime: cumulativeTime,
+          endTime: cumulativeTime + seg.duration,
+        };
+      }
+      cumulativeTime += seg.duration;
+    }
+    return null;
+  };
+
+  // Open regeneration modal for a specific issue
+  const openRegenModal = (issue: { segmentNumber?: number; originalText: string }) => {
+    if (!issue.segmentNumber) {
+      toast({ title: "Cannot regenerate", description: "No segment number available", variant: "destructive" });
+      return;
+    }
+
+    const timeRange = getAudioSegmentTimeRange(issue.segmentNumber);
+    setRegenSegmentData({
+      segmentNumber: issue.segmentNumber,
+      text: issue.originalText,
+      startTime: timeRange?.startTime,
+      endTime: timeRange?.endTime,
+    });
+    setRegenModalOpen(true);
+  };
+
+  // Handle accepted regeneration
+  const handleRegenAccept = (segmentNumber: number, newAudioUrl: string, newText: string, duration: number) => {
+    // Notify parent that segment was regenerated
+    onSegmentRegenerated?.(segmentNumber, newAudioUrl, newText, duration);
+
+    // Remove this issue from the QA list (optimistic update)
+    if (scriptQa && onScriptQaUpdate) {
+      const updatedIssues = scriptQa.issues.filter(i => i.segmentNumber !== segmentNumber);
+      onScriptQaUpdate({
+        ...scriptQa,
+        issues: updatedIssues,
+        // Recalculate needsReview based on remaining issues
+        needsReview: updatedIssues.length > 0 || (scriptQa.wordIssues && scriptQa.wordIssues.length > 3),
+      });
+    }
+
+    toast({ title: "Segment regenerated", description: `Audio segment ${segmentNumber} has been updated` });
+    setRegenModalOpen(false);
+  };
 
   // Run quality check
   const handleQualityCheck = async () => {
@@ -273,6 +349,7 @@ export function CaptionsPreviewModal({
   };
 
   return (
+  <>
     <Dialog open={isOpen} onOpenChange={(open) => !open && onCancel()}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
@@ -288,9 +365,8 @@ export function CaptionsPreviewModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* Audio Quality Status */}
-        {qualityIssues && qualityIssues.length > 0 ? (
-          // Warning banner when issues found
+        {/* Audio Quality Status - Only show if issues found */}
+        {qualityIssues && qualityIssues.length > 0 && (
           <div className="border border-amber-500/30 rounded-lg bg-amber-500/10">
             <div className="flex items-center justify-between p-3">
               <button
@@ -337,31 +413,23 @@ export function CaptionsPreviewModal({
               </div>
             )}
           </div>
-        ) : captionCount > 0 ? (
-          // Success banner when audio is clean
-          <div className="border border-green-500/30 rounded-lg bg-green-500/10 p-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-green-600">
-                <CheckCircle2 className="w-4 h-4" />
-                <span className="text-sm font-medium">
-                  Audio quality: Good ({captionCount.toLocaleString()} segments scanned)
-                </span>
-              </div>
-              {projectId && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={handleQualityCheck}
-                  disabled={isCheckingQuality}
-                  className="h-7 text-xs"
-                >
-                  <RefreshCw className={`w-3 h-3 mr-1 ${isCheckingQuality ? 'animate-spin' : ''}`} />
-                  {isCheckingQuality ? 'Checking...' : 'Quality Check'}
-                </Button>
-              )}
-            </div>
+        )}
+
+        {/* Quality Check Button - shown when no issues but have captions */}
+        {(!qualityIssues || qualityIssues.length === 0) && captionCount > 0 && projectId && (
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleQualityCheck}
+              disabled={isCheckingQuality}
+              className="h-7 text-xs"
+            >
+              <RefreshCw className={`w-3 h-3 mr-1 ${isCheckingQuality ? 'animate-spin' : ''}`} />
+              {isCheckingQuality ? 'Checking...' : 'Quality Check'}
+            </Button>
           </div>
-        ) : null}
+        )}
 
         {/* Script QA: Compare TTS audio to original script - Compact Accordion */}
         {scriptQa && (
@@ -402,11 +470,11 @@ export function CaptionsPreviewModal({
                           {!isExpanded && (
                             <>
                               {issue.originalText && (
-                                <span className="text-green-600 truncate">"{issue.originalText.slice(0, 30)}{issue.originalText.length > 30 ? '...' : ''}"</span>
+                                <span className="text-green-600 truncate">"{issue.originalText.slice(0, 60)}{issue.originalText.length > 60 ? '...' : ''}"</span>
                               )}
                               {issue.originalText && issue.transcribedText && <span className="flex-shrink-0"> vs </span>}
                               {issue.transcribedText && (
-                                <span className="text-red-500 truncate">"{issue.transcribedText.slice(0, 30)}{issue.transcribedText.length > 30 ? '...' : ''}"</span>
+                                <span className="text-red-500 truncate">"{issue.transcribedText.slice(0, 60)}{issue.transcribedText.length > 60 ? '...' : ''}"</span>
                               )}
                               {!issue.transcribedText && issue.type === 'missing' && (
                                 <span className="text-red-500 italic">(missing)</span>
@@ -435,27 +503,44 @@ export function CaptionsPreviewModal({
                             {!issue.transcribedText && issue.type === 'missing' && (
                               <p className="text-xs text-red-500 italic">(This text was not found in the audio)</p>
                             )}
-                            {/* Play button */}
-                            {audioUrl && segNum && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (isPlaying) {
-                                    stopPlayback();
-                                  } else {
-                                    playSegment(segNum);
-                                  }
-                                }}
-                                className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${
-                                  isPlaying
-                                    ? 'bg-blue-500 text-white'
-                                    : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                }`}
-                              >
-                                {isPlaying ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                                {isPlaying ? 'Stop' : 'Play Segment'}
-                              </button>
-                            )}
+                            {/* Action buttons */}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                              {/* Play button */}
+                              {audioUrl && segNum && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (isPlaying) {
+                                      stopPlayback();
+                                    } else {
+                                      playSegment(segNum);
+                                    }
+                                  }}
+                                  className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${
+                                    isPlaying
+                                      ? 'bg-blue-500 text-white'
+                                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                  }`}
+                                >
+                                  {isPlaying ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+                                  {isPlaying ? 'Stop' : 'Play'}
+                                </button>
+                              )}
+
+                              {/* Regenerate button - only show if we have voiceSampleUrl and segmentNumber */}
+                              {voiceSampleUrl && issue.segmentNumber && projectId && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    openRegenModal(issue);
+                                  }}
+                                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 hover:bg-amber-200"
+                                >
+                                  <Wand2 className="w-3 h-3" />
+                                  Regenerate
+                                </button>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
@@ -654,5 +739,26 @@ export function CaptionsPreviewModal({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Segment Regeneration Modal */}
+    {regenSegmentData && projectId && (
+      <SegmentRegenerateModal
+        isOpen={regenModalOpen}
+        onClose={() => {
+          setRegenModalOpen(false);
+          setRegenSegmentData(null);
+        }}
+        segmentNumber={regenSegmentData.segmentNumber}
+        originalText={regenSegmentData.text}
+        combinedAudioUrl={audioUrl}
+        segmentStartTime={regenSegmentData.startTime}
+        segmentEndTime={regenSegmentData.endTime}
+        projectId={projectId}
+        voiceSampleUrl={voiceSampleUrl}
+        ttsSettings={ttsSettings}
+        onAccept={handleRegenAccept}
+      />
+    )}
+  </>
   );
 }
