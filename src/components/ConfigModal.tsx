@@ -82,7 +82,7 @@ export function ConfigModal({
   // Local voice settings state
   const [localVoiceSettings, setLocalVoiceSettings] = useState(voiceSettings || {
     voiceSampleUrl: null,
-    ttsEmotionMarker: "(sincere) (soft tone)",
+    ttsEmotionMarker: "(calm)",
     ttsTemperature: 0.9,
     ttsTopP: 0.85,
     ttsRepetitionPenalty: 1.1,
