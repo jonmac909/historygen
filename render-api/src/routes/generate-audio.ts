@@ -47,13 +47,14 @@ const RETRY_INITIAL_DELAY = 1000;
 const RETRY_MAX_DELAY = 10000;
 
 // Audio pause durations (in seconds) for different punctuation marks
+// Increased for more natural pacing
 const PAUSE_DURATIONS = {
-  SENTENCE_END: 0.4,      // Period (.), exclamation (!), question (?)
-  PARAGRAPH: 0.8,         // Double newline or explicit paragraph break
-  ELLIPSIS: 0.6,          // Ellipsis (...) - dramatic pause
-  COMMA: 0.15,            // Comma (,) - brief pause (TTS usually handles this)
-  SEMICOLON: 0.25,        // Semicolon (;) or colon (:)
-  DASH: 0.2,              // Em dash (—) or double dash (--)
+  SENTENCE_END: 0.7,      // Period (.), exclamation (!), question (?) - was 0.4
+  PARAGRAPH: 1.2,         // Double newline or explicit paragraph break - was 0.8
+  ELLIPSIS: 1.0,          // Ellipsis (...) - dramatic pause - was 0.6
+  COMMA: 0.25,            // Comma (,) - brief pause - was 0.15
+  SEMICOLON: 0.4,         // Semicolon (;) or colon (:) - was 0.25
+  DASH: 0.35,             // Em dash (—) or double dash (--) - was 0.2
 };
 
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID || "7gv5y0snx5xiwk";
