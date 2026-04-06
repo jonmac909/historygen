@@ -51,7 +51,7 @@ const RETRY_MAX_DELAY = 10000;
 const PAUSE_DURATIONS = {
   SENTENCE_END: 0.7,      // Period (.), exclamation (!), question (?) - was 0.4
   PARAGRAPH: 1.2,         // Double newline or explicit paragraph break - was 0.8
-  ELLIPSIS: 1.0,          // Ellipsis (...) - dramatic pause - was 0.6
+  ELLIPSIS: 1.5,          // Ellipsis (... or ....) - dramatic pause
   COMMA: 0.25,            // Comma (,) - brief pause - was 0.15
   SEMICOLON: 0.4,         // Semicolon (;) or colon (:) - was 0.25
   DASH: 0.35,             // Em dash (—) or double dash (--) - was 0.2
@@ -724,7 +724,7 @@ function getPauseDuration(text: string, isLastChunk: boolean = false): number {
   const lastThree = trimmed.slice(-3);
   const lastTwo = trimmed.slice(-2);
 
-  // Ellipsis (... or …)
+  // Ellipsis (... or .... or …) - check for 3+ dots
   if (lastThree === '...' || lastChar === '…') {
     return PAUSE_DURATIONS.ELLIPSIS;
   }
