@@ -1313,11 +1313,13 @@ function splitIntoChunks(text: string, maxLength: number = MAX_TTS_CHUNK_LENGTH)
         }
       }
       if (partChunk) chunks.push(partChunk.trim());
-    } else if ((currentChunk + " " + cleanSentence).length > maxLength) {
-      if (currentChunk) chunks.push(currentChunk.trim());
-      currentChunk = cleanSentence;
     } else {
-      currentChunk = currentChunk ? currentChunk + " " + cleanSentence : cleanSentence;
+      // Each sentence becomes its own TTS chunk for proper pause insertion
+      // Pauses are added BETWEEN chunks based on ending punctuation (getPauseDuration)
+      // This doesn't affect UI segments - only internal audio processing
+      if (currentChunk) chunks.push(currentChunk.trim());
+      chunks.push(cleanSentence);
+      currentChunk = "";
     }
   }
 
