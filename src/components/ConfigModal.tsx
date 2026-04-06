@@ -86,7 +86,7 @@ export function ConfigModal({
     ttsTemperature: 0.9,
     ttsTopP: 0.85,
     ttsRepetitionPenalty: 1.1,
-    speed: 0.9,  // Slightly slower for clear narration
+    speed: 0.95,
   });
 
   // Sync voice settings when modal opens
