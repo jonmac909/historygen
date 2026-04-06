@@ -1890,8 +1890,7 @@ async function adjustAudioSpeed(wavBuffer: Buffer, speed: number): Promise<Buffe
 
 // Main route handler
 router.post('/', async (req: Request, res: Response) => {
-  // Default speed 0.75 = 25% slower for more natural pacing
-  const { script, voiceSampleUrl, projectId, stream, speed = 0.75, ttsSettings = {} } = req.body;
+  const { script, voiceSampleUrl, projectId, stream, speed = 1, ttsSettings = {} } = req.body;
 
   // Extract TTS settings with defaults
   const emotionMarker = ttsSettings.emotionMarker ?? '(sincere) (soft tone)';
@@ -2067,7 +2066,7 @@ router.post('/', async (req: Request, res: Response) => {
 });
 
 // Handle streaming without voice cloning (SEQUENTIAL - Memory optimized)
-async function handleStreaming(req: Request, res: Response, chunks: string[], projectId: string, wordCount: number, apiKey: string, speed: number = 0.75, ttsJobSettings?: TTSJobSettings) {
+async function handleStreaming(req: Request, res: Response, chunks: string[], projectId: string, wordCount: number, apiKey: string, speed: number = 1, ttsJobSettings?: TTSJobSettings) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -2240,7 +2239,7 @@ interface AudioSegmentResult {
 }
 
 // Handle streaming with voice cloning - generates 10 separate segments
-async function handleVoiceCloningStreaming(req: Request, res: Response, script: string, projectId: string, wordCount: number, apiKey: string, voiceSampleUrl: string, speed: number = 0.75, ttsJobSettings?: TTSJobSettings) {
+async function handleVoiceCloningStreaming(req: Request, res: Response, script: string, projectId: string, wordCount: number, apiKey: string, voiceSampleUrl: string, speed: number = 1, ttsJobSettings?: TTSJobSettings) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -2855,7 +2854,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 }
 
 // Handle non-streaming (with or without voice cloning) - SEQUENTIAL - Memory optimized
-async function handleNonStreaming(req: Request, res: Response, chunks: string[], projectId: string, wordCount: number, apiKey: string, voiceSampleUrl?: string, speed: number = 0.75, ttsJobSettings?: TTSJobSettings) {
+async function handleNonStreaming(req: Request, res: Response, chunks: string[], projectId: string, wordCount: number, apiKey: string, voiceSampleUrl?: string, speed: number = 1, ttsJobSettings?: TTSJobSettings) {
   let referenceAudioBase64: string | undefined;
   if (voiceSampleUrl) {
     console.log('Downloading voice sample for cloning...');

@@ -712,7 +712,7 @@ export async function generateAudioStreaming(
   voiceSampleUrl: string,
   projectId: string,
   onProgress: (progress: number, message?: string) => void,
-  speed: number = 0.75,  // 25% slower for sleepy history narration
+  speed: number = 1,
   ttsSettings?: TTSSettings
 ): Promise<AudioResult> {
   const renderUrl = import.meta.env.VITE_RENDER_API_URL;
