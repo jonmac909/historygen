@@ -93,7 +93,7 @@ const DEFAULT_SETTINGS: GenerationSettings = {
   imageTemplate: "image-a",
   aiModel: "claude-sonnet-4-5",
   voiceSampleUrl: "https://autoaigen.com/voices/clone_voice.wav",
-  speed: 1,
+  speed: 0.75,  // 25% slower for sleepy history narration
   imageCount: 10,
   wordCount: 1000,
   quality: "basic",
