@@ -1191,20 +1191,72 @@ function splitIntoSegments(text: string): string[] {
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length === 0) return [];
 
-  // Create 120 equal segments (~1 min each for 2-hour script)
-  // UI will group these into 12 groups of 10 for easier navigation
-  // Regenerating any single segment costs ~$0.02 instead of ~$0.17
-  const TARGET_SEGMENTS = 120;
+  // Chunk-based subdivision:
+  // First divide into 10 equal chunks (like original 10-segment system)
+  // Then subdivide early chunks for finer control where it matters most
+  //
+  // Chunk 1: 5 segments (~2 min each for 2-hour script)
+  // Chunk 2: 4 segments (~2.5 min each)
+  // Chunk 3: 2 segments (~5 min each)
+  // Chunk 4: 2 segments (~5 min each)
+  // Chunks 5-10: 1 segment each (~10 min each)
+  // Total: ~19 segments
 
   const total = sentences.length;
-  const sentencesPerSegment = Math.max(1, Math.floor(total / TARGET_SEGMENTS));
+  const chunkSize = Math.ceil(total / 10);
+
+  // Create 10 chunks
+  const chunks: string[][] = [];
+  for (let c = 0; c < 10; c++) {
+    const start = c * chunkSize;
+    const end = Math.min(start + chunkSize, total);
+    if (start < total) {
+      chunks.push(sentences.slice(start, end));
+    }
+  }
 
   const segments: string[] = [];
 
-  for (let i = 0; i < total; i += sentencesPerSegment) {
-    const chunk = sentences.slice(i, Math.min(i + sentencesPerSegment, total));
-    if (chunk.length > 0) {
-      segments.push(chunk.join(' '));
+  // Chunk 1: subdivide into 5 segments
+  if (chunks[0]) {
+    const subSize = Math.ceil(chunks[0].length / 5);
+    for (let i = 0; i < chunks[0].length; i += subSize) {
+      const sub = chunks[0].slice(i, i + subSize);
+      if (sub.length > 0) segments.push(sub.join(' '));
+    }
+  }
+
+  // Chunk 2: subdivide into 4 segments
+  if (chunks[1]) {
+    const subSize = Math.ceil(chunks[1].length / 4);
+    for (let i = 0; i < chunks[1].length; i += subSize) {
+      const sub = chunks[1].slice(i, i + subSize);
+      if (sub.length > 0) segments.push(sub.join(' '));
+    }
+  }
+
+  // Chunk 3: subdivide into 2 segments
+  if (chunks[2]) {
+    const subSize = Math.ceil(chunks[2].length / 2);
+    for (let i = 0; i < chunks[2].length; i += subSize) {
+      const sub = chunks[2].slice(i, i + subSize);
+      if (sub.length > 0) segments.push(sub.join(' '));
+    }
+  }
+
+  // Chunk 4: subdivide into 2 segments
+  if (chunks[3]) {
+    const subSize = Math.ceil(chunks[3].length / 2);
+    for (let i = 0; i < chunks[3].length; i += subSize) {
+      const sub = chunks[3].slice(i, i + subSize);
+      if (sub.length > 0) segments.push(sub.join(' '));
+    }
+  }
+
+  // Chunks 5-10: keep as single segments
+  for (let c = 4; c < chunks.length; c++) {
+    if (chunks[c] && chunks[c].length > 0) {
+      segments.push(chunks[c].join(' '));
     }
   }
 
