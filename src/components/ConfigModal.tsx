@@ -82,11 +82,11 @@ export function ConfigModal({
   // Local voice settings state
   const [localVoiceSettings, setLocalVoiceSettings] = useState(voiceSettings || {
     voiceSampleUrl: null,
-    ttsEmotionMarker: "(calm)",
+    ttsEmotionMarker: "(sincere) (soft tone)",
     ttsTemperature: 0.9,
     ttsTopP: 0.85,
     ttsRepetitionPenalty: 1.1,
-    speed: 0.95,
+    speed: 1,
   });
 
   // Sync voice settings when modal opens
