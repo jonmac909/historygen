@@ -86,9 +86,6 @@ async function startImageJob(apiKey: string, prompt: string, quality: string, as
         negative_prompt: NEGATIVE_PROMPT,
         quality: quality === "high" ? "high" : "basic",
         aspectRatio,
-        // Prompt adherence settings - CRITICAL for following prompts correctly
-        num_inference_steps: 28,  // More steps = better quality
-        guidance_scale: 7.5,      // Higher = follows prompt more strictly (default was ~3-4)
       },
     }),
   });
