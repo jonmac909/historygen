@@ -1170,7 +1170,7 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
         startSeconds: window.startSeconds,
         endSeconds: window.endSeconds,
         sceneDescription: sceneDesc,
-        prompt: `${effectiveStylePrompt}. ${sceneDesc}`,
+        prompt: `${sceneDesc}. ${effectiveStylePrompt}`,  // Scene FIRST so Z-Image truncation keeps scene
       });
     }
 
@@ -1194,7 +1194,7 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
           const prompt = batch[j];
           const result = results[j];
           prompt.sceneDescription = result.sanitized;
-          prompt.prompt = `${effectiveStylePrompt}. ${result.sanitized}`;
+          prompt.prompt = `${result.sanitized}. ${effectiveStylePrompt}`;  // Scene FIRST
           totalInputTokens += result.inputTokens;
           totalOutputTokens += result.outputTokens;
         }
