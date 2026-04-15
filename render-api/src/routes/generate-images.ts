@@ -83,9 +83,12 @@ async function startImageJob(apiKey: string, prompt: string, quality: string, as
     body: JSON.stringify({
       input: {
         prompt: safePrompt,
-        negative_prompt: NEGATIVE_PROMPT,  // Currently ignored by Z-Image but kept for future
+        negative_prompt: NEGATIVE_PROMPT,
         quality: quality === "high" ? "high" : "basic",
         aspectRatio,
+        // Prompt adherence settings - CRITICAL for following prompts correctly
+        num_inference_steps: 28,  // More steps = better quality
+        guidance_scale: 7.5,      // Higher = follows prompt more strictly (default was ~3-4)
       },
     }),
   });
