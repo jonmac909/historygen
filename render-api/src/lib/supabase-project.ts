@@ -286,10 +286,12 @@ export async function saveImageProgress(
   imageUrls: (string | null)[],
   status: 'generating' | 'failed'
 ): Promise<{ success: boolean; error?: string }> {
-  // Filter out null values (failed/pending slots)
-  const successfulUrls = imageUrls.filter((url): url is string => url !== null);
+  // IMPORTANT: Use empty string for failed slots to preserve index alignment!
+  // Frontend uses prompt.index-1 to map to urls array, so indices must match.
+  // Filtering out nulls would shift all subsequent images to wrong prompts.
+  const urlsWithPlaceholders = imageUrls.map(url => url ?? '');
   return updateProject(projectId, {
-    image_urls: successfulUrls,
+    image_urls: urlsWithPlaceholders,
     current_step: 'images',
     status: status === 'failed' ? 'images_partial' : 'running',
   });
