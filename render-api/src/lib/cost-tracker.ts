@@ -1,26 +1,25 @@
 /**
  * Cost Tracker - Tracks and saves pipeline generation costs to Supabase
  *
- * Pricing (verified Apr 2026):
+ * Pricing (verified from Scottish Highlands project):
  * - Claude Sonnet 4.5: $3/1M input tokens, $15/1M output tokens
- * - Fish Speech (RunPod): ~$0.018/minute audio output
- * - Z-Image (RunPod): ~$0.008/image
+ * - Fish Speech: $0.008/minute audio output
+ * - Z-Image: $0.0084/image
  * - Seedance 1.5 Pro (Kie.ai): $0.08/clip
- * - Whisper (Groq): $0.04/hour = $0.000667/minute (whisper-large-v3-turbo)
- * - RunPod CPU: $0.0003733/second
+ * - Whisper: $0.006/minute
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Pricing constants (verified Apr 2026)
+// Pricing constants (verified from Scottish Highlands project)
 export const PRICING = {
   claude_input: 3 / 1_000_000,      // $3 per 1M input tokens
   claude_output: 15 / 1_000_000,    // $15 per 1M output tokens
   claude_vision: 0.004,             // per image scanned with Claude Vision
-  fish_speech: 0.018,               // per minute of audio output (verified: $0.017-0.018/min)
-  z_image: 0.008,                   // per image generated (verified: $0.0075-0.0082/img)
-  seedance: 0.08,                   // per clip (flat rate)
-  whisper: 0.04 / 60,               // Groq whisper-large-v3-turbo: $0.04/hour = ~$0.000667/min
+  fish_speech: 0.008,               // $0.008/minute audio output
+  z_image: 0.0084,                  // $0.0084/image
+  seedance: 0.08,                   // per clip (flat rate via Kie.ai)
+  whisper: 0.006,                   // $0.006/minute
   runpod_cpu: 0.0003733,            // per second of processing
 };
 
