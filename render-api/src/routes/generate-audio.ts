@@ -15,8 +15,6 @@ import * as os from 'os';
 import { getPronunciationFixesRecord } from './pronunciation';
 import { saveCost } from '../lib/cost-tracker';
 import { saveAudioToProject, saveAudioProgress, getProjectData } from '../lib/supabase-project';
-import { detectRepeatedWindows, RepeatedWindow } from '../utils/audio-integrity';
-import { calculateLCSSimilarityNormalized } from '../utils/script-qa';
 
 // Set FFmpeg and FFprobe paths
 if (ffmpegStatic) {
@@ -1269,60 +1267,6 @@ function getAudioDuration(filePath: string): Promise<number> {
 // longer than the source (because the loop repeats words), or (b) low-similarity
 // when words get mutated. Gate on both length-ratio and LCS similarity.
 
-interface ChunkVerification {
-  ok: boolean;
-  similarity: number;
-  transcribed: string;
-  lengthRatio: number;  // transcribed words / source words
-  reason?: string;
-  skipped?: boolean;
-}
-
-async function verifyChunkTranscription(
-  audioBuffer: Buffer,
-  chunkText: string,
-  opts: { similarityThreshold?: number; lengthRatioThreshold?: number } = {}
-): Promise<ChunkVerification> {
-  const similarityThreshold = opts.similarityThreshold ?? 0.85;
-  const lengthRatioThreshold = opts.lengthRatioThreshold ?? 1.5;
-
-  const sourceWords = chunkText.split(/\s+/).filter(Boolean).length;
-  if (sourceWords < 6) {
-    return { ok: true, similarity: 1, transcribed: '', lengthRatio: 1, skipped: true, reason: 'too short' };
-  }
-
-  const groqApiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
-  if (!groqApiKey) {
-    return { ok: true, similarity: 1, transcribed: '', lengthRatio: 1, skipped: true, reason: 'no API key' };
-  }
-
-  let transcribed = '';
-  try {
-    const segs = await transcribeChunk(audioBuffer, groqApiKey);
-    transcribed = segs.map(s => s.text).join(' ').trim();
-  } catch (err) {
-    logger.warn(`[verify] transcription failed: ${err instanceof Error ? err.message : 'unknown'}`);
-    return { ok: true, similarity: 1, transcribed: '', lengthRatio: 1, skipped: true, reason: 'transcribe-error' };
-  }
-
-  if (!transcribed) {
-    // Whisper returned nothing — unusual. Fall through to signal check (caller handles).
-    return { ok: true, similarity: 1, transcribed: '', lengthRatio: 0, skipped: true, reason: 'empty transcription' };
-  }
-
-  const transcribedWords = transcribed.split(/\s+/).filter(Boolean).length;
-  const lengthRatio = transcribedWords / Math.max(sourceWords, 1);
-  const similarity = calculateLCSSimilarityNormalized(chunkText, transcribed);
-
-  if (lengthRatio > lengthRatioThreshold) {
-    return { ok: false, similarity, transcribed, lengthRatio, reason: `length ratio ${lengthRatio.toFixed(2)} > ${lengthRatioThreshold}` };
-  }
-  if (similarity < similarityThreshold) {
-    return { ok: false, similarity, transcribed, lengthRatio, reason: `similarity ${similarity.toFixed(2)} < ${similarityThreshold}` };
-  }
-  return { ok: true, similarity, transcribed, lengthRatio };
-}
-
 // Post-processing mode, controlled by AUDIO_POSTPROCESS_MODE env:
 //   off    — skip entirely (original disabled behavior)
 //   shadow — run detection, log what WOULD be cut, but don't mutate audio
@@ -1335,60 +1279,6 @@ function getPostProcessMode(): PostProcessMode {
   if (raw === 'off' || raw === 'shadow' || raw === 'on') return raw as PostProcessMode;
   logger.warn(`Invalid AUDIO_POSTPROCESS_MODE="${process.env.AUDIO_POSTPROCESS_MODE}", defaulting to "shadow"`);
   return 'shadow';
-}
-
-// Heal a single segment: transcribe -> detect loops -> FFmpeg-cut them.
-// This is an unconditional "on" version (not gated by AUDIO_POSTPROCESS_MODE)
-// because it's invoked after a user-triggered regeneration — the user
-// explicitly wants the loop fixed. Never throws; falls back to original audio.
-// Returned alongside the healed audio so callers (and ultimately the UI)
-// can surface what was cut and let the user review.
-export interface HealInfo {
-  ranges: Array<{ startSec: number; endSec: number; text: string }>;
-  totalRemovedSec: number;
-}
-
-async function healSegmentAudio(
-  audioBuffer: Buffer,
-  segmentLabel: string,
-): Promise<{ audio: Buffer; heal: HealInfo }> {
-  const empty: HealInfo = { ranges: [], totalRemovedSec: 0 };
-  try {
-    const segments = await transcribeForRepetitionDetection(audioBuffer);
-    if (segments.length === 0) {
-      logger.info(`[heal ${segmentLabel}] no transcription, skipping heal`);
-      return { audio: audioBuffer, heal: empty };
-    }
-
-    // Dump the full Whisper output so we can see exactly what the detector
-    // is scanning. Helps diagnose cases where the loop is in the audio but
-    // Whisper collapsed it into one utterance or chunked it unexpectedly.
-    const fullTranscript = segments.map(s => s.text).join(' ').trim();
-    logger.info(`[heal ${segmentLabel}] whisper transcript (${segments.length} segs, ${fullTranscript.length} chars):`);
-    for (let i = 0; i < fullTranscript.length; i += 200) {
-      logger.info(`[heal ${segmentLabel}]   "${fullTranscript.substring(i, i + 200)}"`);
-    }
-
-    const repetitions = detectRepetitions(segments);
-    const totalRemovedSec = repetitions.reduce((s, r) => s + (r.end - r.start), 0);
-    logger.info(`[heal ${segmentLabel}] detections=${repetitions.length} totalRemovedSec=${totalRemovedSec.toFixed(2)}`);
-    if (repetitions.length === 0) return { audio: audioBuffer, heal: empty };
-
-    repetitions.slice(0, 10).forEach((r, i) => {
-      logger.info(`[heal ${segmentLabel}] cut[${i}] ${r.start.toFixed(2)}s-${r.end.toFixed(2)}s: "${r.text.substring(0, 120)}"`);
-    });
-    const cleaned = await removeAudioSegments(audioBuffer, repetitions);
-    logger.info(`[heal ${segmentLabel}] healed: ${audioBuffer.length} -> ${cleaned.length} bytes`);
-
-    const heal: HealInfo = {
-      ranges: repetitions.map(r => ({ startSec: r.start, endSec: r.end, text: r.text })),
-      totalRemovedSec,
-    };
-    return { audio: cleaned, heal };
-  } catch (err) {
-    logger.error(`[heal ${segmentLabel}] failed, keeping original:`, err);
-    return { audio: audioBuffer, heal: empty };
-  }
 }
 
 async function postProcessAudio(audioBuffer: Buffer): Promise<Buffer> {
@@ -2436,39 +2326,7 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
       try {
         // Use retry logic with exponential backoff
-        let audioData = await generateTTSChunkWithRetry(chunkText, apiKey, undefined, i, chunks.length, ttsJobSettings);
-
-        // Verify chunk: Whisper + signal check, regen once if either flags
-        if (process.env.CHUNK_VERIFICATION_MODE?.toLowerCase() !== 'off') {
-          const whisperCheck = await verifyChunkTranscription(audioData, chunkText);
-          const signalLoops = detectRepeatedWindows(audioData);
-          const whisperBad = !whisperCheck.ok;
-          const signalBad = signalLoops.length > 0;
-
-          if (whisperBad || signalBad) {
-            logger.warn(`[verify] Chunk ${i + 1}: FAIL (${whisperBad ? 'whisper:' + whisperCheck.reason : ''}${whisperBad && signalBad ? ' + ' : ''}${signalBad ? 'signal:×' + signalLoops[0].occurrences : ''}) — regenerating with fresh seed`);
-            if (whisperBad && whisperCheck.transcribed) {
-              logger.warn(`[verify]   source: "${chunkText.substring(0, 80)}"`);
-              logger.warn(`[verify]   heard:  "${whisperCheck.transcribed.substring(0, 80)}"`);
-            }
-            const altSeed = ((ttsJobSettings?.seed ?? 0) + i * 7919 + Date.now()) & 0x7fffffff;
-            const altSettings: TTSJobSettings = { ...(ttsJobSettings || {}), seed: altSeed };
-            try {
-              const retryAudio = await generateTTSChunkWithRetry(chunkText, apiKey, undefined, i, chunks.length, altSettings);
-              const retryWhisper = await verifyChunkTranscription(retryAudio, chunkText);
-              const retrySignal = detectRepeatedWindows(retryAudio);
-              audioData = retryAudio;
-              if (retryWhisper.ok && retrySignal.length === 0) {
-                logger.info(`[verify] Chunk ${i + 1}: regen clean`);
-              } else {
-                logger.error(`[verify] Chunk ${i + 1}: regen STILL flagged — keeping second attempt, flag for review`);
-              }
-            } catch (retryErr) {
-              logger.error(`[verify] Chunk ${i + 1}: regen threw ${retryErr instanceof Error ? retryErr.message : 'unknown'} — keeping original`);
-            }
-          }
-        }
-
+        const audioData = await generateTTSChunkWithRetry(chunkText, apiKey, undefined, i, chunks.length, ttsJobSettings);
         audioChunks.push(audioData);
         successfulTextChunks.push(chunkText); // Track successful text
         console.log(`Chunk ${i + 1} completed: ${audioData.length} bytes`);
@@ -2491,14 +2349,6 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
     let { wav: finalAudio, durationSeconds } = concatenateWavFilesWithPauses(audioChunks, successfulTextChunks);
 
     console.log(`Concatenated audio: ${finalAudio.length} bytes from ${audioChunks.length} chunks`);
-
-    // Heal: transcribe + cut any residual loops that slipped past per-chunk
-    // verification. Runs unconditionally (not gated by AUDIO_POSTPROCESS_MODE)
-    // because this is the only healing pass in the non-voice-cloning flow.
-    sendEvent({ type: 'progress', progress: 75, message: 'Healing audio...' });
-    const streamingHealResult = await healSegmentAudio(finalAudio, 'full audio');
-    finalAudio = streamingHealResult.audio;
-    console.log(`Healed audio: ${finalAudio.length} bytes (${streamingHealResult.heal.ranges.length} cuts)`);
 
     // Check audio integrity BEFORE upload (skip if file too large to avoid V8 crash)
     const MAX_INTEGRITY_CHECK_SIZE = 50 * 1024 * 1024; // 50MB threshold
@@ -2607,7 +2457,6 @@ interface AudioSegmentResult {
   duration: number;
   size: number;
   text: string;
-  heal?: HealInfo;
 }
 
 // Handle streaming with voice cloning - generates 10 separate segments
@@ -2676,7 +2525,6 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       text: string;
       audioBuffer: Buffer | null; // null until we re-download for concatenation
       durationSeconds: number;
-      heal?: HealInfo;
     }> = [];
 
     let nextSegmentIndex = 0;
@@ -2740,47 +2588,8 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           });
 
           try {
-            let audioData = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, ttsJobSettings);
+            const audioData = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, ttsJobSettings);
             console.log(`  Segment ${segmentNumber} - Chunk ${chunkIdx + 1}/${chunks.length}: ${audioData.length} bytes`);
-
-            // Verify chunk against source text. Primary check: Whisper transcription
-            // (catches semantic loops + mutations). Fallback: signal-based envelope
-            // self-similarity (catches audio-level loops when Whisper unavailable).
-            if (process.env.CHUNK_VERIFICATION_MODE?.toLowerCase() !== 'off') {
-              const whisperCheck = await verifyChunkTranscription(audioData, chunkText);
-              const signalLoops = detectRepeatedWindows(audioData);
-              const whisperBad = !whisperCheck.ok;
-              const signalBad = signalLoops.length > 0;
-
-              if (whisperBad || signalBad) {
-                const worst: RepeatedWindow | undefined = signalBad ? signalLoops.reduce<RepeatedWindow>((a, b) => b.occurrences > a.occurrences ? b : a, signalLoops[0]) : undefined;
-                const reason = [
-                  whisperBad ? `whisper:${whisperCheck.reason}` : null,
-                  signalBad && worst ? `signal:×${worst.occurrences}@${worst.periodMs}ms` : null,
-                ].filter(Boolean).join(' + ');
-                logger.warn(`[verify] Segment ${segmentNumber} chunk ${chunkIdx + 1}: FAIL (${reason}) — regenerating with fresh seed`);
-                if (whisperBad && whisperCheck.transcribed) {
-                  logger.warn(`[verify]   source: "${chunkText.substring(0, 80)}"`);
-                  logger.warn(`[verify]   heard:  "${whisperCheck.transcribed.substring(0, 80)}"`);
-                }
-
-                const altSeed = ((ttsJobSettings?.seed ?? 0) + chunkIdx * 7919 + Date.now()) & 0x7fffffff;
-                const altSettings: TTSJobSettings = { ...(ttsJobSettings || {}), seed: altSeed };
-                try {
-                  const retryAudio = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, altSettings);
-                  const retryWhisper = await verifyChunkTranscription(retryAudio, chunkText);
-                  const retrySignal = detectRepeatedWindows(retryAudio);
-                  audioData = retryAudio;
-                  if (retryWhisper.ok && retrySignal.length === 0) {
-                    logger.info(`[verify] Segment ${segmentNumber} chunk ${chunkIdx + 1}: regen clean`);
-                  } else {
-                    logger.error(`[verify] Segment ${segmentNumber} chunk ${chunkIdx + 1}: regen STILL flagged — keeping second attempt, flag for review`);
-                  }
-                } catch (retryErr) {
-                  logger.error(`[verify] Segment ${segmentNumber} chunk ${chunkIdx + 1}: regen threw ${retryErr instanceof Error ? retryErr.message : 'unknown'} — keeping original`);
-                }
-              }
-            }
 
             // Incrementally concatenate instead of accumulating in array
             if (segmentAudio === null) {
@@ -2851,14 +2660,6 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           logger.info(`[SEGMENT ${segmentNumber}] Audio integrity: CLEAN (no glitches)`);
         }
 
-        // Heal: transcribe assembled segment via Whisper, detect any residual
-        // loops that slipped past per-chunk verification, FFmpeg-cut them.
-        // Same logic that runs on manual regens — now also runs during
-        // full-script generation so the output ships clean from the start.
-        const healResult = await healSegmentAudio(segmentAudio, `seg ${segmentNumber} (gen)`);
-        segmentAudio = healResult.audio;
-        const segmentHeal = healResult.heal;
-
         // Upload this segment
         const fileName = `${actualProjectId}/voiceover-segment-${segmentNumber}.wav`;
 
@@ -2891,7 +2692,6 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           text: segmentText,
           audioBuffer: null as any, // Placeholder - will download later
           durationSeconds,
-          heal: segmentHeal.ranges.length > 0 ? segmentHeal : undefined,
         });
 
         // Send progress update
@@ -2908,7 +2708,6 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
             audioUrl: r.audioUrl,
             duration: r.duration,
             text: r.text,
-            heal: r.heal,
           })), 'generating').catch(err =>
             console.warn('[Audio] Failed to save progress:', err)
           );
@@ -3227,7 +3026,6 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       duration: r.duration,
       size: r.size,
       text: r.text,
-      heal: r.heal,
     }));
 
     // Save to project database (fire-and-forget - allows user to close browser)
@@ -3330,11 +3128,7 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
   console.log(`Concatenated audio: ${combinedAudio.length} bytes from ${audioChunks.length} chunks`);
 
-  // Heal: transcribe + cut any residual loops (same as streaming path)
-  console.log('Healing audio...');
-  const nsHealResult = await healSegmentAudio(combinedAudio, 'full audio (non-stream)');
-  let finalAudio = nsHealResult.audio;
-  console.log(`Healed audio: ${finalAudio.length} bytes (${nsHealResult.heal.ranges.length} cuts)`);
+  let finalAudio = combinedAudio;
 
   // Apply speed adjustment if not 1.0
   if (speed !== 1.0) {
@@ -3520,44 +3314,7 @@ router.post('/segment', async (req: Request, res: Response) => {
 
           const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, ttsJobSettings);
           const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
-          let audioData = base64ToBuffer(output.audio_base64);
-
-          // Verify chunk: Whisper + signal check. If flagged, regenerate once
-          // with a fresh seed. This is the piece that was missing — without
-          // it, Fish Speech's loop hallucination re-occurs ~30-50% of retries
-          // on the same text.
-          if (process.env.CHUNK_VERIFICATION_MODE?.toLowerCase() !== 'off') {
-            const whisperCheck = await verifyChunkTranscription(audioData, chunkText);
-            const signalLoops = detectRepeatedWindows(audioData);
-            if (!whisperCheck.ok || signalLoops.length > 0) {
-              const reason = [
-                !whisperCheck.ok ? `whisper:${whisperCheck.reason}` : null,
-                signalLoops.length > 0 ? `signal:×${signalLoops[0].occurrences}` : null,
-              ].filter(Boolean).join(' + ');
-              logger.warn(`[verify] /segment chunk ${chunkIndex + 1}/${chunks.length}: FAIL (${reason}) — regenerating with fresh seed`);
-              if (!whisperCheck.ok && whisperCheck.transcribed) {
-                logger.warn(`[verify]   source: "${chunkText.substring(0, 100)}"`);
-                logger.warn(`[verify]   heard:  "${whisperCheck.transcribed.substring(0, 100)}"`);
-              }
-              const altSeed = ((ttsJobSettings as any)?.seed ?? 0) + chunkIndex * 7919 + Date.now();
-              const altSettings = { ...(ttsJobSettings || {}), seed: altSeed & 0x7fffffff };
-              try {
-                const jobId2 = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, altSettings);
-                const output2 = await pollJobStatus(jobId2, RUNPOD_API_KEY);
-                const retryAudio = base64ToBuffer(output2.audio_base64);
-                const retryWhisper = await verifyChunkTranscription(retryAudio, chunkText);
-                const retrySignal = detectRepeatedWindows(retryAudio);
-                audioData = retryAudio;
-                if (retryWhisper.ok && retrySignal.length === 0) {
-                  logger.info(`[verify] /segment chunk ${chunkIndex + 1}/${chunks.length}: regen clean`);
-                } else {
-                  logger.error(`[verify] /segment chunk ${chunkIndex + 1}/${chunks.length}: regen STILL flagged — keeping second attempt`);
-                }
-              } catch (retryErr) {
-                logger.error(`[verify] /segment chunk ${chunkIndex + 1}/${chunks.length}: regen threw ${retryErr instanceof Error ? retryErr.message : 'unknown'} — keeping original`);
-              }
-            }
-          }
+          const audioData = base64ToBuffer(output.audio_base64);
 
           const elapsed = ((Date.now() - chunkStart) / 1000).toFixed(1);
           console.log(`  ✓ chunk ${chunkIndex + 1}/${chunks.length}: ${audioData.length} bytes (${elapsed}s)`);
@@ -3588,30 +3345,10 @@ router.post('/segment', async (req: Request, res: Response) => {
     console.log(`Successfully processed ${audioChunks.length}/${chunks.length} chunks`)
 
     // Concatenate chunks with pause insertion based on punctuation
-    const { wav: concatenatedAudio, durationSeconds: preHealDuration } = concatenateWavFilesWithPauses(audioChunks, textChunks);
+    const { wav: segmentAudio, durationSeconds } = concatenateWavFilesWithPauses(audioChunks, textChunks);
+    const durationRounded = Math.round(durationSeconds * 10) / 10;
 
-    console.log(`Segment ${segmentIndex} audio: ${concatenatedAudio.length} bytes (pre-heal, ${preHealDuration.toFixed(1)}s)`);
-
-    // Heal: transcribe the assembled segment, detect any residual loops
-    // that slipped past per-chunk verification, FFmpeg-cut them out.
-    // User-triggered regen == explicit intent to fix, so we mutate here.
-    const healResult = await healSegmentAudio(concatenatedAudio, `seg ${segmentIndex}`);
-    const segmentAudio = healResult.audio;
-    const segmentHeal = healResult.heal;
-
-    // Derive final duration from WAV header (byte ratio) — avoids an
-    // ffprobe round-trip when heal was a no-op; stays accurate after cuts.
-    let finalDurationSeconds = preHealDuration;
-    try {
-      const info = extractWavInfo(segmentAudio);
-      const bytesPerSecond = info.sampleRate * info.channels * (info.bitsPerSample / 8);
-      if (bytesPerSecond > 0) {
-        finalDurationSeconds = info.pcmData.length / bytesPerSecond;
-      }
-    } catch { /* keep preHealDuration */ }
-    const durationRounded = Math.round(finalDurationSeconds * 10) / 10;
-
-    console.log(`Segment ${segmentIndex} final audio: ${segmentAudio.length} bytes, ${durationRounded}s`);
+    console.log(`Segment ${segmentIndex} audio: ${segmentAudio.length} bytes, ${durationRounded}s`);
 
     // Upload to Supabase
     const supabase = createClient(credentials.url, credentials.key);
@@ -3646,7 +3383,6 @@ router.post('/segment', async (req: Request, res: Response) => {
         duration: durationRounded,
         size: segmentAudio.length,
         text: segmentText,
-        heal: segmentHeal.ranges.length > 0 ? segmentHeal : undefined,
       },
     });
 
@@ -3732,35 +3468,9 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
         const chunkIndex = batch + i;
         try {
           const ttsText = applyPronunciationFixes(chunkText);
-          let audioData = await (async () => {
-            const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, jobSettings);
-            const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
-            return base64ToBuffer(output.audio_base64);
-          })();
-
-          // Verify chunk: Whisper + signal, regen once if either flags
-          if (process.env.CHUNK_VERIFICATION_MODE?.toLowerCase() !== 'off') {
-            const whisperCheck = await verifyChunkTranscription(audioData, chunkText);
-            const signalLoops = detectRepeatedWindows(audioData);
-            if (!whisperCheck.ok || signalLoops.length > 0) {
-              logger.warn(`[regenerate-segment] chunk ${chunkIndex + 1}: FAIL (${!whisperCheck.ok ? 'whisper:' + whisperCheck.reason : ''}${!whisperCheck.ok && signalLoops.length > 0 ? ' + ' : ''}${signalLoops.length > 0 ? 'signal:×' + signalLoops[0].occurrences : ''})`);
-              const altSeed = ((jobSettings?.seed ?? 0) + chunkIndex * 7919 + Date.now()) & 0x7fffffff;
-              const altSettings: TTSJobSettings = { ...(jobSettings || {}), seed: altSeed };
-              try {
-                const jobId2 = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, altSettings);
-                const output2 = await pollJobStatus(jobId2, RUNPOD_API_KEY);
-                audioData = base64ToBuffer(output2.audio_base64);
-                const retryWhisper = await verifyChunkTranscription(audioData, chunkText);
-                const retrySignal = detectRepeatedWindows(audioData);
-                if (!retryWhisper.ok || retrySignal.length > 0) {
-                  logger.error(`[regenerate-segment] chunk ${chunkIndex + 1}: regen STILL flagged — keeping second attempt`);
-                }
-              } catch (retryErr) {
-                logger.error(`[regenerate-segment] chunk ${chunkIndex + 1}: regen threw ${retryErr instanceof Error ? retryErr.message : 'unknown'}`);
-              }
-            }
-          }
-
+          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, jobSettings);
+          const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
+          const audioData = base64ToBuffer(output.audio_base64);
           return { index: chunkIndex, audio: audioData, text: chunkText };
         } catch (err) {
           logger.warn(`[regenerate-segment] chunk ${chunkIndex + 1} failed: ${err instanceof Error ? err.message : 'unknown'}`);
@@ -3778,19 +3488,8 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
     results.sort((a, b) => a.index - b.index);
     const audioChunks = results.map(r => r.audio);
     const textChunks = results.map(r => r.text);
-    const { wav: concatenatedAudio, durationSeconds: preHealDuration } = concatenateWavFilesWithPauses(audioChunks, textChunks);
-
-    // Heal residual loops before upload (same as /segment route)
-    const healResult = await healSegmentAudio(concatenatedAudio, `regen seg ${segmentNumber}`);
-    const segmentAudio = healResult.audio;
-    const segmentHeal = healResult.heal;
-    let finalDurationSeconds = preHealDuration;
-    try {
-      const info = extractWavInfo(segmentAudio);
-      const bytesPerSecond = info.sampleRate * info.channels * (info.bitsPerSample / 8);
-      if (bytesPerSecond > 0) finalDurationSeconds = info.pcmData.length / bytesPerSecond;
-    } catch { /* keep pre-heal duration */ }
-    const durationRounded = Math.round(finalDurationSeconds * 10) / 10;
+    const { wav: segmentAudio, durationSeconds } = concatenateWavFilesWithPauses(audioChunks, textChunks);
+    const durationRounded = Math.round(durationSeconds * 10) / 10;
 
     const supabase = createClient(credentials.url, credentials.key);
     const fileName = `${projectId}/voiceover-segment-${segmentNumber}.wav`;
@@ -3814,7 +3513,6 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
         duration: durationRounded,
         size: segmentAudio.length,
         text: target.text,
-        heal: segmentHeal.ranges.length > 0 ? segmentHeal : undefined,
       },
     });
   } catch (error) {
@@ -3855,10 +3553,12 @@ router.post('/scan-loops', async (req: Request, res: Response) => {
   const { srtContent, projectId } = req.body;
   try {
     let srt: string | undefined = srtContent;
-    if (!srt && projectId) {
+    let audioSegments: Array<{ index: number; duration: number; text?: string }> | undefined;
+    if (projectId) {
       const projectData = await getProjectData(projectId);
       if (!projectData.exists) return res.status(404).json({ error: 'Project not found' });
-      srt = (projectData as any).srtContent || undefined;
+      if (!srt) srt = (projectData as any).srtContent || undefined;
+      audioSegments = (projectData.audioSegments as any[]) || undefined;
     }
     if (!srt) return res.status(400).json({ error: 'srtContent or projectId with stored SRT is required' });
 
@@ -3866,6 +3566,22 @@ router.post('/scan-loops', async (req: Request, res: Response) => {
     if (segments.length < 2) return res.json({ loops: [] });
 
     const loops = detectRepetitions(segments);
+
+    // Map each loop's full-audio timestamp back to its audio segment index
+    // so the UI can say "Segment 12 has a loop" instead of just "3:25".
+    // Uses cumulative segment durations — same math the combined audio uses.
+    const segmentNumberAt = (sec: number): number | undefined => {
+      if (!audioSegments || audioSegments.length === 0) return undefined;
+      let cum = 0;
+      for (const s of audioSegments) {
+        const end = cum + (s.duration || 0);
+        if (sec >= cum && sec < end) return s.index;
+        cum = end;
+      }
+      // Past the end — attribute to the last segment
+      return audioSegments[audioSegments.length - 1]?.index;
+    };
+
     logger.info(`[scan-loops] project=${projectId || 'n/a'} segments=${segments.length} loops=${loops.length}`);
     return res.json({
       loops: loops.map(l => ({
@@ -3873,6 +3589,7 @@ router.post('/scan-loops', async (req: Request, res: Response) => {
         end: l.end,
         text: l.text,
         durationSec: l.end - l.start,
+        segmentNumber: segmentNumberAt(l.start),
       })),
     });
   } catch (error) {
@@ -3881,138 +3598,6 @@ router.post('/scan-loops', async (req: Request, res: Response) => {
   }
 });
 
-// Heal the project's full combined audio by cutting repeated-phrase ranges.
-// If ranges are supplied, uses them directly; otherwise re-detects via Whisper.
-// Uploads healed audio back to voiceover.wav (upsert), updates audio_url/duration.
-router.post('/heal-audio', async (req: Request, res: Response) => {
-  const { projectId, ranges } = req.body as {
-    projectId?: string;
-    ranges?: Array<{ start: number; end: number; text?: string }>;
-  };
-  try {
-    if (!projectId) return res.status(400).json({ error: 'projectId is required' });
-
-    const credentials = getSupabaseCredentials();
-    if (!credentials) return res.status(500).json({ error: 'Supabase credentials not configured' });
-
-    const projectData = await getProjectData(projectId);
-    if (!projectData.exists || !projectData.audioUrl) {
-      return res.status(404).json({ error: 'Project or combined audio not found' });
-    }
-
-    const audioFileName = `${projectId}/voiceover.wav`;
-    const supabase = createClient(credentials.url, credentials.key);
-    const { data: audioBlob, error: dlError } = await supabase.storage
-      .from('generated-assets')
-      .download(audioFileName);
-    if (dlError || !audioBlob) {
-      return res.status(500).json({ error: `Failed to download voiceover.wav: ${dlError?.message || 'unknown'}` });
-    }
-    const audioBuffer = Buffer.from(await audioBlob.arrayBuffer());
-    logger.info(`[heal-audio] project=${projectId} audio=${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB`);
-
-    let cutRanges: RepetitionRange[] = [];
-    if (ranges && ranges.length > 0) {
-      // Trust caller's ranges (typically from /scan-loops on the SRT)
-      cutRanges = ranges
-        .filter(r => typeof r.start === 'number' && typeof r.end === 'number' && r.end > r.start)
-        .map(r => ({ start: r.start, end: r.end, text: r.text || '' }));
-    } else {
-      // Re-detect via Whisper
-      const segs = await transcribeForRepetitionDetection(audioBuffer);
-      cutRanges = detectRepetitions(segs);
-    }
-
-    if (cutRanges.length === 0) {
-      return res.json({ success: true, cutsMade: 0, audioUrl: projectData.audioUrl, duration: projectData.audioDuration });
-    }
-
-    logger.info(`[heal-audio] cutting ${cutRanges.length} ranges, total=${cutRanges.reduce((s, r) => s + (r.end - r.start), 0).toFixed(2)}s`);
-    const healed = await removeAudioSegments(audioBuffer, cutRanges);
-
-    const { error: uploadError } = await supabase.storage
-      .from('generated-assets')
-      .upload(audioFileName, healed, { contentType: 'audio/wav', upsert: true });
-    if (uploadError) return res.status(500).json({ error: `Upload failed: ${uploadError.message}` });
-
-    const { data: urlData } = supabase.storage.from('generated-assets').getPublicUrl(audioFileName);
-    const cacheBustedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
-
-    // Recompute duration from healed WAV header
-    let durationSec = projectData.audioDuration || 0;
-    try {
-      const info = extractWavInfo(healed);
-      const bytesPerSecond = info.sampleRate * info.channels * (info.bitsPerSample / 8);
-      if (bytesPerSecond > 0) durationSec = info.pcmData.length / bytesPerSecond;
-    } catch { /* keep existing */ }
-
-    // Re-transcribe the HEALED audio with Whisper to get ground-truth SRT.
-    // This is what makes the heal "real" — we don't just rewrite the old
-    // SRT based on assumed-clean cuts; we check what the audio actually
-    // sounds like after the cut and report honestly. If FFmpeg timing
-    // drifted and the loop is still partially audible, Whisper will still
-    // transcribe it and detectRepetitions will flag it as a residual.
-    logger.info(`[heal-audio] verifying cut by re-transcribing healed audio...`);
-    const postHealSegments = await transcribeForRepetitionDetection(healed);
-    const residualLoops = detectRepetitions(postHealSegments);
-    if (residualLoops.length > 0) {
-      logger.warn(`[heal-audio] ${residualLoops.length} residual loop(s) still detected after cut — heal incomplete`);
-      residualLoops.slice(0, 5).forEach((r, i) =>
-        logger.warn(`[heal-audio] residual[${i}] ${r.start.toFixed(2)}s-${r.end.toFixed(2)}s: "${r.text.substring(0, 80)}"`)
-      );
-    } else {
-      logger.info(`[heal-audio] post-heal verification: CLEAN (0 residual loops)`);
-    }
-
-    // Build a simple segment-level SRT from the new transcription. This is
-    // the authoritative post-heal transcript. If the user wants nicer
-    // caption formatting (word-level, short lines), they can re-run the
-    // captions flow from the UI.
-    const fmtTime = (sec: number) => {
-      const h = Math.floor(sec / 3600);
-      const m = Math.floor((sec % 3600) / 60);
-      const s = Math.floor(sec % 60);
-      const ms = Math.round((sec - Math.floor(sec)) * 1000);
-      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
-    };
-    const updatedSrt = postHealSegments
-      .filter(s => s.text && s.text.trim())
-      .map((s, i) => `${i + 1}\n${fmtTime(s.start)} --> ${fmtTime(s.end)}\n${s.text.trim()}\n`)
-      .join('\n');
-
-    // Persist new URL + duration + updated SRT so the frontend picks them up
-    await supabase
-      .from('generation_projects')
-      .update({
-        audio_url: cacheBustedUrl,
-        audio_duration: Math.round(durationSec),
-        srt_content: updatedSrt,
-      })
-      .eq('id', projectId);
-
-    logger.info(`[heal-audio] done: ${(healed.length / 1024 / 1024).toFixed(1)}MB, ${durationSec.toFixed(1)}s`);
-    return res.json({
-      success: true,
-      cutsMade: cutRanges.length,
-      totalRemovedSec: cutRanges.reduce((s, r) => s + (r.end - r.start), 0),
-      updatedSrt,
-      // Honest verification — if cuts didn't fully remove the loops, the
-      // UI can show these so the user isn't told "all clean" falsely.
-      residualLoops: residualLoops.map(r => ({
-        start: r.start,
-        end: r.end,
-        text: r.text,
-        durationSec: r.end - r.start,
-      })),
-      audioUrl: cacheBustedUrl,
-      duration: Math.round(durationSec),
-      cuts: cutRanges.map(r => ({ start: r.start, end: r.end, text: r.text })),
-    });
-  } catch (error) {
-    logger.error('[heal-audio] error:', error);
-    return res.status(500).json({ error: error instanceof Error ? error.message : 'Heal failed' });
-  }
-});
 
 // Lookup phonetic spelling for a word (for auto-fill in frontend)
 router.get('/phonetic/:word', (req: Request, res: Response) => {

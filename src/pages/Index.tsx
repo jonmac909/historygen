@@ -5073,13 +5073,6 @@ const Index = () => {
             segmentsNeedRecombine: true,
           });
         }}
-        onAudioHealed={(newAudioUrl, newDuration) => {
-          // Backend trimmed loops out of the combined voiceover.wav and
-          // already upserted the file + updated the DB row. Keep local
-          // state in sync so the audio player picks up the new URL.
-          setPendingAudioUrl(newAudioUrl);
-          setPendingAudioDuration(newDuration);
-        }}
         onSegmentsNeedReview={(updates) => {
           // Script match scan flagged (or cleared) certain segments. Stamp
           // needsReview on each affected segment so the orange pill shows

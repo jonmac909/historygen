@@ -1747,10 +1747,11 @@ async function generateCaptionsStreaming(
  * API calls — fast and free.
  */
 export interface DetectedLoop {
-  start: number;
+  start: number;           // seconds in full audio
   end: number;
   text: string;
   durationSec: number;
+  segmentNumber?: number;  // which audio segment the loop falls in
 }
 
 export async function scanAudioLoops(
@@ -1772,51 +1773,6 @@ export async function scanAudioLoops(
     return { success: true, loops: data.loops || [] };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Scan failed' };
-  }
-}
-
-/**
- * Heal the project's full audio by cutting the given loop ranges (or re-detect
- * via Whisper if ranges omitted). Uploads healed voiceover.wav, updates the
- * project's audio_url/audio_duration.
- */
-export async function healAudioLoops(
-  projectId: string,
-  ranges?: Array<{ start: number; end: number; text?: string }>
-): Promise<{
-  success: boolean;
-  cutsMade?: number;
-  totalRemovedSec?: number;
-  audioUrl?: string;
-  duration?: number;
-  cuts?: Array<{ start: number; end: number; text: string }>;
-  updatedSrt?: string;
-  residualLoops?: DetectedLoop[];
-  error?: string;
-}> {
-  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
-  try {
-    const response = await fetch(`${renderApiUrl}/generate-audio/heal-audio`, {
-      method: 'POST',
-      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ projectId, ranges }),
-    });
-    if (!response.ok) {
-      const errorText = await response.text();
-      return { success: false, error: `Heal failed: ${response.status} - ${errorText.slice(0, 200)}` };
-    }
-    const data = await response.json();
-    return {
-      success: data.success,
-      cutsMade: data.cutsMade,
-      totalRemovedSec: data.totalRemovedSec,
-      audioUrl: data.audioUrl,
-      duration: data.duration,
-      cuts: data.cuts,
-      updatedSrt: data.updatedSrt,
-    };
-  } catch (error) {
-    return { success: false, error: error instanceof Error ? error.message : 'Heal failed' };
   }
 }
 
