@@ -1262,69 +1262,6 @@ function getAudioDuration(filePath: string): Promise<number> {
 // ============================================================
 // PER-CHUNK TRANSCRIPTION VERIFICATION (Whisper-based)
 // ============================================================
-// Transcribes a single TTS chunk via Groq Whisper and compares to source text.
-// Fish Speech loop hallucinations yield transcriptions that are either (a) much
-// longer than the source (because the loop repeats words), or (b) low-similarity
-// when words get mutated. Gate on both length-ratio and LCS similarity.
-
-// Post-processing mode, controlled by AUDIO_POSTPROCESS_MODE env:
-//   off    — skip entirely (original disabled behavior)
-//   shadow — run detection, log what WOULD be cut, but don't mutate audio
-//   on     — run detection and actually trim the repeated ranges
-// Default is 'shadow' so every deploy gathers telemetry before cuts resume.
-type PostProcessMode = 'off' | 'shadow' | 'on';
-
-function getPostProcessMode(): PostProcessMode {
-  const raw = (process.env.AUDIO_POSTPROCESS_MODE || 'shadow').toLowerCase();
-  if (raw === 'off' || raw === 'shadow' || raw === 'on') return raw as PostProcessMode;
-  logger.warn(`Invalid AUDIO_POSTPROCESS_MODE="${process.env.AUDIO_POSTPROCESS_MODE}", defaulting to "shadow"`);
-  return 'shadow';
-}
-
-async function postProcessAudio(audioBuffer: Buffer): Promise<Buffer> {
-  const mode = getPostProcessMode();
-
-  if (mode === 'off') {
-    logger.info('[postProcessAudio] mode=off, skipping');
-    return audioBuffer;
-  }
-
-  try {
-    const segments = await transcribeForRepetitionDetection(audioBuffer);
-    if (segments.length === 0) {
-      logger.info('[postProcessAudio] No transcription available, skipping');
-      return audioBuffer;
-    }
-
-    const repetitions = detectRepetitions(segments);
-    const totalRemovedSec = repetitions.reduce((s, r) => s + (r.end - r.start), 0);
-
-    // Telemetry: always emit so regressions surface without needing DEBUG=true
-    logger.info(`[postProcessAudio] mode=${mode} detections=${repetitions.length} totalRemovedSec=${totalRemovedSec.toFixed(2)}`);
-
-    if (repetitions.length === 0) {
-      return audioBuffer;
-    }
-
-    if (mode === 'shadow') {
-      logger.info(`[postProcessAudio] SHADOW: detected ${repetitions.length} ranges (${totalRemovedSec.toFixed(2)}s) — NOT mutating audio`);
-      repetitions.slice(0, 10).forEach((r, i) => {
-        logger.info(`[postProcessAudio] SHADOW[${i}] ${r.start.toFixed(2)}s-${r.end.toFixed(2)}s: "${r.text.substring(0, 80)}"`);
-      });
-      return audioBuffer;
-    }
-
-    // mode === 'on'
-    return await removeAudioSegments(audioBuffer, repetitions);
-  } catch (error) {
-    logger.error('[postProcessAudio] Failed, returning original audio:', error);
-    return audioBuffer;
-  }
-}
-
-// ============================================================
-// END POST-PROCESSING
-// ============================================================
 
 // Detect and remove repeated phrases in source text BEFORE TTS generation
 function removeTextRepetitions(text: string, minWords: number = 4): { cleaned: string; removedCount: number } {
@@ -2916,10 +2853,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
     console.log(`Combined audio: ${trimmedAudio.length} bytes, ${Math.round(combinedDuration)}s`);
 
-    // Post-process to remove repeated audio segments
-    sendEvent({ type: 'progress', progress: 90, message: 'Removing repeated segments...' });
-    let finalAudio: Buffer = await postProcessAudio(trimmedAudio);
-    console.log(`Post-processed audio: ${finalAudio.length} bytes`);
+    let finalAudio: Buffer = trimmedAudio;
 
     // NOTE: Smoothing skipped for combined audio (238MB causes V8 memory error)
     // Smoothing already applied per-segment (where chunk glitches occur)
