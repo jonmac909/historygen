@@ -309,10 +309,19 @@ function lookupPhonetic(word: string): string {
 // ============================================================
 
 
+interface WhisperWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
 interface WhisperSegment {
   text: string;
   start: number;
   end: number;
+  // Populated when Whisper is asked for word-level granularity. Gives
+  // precise per-word start/end times so cut boundaries don't drift.
+  words?: WhisperWord[];
 }
 
 interface RepetitionRange {
@@ -754,7 +763,9 @@ function getPauseDuration(text: string, isLastChunk: boolean = false): number {
   return 0.1;
 }
 
-// Transcribe a single audio chunk
+// Transcribe a single audio chunk via Groq Whisper.
+// Requests both segment and word-level timestamps so the loop detector
+// can cut on word boundaries (no interpolation drift).
 async function transcribeChunk(audioBuffer: Buffer, apiKey: string): Promise<WhisperSegment[]> {
   const formData = new FormData();
   const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: 'audio/wav' });
@@ -762,6 +773,10 @@ async function transcribeChunk(audioBuffer: Buffer, apiKey: string): Promise<Whi
   formData.append('model', 'whisper-large-v3-turbo');
   formData.append('response_format', 'verbose_json');
   formData.append('language', 'en');
+  // Ask for word-level timestamps in addition to segment-level.
+  // Groq mirrors the OpenAI Whisper API for this parameter.
+  formData.append('timestamp_granularities[]', 'segment');
+  formData.append('timestamp_granularities[]', 'word');
 
   const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
     method: 'POST',
@@ -777,7 +792,24 @@ async function transcribeChunk(audioBuffer: Buffer, apiKey: string): Promise<Whi
   }
 
   const result = await response.json() as any;
-  return result.segments || [];
+  const segments: WhisperSegment[] = result.segments || [];
+  const words: WhisperWord[] = result.words || [];
+
+  // Attach each word to its containing segment by timestamp overlap.
+  // Falls back gracefully if Groq returns no words array (older deploys,
+  // or if the request parameter is ignored).
+  if (words.length > 0 && segments.length > 0) {
+    let wi = 0;
+    for (const seg of segments) {
+      seg.words = [];
+      while (wi < words.length && words[wi].start < seg.end - 1e-6) {
+        if (words[wi].end <= seg.start + 1e-6) { wi++; continue; }
+        seg.words.push(words[wi]);
+        wi++;
+      }
+    }
+  }
+  return segments;
 }
 
 // Transcribe audio using Groq Whisper to get segments with timestamps
@@ -825,12 +857,18 @@ async function transcribeForRepetitionDetection(audioBuffer: Buffer): Promise<Wh
       try {
         const chunkSegments = await transcribeChunk(chunkWav, groqApiKey);
 
-        // Adjust timestamps by chunk offset
+        // Adjust timestamps by chunk offset (segment AND word level)
         for (const seg of chunkSegments) {
+          const offsetWords = seg.words?.map(w => ({
+            word: w.word,
+            start: w.start + timeOffset,
+            end: w.end + timeOffset,
+          }));
           allSegments.push({
             text: seg.text,
             start: seg.start + timeOffset,
             end: seg.end + timeOffset,
+            words: offsetWords,
           });
         }
       } catch (err) {
@@ -875,79 +913,117 @@ export function detectRepetitions(
   const repetitions: RepetitionRange[] = [];
   const processedRanges = new Set<string>();
 
-  // Whisper splits audio into short timed chunks (1-2s) that usually don't
-  // correspond to sentence boundaries — a TTS loop that repeats a phrase
-  // within one actual sentence can show up as words shifting across SRT
-  // chunk boundaries. So rebuild sentences across segment boundaries:
-  // concatenate the full transcript with a char->time map, then split on
-  // .!? to get real sentences with per-word start/end times for precise
-  // FFmpeg cuts.
+  // Rebuild sentences across Whisper segment boundaries so a loop that
+  // spans multiple segments is caught correctly. For per-word timing we
+  // prefer Whisper's own word-level timestamps (when available); fall
+  // back to char-level interpolation from segment boundaries if not.
   type WordTime = { normalized: string; startTime: number; endTime: number };
   type Sentence = { text: string; normalized: string; start: number; end: number; words: WordTime[] };
   const sentences: Sentence[] = [];
 
-  const joinedParts: string[] = [];
-  const charStarts: number[] = [];
-  const charEnds: number[] = [];
-  for (let si = 0; si < segments.length; si++) {
-    const seg = segments[si];
-    const segText = seg.text;
-    if (!segText) continue;
-    const segDuration = Math.max(0.01, seg.end - seg.start);
-    const timePerChar = segDuration / Math.max(1, segText.length);
-    for (let c = 0; c < segText.length; c++) {
-      charStarts.push(seg.start + c * timePerChar);
-      charEnds.push(seg.start + (c + 1) * timePerChar);
-    }
-    joinedParts.push(segText);
-    if (si < segments.length - 1) {
-      joinedParts.push(' ');
-      charStarts.push(seg.end);
-      charEnds.push(segments[si + 1].start);
-    }
-  }
-  const joined = joinedParts.join('');
+  const hasWordTimestamps = segments.some(s => s.words && s.words.length > 0);
+  logger.info(`Sentence rebuild: ${segments.length} segs, word-level timestamps=${hasWordTimestamps ? 'yes' : 'no (falling back to char interpolation)'}`);
 
-  // Split into sentences at .!? boundaries, tracking char offsets.
-  // For each sentence also extract per-word timestamps so the loop-cut
-  // detector can use precise boundaries instead of a sentence-wide average.
-  const sentenceMatches = joined.matchAll(/[^.!?]+[.!?]?/g);
-  const wordPattern = /\S+/g;
-  for (const match of sentenceMatches) {
-    const raw = match[0];
-    const matchIndex = match.index ?? 0;
-    const leftTrim = raw.search(/\S/);
-    if (leftTrim === -1) continue;
-    const trimmed = raw.trim();
-    if (!trimmed) continue;
-    const rightTrim = raw.length - (raw.length - raw.replace(/\s+$/, '').length);
-    const startChar = matchIndex + leftTrim;
-    const endChar = Math.min(matchIndex + rightTrim - 1, charEnds.length - 1);
-    const start = charStarts[startChar] ?? segments[0].start;
-    const end = charEnds[endChar] ?? segments[segments.length - 1].end;
-
-    // Walk words inside this sentence, mapping each to its real time
-    // via charStarts/charEnds lookup — no sentence-wide averaging.
-    const words: WordTime[] = [];
-    const wordMatches = raw.matchAll(wordPattern);
-    for (const wMatch of wordMatches) {
-      const wRaw = wMatch[0];
-      const wStartChar = matchIndex + (wMatch.index ?? 0);
-      const wEndChar = Math.min(wStartChar + wRaw.length - 1, charEnds.length - 1);
-      const wStart = charStarts[wStartChar] ?? start;
-      const wEnd = charEnds[wEndChar] ?? end;
-      const normalized = normalizeForComparison(wRaw);
-      if (normalized.length === 0) continue;
-      words.push({ normalized, startTime: wStart, endTime: wEnd });
+  if (hasWordTimestamps) {
+    // Use Whisper's word-level timestamps directly — no drift.
+    // Build a flat ordered list of (word, normalizedWord, start, end) then
+    // group into sentences by .!? terminators seen in the original word text.
+    type FlatWord = { raw: string; normalized: string; start: number; end: number };
+    const flat: FlatWord[] = [];
+    for (const seg of segments) {
+      if (!seg.words) continue;
+      for (const w of seg.words) {
+        const raw = w.word.trim();
+        if (!raw) continue;
+        const normalized = normalizeForComparison(raw);
+        if (!normalized) continue;
+        flat.push({ raw, normalized, start: w.start, end: w.end });
+      }
     }
 
-    sentences.push({
-      text: trimmed,
-      normalized: normalizeForComparison(trimmed),
-      start,
-      end,
-      words,
-    });
+    // Walk flat list, accumulating into a sentence until we see a word
+    // ending in .!? (that's the sentence terminator from Whisper's view).
+    let cur: FlatWord[] = [];
+    const flush = () => {
+      if (cur.length === 0) return;
+      const text = cur.map(w => w.raw).join(' ');
+      const words: WordTime[] = cur.map(w => ({
+        normalized: w.normalized,
+        startTime: w.start,
+        endTime: w.end,
+      }));
+      sentences.push({
+        text,
+        normalized: normalizeForComparison(text),
+        start: cur[0].start,
+        end: cur[cur.length - 1].end,
+        words,
+      });
+      cur = [];
+    };
+    for (const w of flat) {
+      cur.push(w);
+      if (/[.!?]$/.test(w.raw)) flush();
+    }
+    flush();
+  } else {
+    // Fallback: old char-interpolation path when word timestamps aren't
+    // available (older Groq deploys or if the request parameter was ignored).
+    const joinedParts: string[] = [];
+    const charStarts: number[] = [];
+    const charEnds: number[] = [];
+    for (let si = 0; si < segments.length; si++) {
+      const seg = segments[si];
+      const segText = seg.text;
+      if (!segText) continue;
+      const segDuration = Math.max(0.01, seg.end - seg.start);
+      const timePerChar = segDuration / Math.max(1, segText.length);
+      for (let c = 0; c < segText.length; c++) {
+        charStarts.push(seg.start + c * timePerChar);
+        charEnds.push(seg.start + (c + 1) * timePerChar);
+      }
+      joinedParts.push(segText);
+      if (si < segments.length - 1) {
+        joinedParts.push(' ');
+        charStarts.push(seg.end);
+        charEnds.push(segments[si + 1].start);
+      }
+    }
+    const joined = joinedParts.join('');
+    const sentenceMatches = joined.matchAll(/[^.!?]+[.!?]?/g);
+    const wordPattern = /\S+/g;
+    for (const match of sentenceMatches) {
+      const raw = match[0];
+      const matchIndex = match.index ?? 0;
+      const leftTrim = raw.search(/\S/);
+      if (leftTrim === -1) continue;
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const rightTrim = raw.length - (raw.length - raw.replace(/\s+$/, '').length);
+      const startChar = matchIndex + leftTrim;
+      const endChar = Math.min(matchIndex + rightTrim - 1, charEnds.length - 1);
+      const start = charStarts[startChar] ?? segments[0].start;
+      const end = charEnds[endChar] ?? segments[segments.length - 1].end;
+      const words: WordTime[] = [];
+      const wordMatches = raw.matchAll(wordPattern);
+      for (const wMatch of wordMatches) {
+        const wRaw = wMatch[0];
+        const wStartChar = matchIndex + (wMatch.index ?? 0);
+        const wEndChar = Math.min(wStartChar + wRaw.length - 1, charEnds.length - 1);
+        const wStart = charStarts[wStartChar] ?? start;
+        const wEnd = charEnds[wEndChar] ?? end;
+        const normalized = normalizeForComparison(wRaw);
+        if (normalized.length === 0) continue;
+        words.push({ normalized, startTime: wStart, endTime: wEnd });
+      }
+      sentences.push({
+        text: trimmed,
+        normalized: normalizeForComparison(trimmed),
+        start,
+        end,
+        words,
+      });
+    }
   }
 
   logger.info(`Analyzing ${sentences.length} sentences for back-to-back repeats (minWords=${minWords}, simThreshold=${consecutiveSimilarityThreshold})...`);
@@ -1022,13 +1098,14 @@ export function detectRepetitions(
         if (occurrences.length < inSegmentMinOccurrences) continue;
 
         // Flag every repeat after the first, using real word timestamps.
-        // Pad the cut very slightly (10ms) on both sides so FFmpeg atrim
-        // doesn't clip into neighboring word onset/offset.
-        const pad = 0.01;
+        // No pad on start — would cut into the preceding word's trailing
+        // audio. Small pad on end catches any residual decay of the last
+        // repeated word so the cut doesn't leave a phantom half-word.
+        const endPad = 0.02;
         for (let k = 1; k < occurrences.length; k++) {
           const occPos = occurrences[k];
-          const repStart = Math.max(0, words[occPos].startTime - pad);
-          const repEnd = words[occPos + phraseLen - 1].endTime + pad;
+          const repStart = words[occPos].startTime;
+          const repEnd = words[occPos + phraseLen - 1].endTime + endPad;
           const rangeKey = `${repStart.toFixed(2)}-${repEnd.toFixed(2)}`;
           if (!processedRanges.has(rangeKey)) {
             processedRanges.add(rangeKey);
