@@ -868,7 +868,7 @@ export function detectRepetitions(
   minWords: number = 4,
   consecutiveSimilarityThreshold: number = 1.0,
   inSegmentMinPhraseLen: number = 6,
-  inSegmentMinOccurrences: number = 3,
+  inSegmentMinOccurrences: number = 2,  // 2× back-to-back = loop (1x repeat)
 ): RepetitionRange[] {
   if (segments.length < 2) return [];
 
@@ -1271,12 +1271,23 @@ async function healSegmentAudio(audioBuffer: Buffer, segmentLabel: string): Prom
       logger.info(`[heal ${segmentLabel}] no transcription, skipping heal`);
       return audioBuffer;
     }
+
+    // Dump the full Whisper output so we can see exactly what the detector
+    // is scanning. Helps diagnose cases where the loop is in the audio but
+    // Whisper collapsed it into one utterance or chunked it unexpectedly.
+    const fullTranscript = segments.map(s => s.text).join(' ').trim();
+    logger.info(`[heal ${segmentLabel}] whisper transcript (${segments.length} segs, ${fullTranscript.length} chars):`);
+    // Log in ~200-char slices so long lines don't get truncated
+    for (let i = 0; i < fullTranscript.length; i += 200) {
+      logger.info(`[heal ${segmentLabel}]   "${fullTranscript.substring(i, i + 200)}"`);
+    }
+
     const repetitions = detectRepetitions(segments);
     const totalRemovedSec = repetitions.reduce((s, r) => s + (r.end - r.start), 0);
     logger.info(`[heal ${segmentLabel}] detections=${repetitions.length} totalRemovedSec=${totalRemovedSec.toFixed(2)}`);
     if (repetitions.length === 0) return audioBuffer;
     repetitions.slice(0, 10).forEach((r, i) => {
-      logger.info(`[heal ${segmentLabel}] cut[${i}] ${r.start.toFixed(2)}s-${r.end.toFixed(2)}s: "${r.text.substring(0, 80)}"`);
+      logger.info(`[heal ${segmentLabel}] cut[${i}] ${r.start.toFixed(2)}s-${r.end.toFixed(2)}s: "${r.text.substring(0, 120)}"`);
     });
     const cleaned = await removeAudioSegments(audioBuffer, repetitions);
     logger.info(`[heal ${segmentLabel}] healed: ${audioBuffer.length} -> ${cleaned.length} bytes`);
