@@ -830,12 +830,11 @@ export function compareAudioSegmentsToSRT(
     return 'Multiple differences';
   };
 
-  // Sequential read-head through the transcript. Each script sentence must
-  // match at or shortly after the cursor — not anywhere in the transcript.
-  // A script sentence whose words match only far from the cursor is treated
-  // as genuinely missing (out of order = probably not the same content).
-  let transcriptCursor = 0;
-
+  // Search the FULL transcript for each script sentence independently.
+  // Strict cursor-based sequential enforcement cascades: if one sentence
+  // fails to find its match, the cursor stalls and every subsequent
+  // sentence also misses. Trading that for possible out-of-order matches
+  // (which are rare because script sentences are usually unique content).
   for (const audioSeg of sortedAudioSegments) {
     if (!audioSeg.text || audioSeg.text.trim().length === 0) continue;
     totalSegments++;
@@ -849,29 +848,16 @@ export function compareAudioSegmentsToSRT(
       if (scriptWords.length < 3) continue;
       sentencesChecked++;
 
-      // Allow lookahead proportional to sentence length (handles minor
-      // framing drift) but cap the window to prevent matching unrelated
-      // content many sentences later.
-      const lookahead = Math.max(80, scriptWords.length * 3);
-      const maxStart = Math.min(transcriptCursor + lookahead, fullTranscriptWords.length - 1);
-      const result = scanScript(scriptWords, transcriptCursor, maxStart);
+      const result = scanScript(scriptWords, 0, fullTranscriptWords.length - 1);
 
-      if (result.coverage >= 0.92) {
-        // Present, in order — advance the cursor past this match
-        transcriptCursor = result.endIdx + 1;
-        continue;
-      }
+      if (result.coverage >= 0.92) continue;
 
-      // "Smart" filter: if the only unmatched script words are stopwords
-      // (function-word swaps like "and"/"in", "a"/"the"), don't flag —
-      // content is effectively present, variation is not a real issue.
+      // Smart filter: if only unmatched words are stopwords (function-word
+      // swaps like "and"/"in", "a"/"the"), don't flag — not a real issue.
       if (result.coverage >= 0.7 && isTriviallyDifferent(scriptWords, result.matchedScriptIndices)) {
-        transcriptCursor = (result.endIdx >= 0 ? result.endIdx : transcriptCursor) + 1;
         continue;
       }
 
-      // Build display transcript text from matched range (may be empty if
-      // no anchor was found at all).
       let transcribedText = '';
       if (result.startIdx >= 0) {
         const sIdx = transcriptSentenceAtWordIdx(result.startIdx);
@@ -892,16 +878,6 @@ export function compareAudioSegmentsToSRT(
         label,
       });
       sentencesFlagged++;
-
-      // Advance cursor past the imperfect match (if any) so subsequent
-      // sentences don't get stuck searching behind it. If nothing matched,
-      // advance by an estimated sentence-worth of words to avoid infinite
-      // stalling at a genuinely-missing stretch.
-      if (result.endIdx >= transcriptCursor) {
-        transcriptCursor = result.endIdx + 1;
-      } else {
-        transcriptCursor += Math.max(5, Math.floor(scriptWords.length * 0.5));
-      }
     }
 
     // Score: fraction of this segment's sentences that matched cleanly
