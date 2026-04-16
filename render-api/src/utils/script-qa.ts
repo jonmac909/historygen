@@ -561,7 +561,40 @@ export function compareAudioSegmentsToSRT(
     .join(' ')
     .trim();
   const allTranscribedSentences = splitIntoSentences(fullTranscription);
-  const globalUsedIndices = new Set<number>();
+
+  // Asymmetric "containment" similarity: what fraction of the script
+  // sentence's words appear in-order in the transcript sentence? This
+  // treats "script fully inside a longer transcript sentence" as a
+  // perfect match (1.0), which is the correct reading when Whisper
+  // merges two script sentences into one comma-joined utterance.
+  // Symmetric LCS/max would falsely penalize those as missing.
+  const containmentSimilarity = (scriptSentence: string, transcriptSentence: string): number => {
+    const scriptWords = normalizeText(scriptSentence).split(' ').filter(Boolean);
+    const transWords = normalizeText(transcriptSentence).split(' ').filter(Boolean);
+    if (scriptWords.length === 0) return 1;
+    if (transWords.length === 0) return 0;
+    const m = scriptWords.length;
+    const n = transWords.length;
+    const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+    for (let i = 1; i <= m; i++) {
+      for (let j = 1; j <= n; j++) {
+        dp[i][j] = scriptWords[i - 1] === transWords[j - 1]
+          ? dp[i - 1][j - 1] + 1
+          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+    return dp[m][n] / scriptWords.length;
+  };
+
+  const findBestContainment = (scriptSentence: string) => {
+    let best = { index: -1, similarity: 0 };
+    for (let i = 0; i < allTranscribedSentences.length; i++) {
+      const sim = containmentSimilarity(scriptSentence, allTranscribedSentences[i]);
+      if (sim > best.similarity) best = { index: i, similarity: sim };
+      if (best.similarity >= 1.0) break; // short-circuit on perfect match
+    }
+    return best.index >= 0 ? best : null;
+  };
 
   for (const audioSeg of sortedAudioSegments) {
     if (!audioSeg.text || audioSeg.text.trim().length === 0) continue;
@@ -576,8 +609,9 @@ export function compareAudioSegmentsToSRT(
       if (normScript.split(' ').filter(Boolean).length < 3) continue; // skip tiny fragments
       sentencesChecked++;
 
-      // Search the ENTIRE transcription, not just this segment's time range
-      const match = findBestMatch(scriptSentence, allTranscribedSentences, globalUsedIndices);
+      // No used-index restriction — multiple script sentences may
+      // legitimately match the same long transcript sentence.
+      const match = findBestContainment(scriptSentence);
 
       if (!match || match.similarity < 0.6) {
         issues.push({
@@ -590,7 +624,6 @@ export function compareAudioSegmentsToSRT(
         });
         sentencesFlagged++;
       } else if (match.similarity < 0.92) {
-        globalUsedIndices.add(match.index);
         issues.push({
           type: 'mismatch',
           originalText: scriptSentence,
@@ -600,8 +633,6 @@ export function compareAudioSegmentsToSRT(
           segmentNumber: audioSeg.index,
         });
         sentencesFlagged++;
-      } else {
-        globalUsedIndices.add(match.index);
       }
     }
 
