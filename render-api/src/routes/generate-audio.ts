@@ -3344,7 +3344,45 @@ router.post('/segment', async (req: Request, res: Response) => {
 
           const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, ttsJobSettings);
           const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
-          const audioData = base64ToBuffer(output.audio_base64);
+          let audioData = base64ToBuffer(output.audio_base64);
+
+          // Verify chunk: Whisper + signal check. If flagged, regenerate once
+          // with a fresh seed. This is the piece that was missing — without
+          // it, Fish Speech's loop hallucination re-occurs ~30-50% of retries
+          // on the same text.
+          if (process.env.CHUNK_VERIFICATION_MODE?.toLowerCase() !== 'off') {
+            const whisperCheck = await verifyChunkTranscription(audioData, chunkText);
+            const signalLoops = detectRepeatedWindows(audioData);
+            if (!whisperCheck.ok || signalLoops.length > 0) {
+              const reason = [
+                !whisperCheck.ok ? `whisper:${whisperCheck.reason}` : null,
+                signalLoops.length > 0 ? `signal:×${signalLoops[0].occurrences}` : null,
+              ].filter(Boolean).join(' + ');
+              logger.warn(`[verify] /segment chunk ${chunkIndex + 1}/${chunks.length}: FAIL (${reason}) — regenerating with fresh seed`);
+              if (!whisperCheck.ok && whisperCheck.transcribed) {
+                logger.warn(`[verify]   source: "${chunkText.substring(0, 100)}"`);
+                logger.warn(`[verify]   heard:  "${whisperCheck.transcribed.substring(0, 100)}"`);
+              }
+              const altSeed = ((ttsJobSettings as any)?.seed ?? 0) + chunkIndex * 7919 + Date.now();
+              const altSettings = { ...(ttsJobSettings || {}), seed: altSeed & 0x7fffffff };
+              try {
+                const jobId2 = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, altSettings);
+                const output2 = await pollJobStatus(jobId2, RUNPOD_API_KEY);
+                const retryAudio = base64ToBuffer(output2.audio_base64);
+                const retryWhisper = await verifyChunkTranscription(retryAudio, chunkText);
+                const retrySignal = detectRepeatedWindows(retryAudio);
+                audioData = retryAudio;
+                if (retryWhisper.ok && retrySignal.length === 0) {
+                  logger.info(`[verify] /segment chunk ${chunkIndex + 1}/${chunks.length}: regen clean`);
+                } else {
+                  logger.error(`[verify] /segment chunk ${chunkIndex + 1}/${chunks.length}: regen STILL flagged — keeping second attempt`);
+                }
+              } catch (retryErr) {
+                logger.error(`[verify] /segment chunk ${chunkIndex + 1}/${chunks.length}: regen threw ${retryErr instanceof Error ? retryErr.message : 'unknown'} — keeping original`);
+              }
+            }
+          }
+
           const elapsed = ((Date.now() - chunkStart) / 1000).toFixed(1);
           console.log(`  ✓ chunk ${chunkIndex + 1}/${chunks.length}: ${audioData.length} bytes (${elapsed}s)`);
           return { index: chunkIndex, audio: audioData, text: chunkText };
