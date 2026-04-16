@@ -81,6 +81,23 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
+// Render a sentence with words that don't appear in the OTHER sentence
+// bolded — used for both Script and Heard blocks so the user can spot
+// the differences at a glance instead of reading two paragraphs.
+function highlightWordDiff(text: string, otherText: string): React.ReactNode {
+  const norm = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '');
+  const otherWords = new Set<string>(norm(otherText).split(/\s+/).filter(Boolean));
+  const tokens = text.split(/(\s+)/); // preserve whitespace
+  return tokens.map((tok, i) => {
+    if (/^\s+$/.test(tok) || !tok) return tok;
+    const clean = norm(tok);
+    if (clean && !otherWords.has(clean)) {
+      return <strong key={i} className="font-bold underline decoration-2 underline-offset-2">{tok}</strong>;
+    }
+    return <React.Fragment key={i}>{tok}</React.Fragment>;
+  });
+}
+
 // Compute a concise, human-readable description of what the scanner
 // picked up as different between two sentences. Uses LCS backtracking
 // to identify word-level diffs and pairs adjacent missing/added runs
@@ -764,18 +781,22 @@ export function CaptionsPreviewModal({
                         {/* Expanded content */}
                         {isExpanded && (
                           <div className="pl-5 pb-2 space-y-2">
-                            {/* Full script text */}
+                            {/* Full script text with bold highlighting on words not in heard */}
                             {issue.originalText && (
                               <div>
                                 <span className="text-[10px] text-muted-foreground uppercase">Script:</span>
-                                <p className="text-xs text-green-600 bg-green-50 p-1.5 rounded mt-0.5">"{issue.originalText}"</p>
+                                <p className="text-xs text-green-700 bg-green-50 p-1.5 rounded mt-0.5">
+                                  "{highlightWordDiff(issue.originalText, issue.transcribedText || '')}"
+                                </p>
                               </div>
                             )}
-                            {/* Full transcribed text */}
+                            {/* Heard text with bold highlighting on words not in script */}
                             {issue.transcribedText && (
                               <div>
                                 <span className="text-[10px] text-muted-foreground uppercase">Heard:</span>
-                                <p className="text-xs text-red-500 bg-red-50 p-1.5 rounded mt-0.5">"{issue.transcribedText}"</p>
+                                <p className="text-xs text-red-600 bg-red-50 p-1.5 rounded mt-0.5">
+                                  "{highlightWordDiff(issue.transcribedText, issue.originalText || '')}"
+                                </p>
                               </div>
                             )}
                             {!issue.transcribedText && issue.type === 'missing' && (

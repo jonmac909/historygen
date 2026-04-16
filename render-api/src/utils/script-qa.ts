@@ -863,7 +863,10 @@ export function compareAudioSegmentsToSRT(
     if (scriptWords.length === 0) {
       return { coverage: 1, startIdx: -1, endIdx: -1, matchedScriptIndices: new Set() };
     }
-    const MAX_GAP = 40;
+    // Tighter gap — too loose lets the scan jump to coincidental matches
+    // 200 words away and report massive "Heard" ranges. 15 words is
+    // ample for normal TTS timing drift.
+    const MAX_GAP = 15;
     const first = scriptWords[0];
 
     const anchors = new Set<number>();
@@ -881,7 +884,7 @@ export function compareAudioSegmentsToSRT(
       }
     }
 
-    let best = { matches: 0, startIdx: -1, endIdx: -1, matched: new Set<number>() };
+    let best = { matches: 0, startIdx: -1, endIdx: -1, matched: new Set<number>(), span: Infinity };
     for (const startPos of anchors) {
       let pos = startPos;
       let matches = 1;
@@ -905,10 +908,15 @@ export function compareAudioSegmentsToSRT(
         lastMatch = found;
         pos = found;
       }
-      if (matches > best.matches) {
-        best = { matches, startIdx: startPos, endIdx: lastMatch, matched: matchedHere };
+      const span = lastMatch - startPos + 1;
+      // Prefer more matches; on tie, prefer TIGHTER span (avoids picking
+      // coincidental "She" matches 200 words before the real sentence).
+      const better = matches > best.matches || (matches === best.matches && span < best.span);
+      if (better) {
+        best = { matches, startIdx: startPos, endIdx: lastMatch, matched: matchedHere, span };
       }
-      if (best.matches === scriptWords.length) break;
+      // Early-exit only on perfect match WITH reasonable density
+      if (best.matches === scriptWords.length && best.span <= scriptWords.length * 2) break;
     }
     return {
       coverage: best.matches / scriptWords.length,
@@ -1003,13 +1011,16 @@ export function compareAudioSegmentsToSRT(
         continue;
       }
 
+      // Build display "heard" text from the matched range, but cap it so
+      // it's roughly comparable to the script sentence length (±30%) and
+      // never spans more than ~2x the script sentence. Prevents giant
+      // multi-paragraph dumps when the match span is wide.
       let transcribedText = '';
       if (result.startIdx >= 0) {
-        const sIdx = transcriptSentenceAtWordIdx(result.startIdx);
-        const eIdx = transcriptSentenceAtWordIdx(result.endIdx);
-        if (sIdx >= 0) {
-          transcribedText = allTranscribedSentences.slice(sIdx, Math.max(sIdx, eIdx) + 1).join(' ');
-        }
+        const maxWords = Math.max(scriptWords.length * 2, scriptWords.length + 10);
+        const sliceStart = result.startIdx;
+        const sliceEnd = Math.min(result.startIdx + maxWords, fullTranscriptWords.length);
+        transcribedText = fullTranscriptWords.slice(sliceStart, sliceEnd).join(' ');
       }
       const label = classifyIssue(scriptWords, result.startIdx, result.endIdx, result.coverage);
 
