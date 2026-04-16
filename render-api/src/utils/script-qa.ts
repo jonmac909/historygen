@@ -591,36 +591,61 @@ export function compareAudioSegmentsToSRT(
       continue;
     }
 
-    // Compare the texts using LCS similarity
+    // Compare at the segment level first to get an overall similarity score
     const normalizedScript = normalizeText(audioSeg.text);
     const normalizedTranscript = normalizeText(transcribedText);
-    const similarity = calculateSimilarity(normalizedScript, normalizedTranscript);
+    const segmentSimilarity = calculateSimilarity(normalizedScript, normalizedTranscript);
 
-    if (similarity < 0.6) {
-      // Severely garbled or wrong content
-      issues.push({
-        type: 'garbled',
-        originalText: audioSeg.text.substring(0, 150) + (audioSeg.text.length > 150 ? '...' : ''),
-        transcribedText: transcribedText.substring(0, 150) + (transcribedText.length > 150 ? '...' : ''),
-        similarity,
-        severity: 'error',
-        segmentNumber: audioSeg.index,
-      });
-    } else if (similarity < 0.92) {
-      // Some issues but mostly okay
-      issues.push({
-        type: 'mismatch',
-        originalText: audioSeg.text.substring(0, 150) + (audioSeg.text.length > 150 ? '...' : ''),
-        transcribedText: transcribedText.substring(0, 150) + (transcribedText.length > 150 ? '...' : ''),
-        similarity,
-        severity: 'warning',
-        segmentNumber: audioSeg.index,
-      });
-      totalMatched += similarity;
-    } else {
-      // Good match
+    if (segmentSimilarity >= 0.92) {
       totalMatched++;
+      continue;
     }
+
+    // Segment similarity is below threshold — drill down into per-sentence
+    // matching so the reported pairs actually line up semantically (not
+    // just "first 150 chars of each", which produced useless display rows
+    // where script start vs heard middle looked like unrelated text).
+    const scriptSentences = splitIntoSentences(audioSeg.text);
+    const transcribedSentences = splitIntoSentences(transcribedText);
+    const usedTranscriptIndices = new Set<number>();
+    let sentencesFlagged = 0;
+    for (const scriptSentence of scriptSentences) {
+      const normScript = normalizeText(scriptSentence);
+      if (normScript.split(' ').filter(Boolean).length < 3) continue; // skip tiny fragments
+
+      const match = findBestMatch(scriptSentence, transcribedSentences, usedTranscriptIndices);
+
+      if (!match || match.similarity < 0.6) {
+        issues.push({
+          type: 'missing',
+          originalText: scriptSentence,
+          transcribedText: match ? transcribedSentences[match.index] : '',
+          similarity: match?.similarity,
+          severity: 'error',
+          segmentNumber: audioSeg.index,
+        });
+        sentencesFlagged++;
+      } else if (match.similarity < 0.92) {
+        usedTranscriptIndices.add(match.index);
+        issues.push({
+          type: 'mismatch',
+          originalText: scriptSentence,
+          transcribedText: transcribedSentences[match.index],
+          similarity: match.similarity,
+          severity: 'warning',
+          segmentNumber: audioSeg.index,
+        });
+        sentencesFlagged++;
+      } else {
+        // Good match at sentence level
+        usedTranscriptIndices.add(match.index);
+      }
+    }
+    // Partial credit toward score proportional to how much of the segment matched
+    const segmentScore = scriptSentences.length > 0
+      ? Math.max(0, 1 - sentencesFlagged / scriptSentences.length)
+      : segmentSimilarity;
+    totalMatched += segmentScore;
   }
 
   // Calculate overall score
