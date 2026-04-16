@@ -5059,21 +5059,19 @@ const Index = () => {
         audioSegments={pendingAudioSegments}
         onSegmentRegenerated={(segmentNumber, newAudioUrl, newText, duration) => {
           // Update the audio segment in state
-          setPendingAudioSegments(prev => prev.map(seg =>
+          const updatedSegments = pendingAudioSegments.map(seg =>
             seg.index === segmentNumber
               ? { ...seg, audioUrl: newAudioUrl, text: newText, duration }
               : seg
-          ));
+          );
+          setPendingAudioSegments(updatedSegments);
           // Mark that segments need recombining for next render
           setSegmentsNeedRecombine(true);
-          // Save to project
-          if (projectId) {
-            saveProject(projectId, { audioSegments: pendingAudioSegments.map(seg =>
-              seg.index === segmentNumber
-                ? { ...seg, audioUrl: newAudioUrl, text: newText, duration }
-                : seg
-            )});
-          }
+          // Save to project (use autoSave — file doesn't import saveProject)
+          autoSave("audio", {
+            audioSegments: updatedSegments,
+            segmentsNeedRecombine: true,
+          });
         }}
         onAudioHealed={(newAudioUrl, newDuration) => {
           // Backend trimmed loops out of the combined voiceover.wav and
