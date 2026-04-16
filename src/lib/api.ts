@@ -937,6 +937,39 @@ export async function regenerateAudioSegment(
   }
 }
 
+// Regenerate a segment using text stored in the project's audio_segments DB row.
+// Simpler than regenerateAudioSegment — caller doesn't need to pass segmentText,
+// which avoids UI state/DB drift. Skips pronunciation fixes (use regenerateAudioSegment for those).
+export async function regenerateSegmentFromDB(
+  projectId: string,
+  segmentNumber: number,
+  voiceSampleUrl: string,
+  ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number; seed?: number; emotionMarker?: string }
+): Promise<{ success: boolean; segment?: AudioSegment; error?: string }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/regenerate-segment`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ projectId, segmentNumber, voiceSampleUrl, ttsSettings }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Segment regeneration error:', response.status, errorText);
+      return { success: false, error: `Failed to regenerate segment: ${response.status}` };
+    }
+
+    const data = await response.json();
+    if (data.error) return { success: false, error: data.error };
+    return { success: true, segment: data.segment };
+  } catch (error) {
+    console.error('Segment regeneration error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Segment regeneration failed' };
+  }
+}
+
 // Lookup phonetic spelling for a word (auto-fill for pronunciation fixes)
 export async function lookupPhonetic(word: string): Promise<{ word: string; phonetic: string; found: boolean }> {
   const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';

@@ -14,7 +14,9 @@ import * as path from 'path';
 import * as os from 'os';
 import { getPronunciationFixesRecord } from './pronunciation';
 import { saveCost } from '../lib/cost-tracker';
-import { saveAudioToProject, saveAudioProgress } from '../lib/supabase-project';
+import { saveAudioToProject, saveAudioProgress, getProjectData } from '../lib/supabase-project';
+import { detectRepeatedWindows, RepeatedWindow } from '../utils/audio-integrity';
+import { calculateLCSSimilarityNormalized } from '../utils/script-qa';
 
 // Set FFmpeg and FFprobe paths
 if (ffmpegStatic) {
@@ -854,112 +856,162 @@ function normalizeForComparison(text: string): string {
     .trim();
 }
 
-// Detect repeated segments in transcription
-function detectRepetitions(segments: WhisperSegment[], minWords: number = 4): RepetitionRange[] {
+// Detect TTS loop hallucinations: the EXACT same sentence (after
+// lowercase/punctuation normalization) repeated back-to-back 2+ times.
+// We require exact equality (not fuzzy similarity) so natural rhetoric
+// like anaphora never triggers.
+// `consecutiveSimilarityThreshold` is retained for back-compat but is
+// only applied if < 1.0; the default 1.0 means EXACT match only.
+// Exported for offline scanning/debug scripts.
+export function detectRepetitions(
+  segments: WhisperSegment[],
+  minWords: number = 4,
+  consecutiveSimilarityThreshold: number = 1.0,
+  inSegmentMinPhraseLen: number = 6,
+  inSegmentMinOccurrences: number = 3,
+): RepetitionRange[] {
   if (segments.length < 2) return [];
 
   const repetitions: RepetitionRange[] = [];
   const processedRanges = new Set<string>();
 
-  // Build a list of sentences from segments
-  const sentences: { text: string; normalized: string; start: number; end: number }[] = [];
+  // Whisper splits audio into short timed chunks (1-2s) that usually don't
+  // correspond to sentence boundaries — a TTS loop that repeats a phrase
+  // within one actual sentence can show up as words shifting across SRT
+  // chunk boundaries. So rebuild sentences across segment boundaries:
+  // concatenate the full transcript with a char->time map, then split on
+  // .!? to get real sentences with accurate start/end times.
+  type Sentence = { text: string; normalized: string; start: number; end: number };
+  const sentences: Sentence[] = [];
 
-  for (const seg of segments) {
-    // Split segment into sentences if it contains multiple
-    const sentenceParts = seg.text.split(/(?<=[.!?])\s+/);
-    const segDuration = seg.end - seg.start;
-    const timePerChar = segDuration / seg.text.length;
-
-    let currentPos = 0;
-    for (const part of sentenceParts) {
-      if (part.trim().length > 0) {
-        const partStart = seg.start + (currentPos * timePerChar);
-        const partEnd = partStart + (part.length * timePerChar);
-        sentences.push({
-          text: part.trim(),
-          normalized: normalizeForComparison(part),
-          start: partStart,
-          end: partEnd,
-        });
-      }
-      currentPos += part.length + 1;
+  const joinedParts: string[] = [];
+  const charStarts: number[] = [];
+  const charEnds: number[] = [];
+  for (let si = 0; si < segments.length; si++) {
+    const seg = segments[si];
+    const segText = seg.text;
+    if (!segText) continue;
+    const segDuration = Math.max(0.01, seg.end - seg.start);
+    const timePerChar = segDuration / Math.max(1, segText.length);
+    for (let c = 0; c < segText.length; c++) {
+      charStarts.push(seg.start + c * timePerChar);
+      charEnds.push(seg.start + (c + 1) * timePerChar);
+    }
+    joinedParts.push(segText);
+    if (si < segments.length - 1) {
+      joinedParts.push(' ');
+      charStarts.push(seg.end);
+      charEnds.push(segments[si + 1].start);
     }
   }
+  const joined = joinedParts.join('');
 
-  logger.info(`Analyzing ${sentences.length} sentences for repetitions...`);
+  // Split into sentences at .!? boundaries, tracking char offsets
+  const sentenceMatches = joined.matchAll(/[^.!?]+[.!?]?/g);
+  for (const match of sentenceMatches) {
+    const raw = match[0];
+    const leftTrim = raw.search(/\S/);
+    if (leftTrim === -1) continue;
+    const trimmed = raw.trim();
+    if (!trimmed) continue;
+    const rightTrim = raw.length - (raw.length - raw.replace(/\s+$/, '').length);
+    const startChar = (match.index ?? 0) + leftTrim;
+    const endChar = Math.min((match.index ?? 0) + rightTrim - 1, charEnds.length - 1);
+    const start = charStarts[startChar] ?? segments[0].start;
+    const end = charEnds[endChar] ?? segments[segments.length - 1].end;
+    sentences.push({ text: trimmed, normalized: normalizeForComparison(trimmed), start, end });
+  }
 
-  // Look for consecutive repeated sentences
-  for (let i = 0; i < sentences.length - 1; i++) {
+  logger.info(`Analyzing ${sentences.length} sentences for back-to-back repeats (minWords=${minWords}, simThreshold=${consecutiveSimilarityThreshold})...`);
+
+  // Find runs of identical/near-identical ADJACENT sentences (j = i+1 only).
+  // No lookback window — this is how we avoid false-positives on natural anaphora.
+  let i = 0;
+  while (i < sentences.length - 1) {
     const current = sentences[i];
-    const words = current.normalized.split(' ').filter(w => w.length > 0);
+    const currWords = current.normalized.split(' ').filter(w => w.length > 0);
 
-    // Skip very short segments
-    if (words.length < minWords) continue;
+    if (currWords.length < minWords) { i++; continue; }
 
-    // Check next sentences for repetition
-    for (let j = i + 1; j < Math.min(i + 5, sentences.length); j++) {
-      const next = sentences[j];
+    // Extend the run while the consecutive sentence exactly matches (or
+    // meets the legacy similarity threshold when it's been set below 1.0)
+    let runEnd = i;
+    while (runEnd + 1 < sentences.length) {
+      const next = sentences[runEnd + 1];
       const nextWords = next.normalized.split(' ').filter(w => w.length > 0);
+      if (nextWords.length < minWords) break;
 
-      // Skip if next sentence is too short
-      if (nextWords.length < minWords) continue;
+      const matches = consecutiveSimilarityThreshold >= 1.0
+        ? current.normalized === next.normalized
+        : calculateSimilarity(current.normalized, next.normalized) >= consecutiveSimilarityThreshold;
 
-      // Check for similarity OR containment (catches subset duplicates)
-      const similarity = calculateSimilarity(current.normalized, next.normalized);
-      const contained = isContainedIn(next.normalized, current.normalized, minWords) ||
-                        isContainedIn(current.normalized, next.normalized, minWords);
+      if (matches) runEnd++;
+      else break;
+    }
 
-      if (similarity > 0.70 || contained) {
-        const rangeKey = `${next.start.toFixed(2)}-${next.end.toFixed(2)}`;
+    if (runEnd > i) {
+      // Flag every repeat after the first (keep one copy)
+      for (let k = i + 1; k <= runEnd; k++) {
+        const rep = sentences[k];
+        const rangeKey = `${rep.start.toFixed(2)}-${rep.end.toFixed(2)}`;
         if (!processedRanges.has(rangeKey)) {
           processedRanges.add(rangeKey);
-          repetitions.push({
-            start: next.start,
-            end: next.end,
-            text: next.text,
-          });
-          const detectionType = contained && similarity <= 0.70 ? 'containment' : 'similarity';
-          logger.info(`Found repetition: "${next.text.substring(0, 50)}..." at ${next.start.toFixed(2)}s-${next.end.toFixed(2)}s (${detectionType}: ${(similarity * 100).toFixed(1)}%)`);
+          repetitions.push({ start: rep.start, end: rep.end, text: rep.text });
         }
       }
+      logger.info(`Adjacent repeat × ${runEnd - i + 1}: "${current.text.substring(0, 80)}" starting ${current.start.toFixed(2)}s`);
+      i = runEnd + 1;
+    } else {
+      i++;
     }
   }
 
-  // Also check for repeated phrases within the same segment
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const normalized = normalizeForComparison(seg.text);
-    const words = normalized.split(' ');
+  // In-sentence phrase repetition (chunk-internal loops).
+  // Iterate rebuilt sentences (which span SRT chunk boundaries) so a phrase
+  // repeating 3+ times within one real sentence gets caught even when
+  // Whisper's SRT chunking splits the repeats across different rows.
+  // Require ≥inSegmentMinOccurrences non-overlapping CONSECUTIVE occurrences
+  // of a ≥inSegmentMinPhraseLen-word phrase.
+  for (const sent of sentences) {
+    const words = sent.normalized.split(' ').filter(w => w.length > 0);
+    const maxPhraseLen = Math.min(12, Math.floor(words.length / inSegmentMinOccurrences));
+    if (maxPhraseLen < inSegmentMinPhraseLen) continue;
 
-    // Look for repeated 4+ word phrases within the segment
-    for (let phraseLen = 4; phraseLen <= Math.min(10, Math.floor(words.length / 2)); phraseLen++) {
-      for (let start = 0; start <= words.length - phraseLen * 2; start++) {
-        const phrase1 = words.slice(start, start + phraseLen).join(' ');
+    const sentDuration = Math.max(0.01, sent.end - sent.start);
+    const wordDuration = sentDuration / words.length;
 
-        for (let start2 = start + phraseLen; start2 <= words.length - phraseLen; start2++) {
-          const phrase2 = words.slice(start2, start2 + phraseLen).join(' ');
-
-          if (phrase1 === phrase2) {
-            // Found repeated phrase - mark the second occurrence for removal
-            const segDuration = seg.end - seg.start;
-            const wordDuration = segDuration / words.length;
-            const repStart = seg.start + (start2 * wordDuration);
-            const repEnd = repStart + (phraseLen * wordDuration);
-
-            const rangeKey = `${repStart.toFixed(2)}-${repEnd.toFixed(2)}`;
-            if (!processedRanges.has(rangeKey)) {
-              processedRanges.add(rangeKey);
-              repetitions.push({
-                start: repStart,
-                end: repEnd,
-                text: phrase2,
-              });
-              logger.info(`Found in-segment repetition: "${phrase2}" at ${repStart.toFixed(2)}s-${repEnd.toFixed(2)}s`);
-            }
-            break; // Move to next phrase length
+    for (let phraseLen = inSegmentMinPhraseLen; phraseLen <= maxPhraseLen; phraseLen++) {
+      let foundAtThisLen = false;
+      for (let start = 0; start <= words.length - phraseLen * inSegmentMinOccurrences; start++) {
+        const phrase = words.slice(start, start + phraseLen).join(' ');
+        const occurrences: number[] = [start];
+        let pos = start + phraseLen;
+        while (pos <= words.length - phraseLen) {
+          const candidate = words.slice(pos, pos + phraseLen).join(' ');
+          if (candidate === phrase) {
+            occurrences.push(pos);
+            pos += phraseLen;
+          } else {
+            break; // must be CONSECUTIVE (no gaps)
           }
         }
+        if (occurrences.length < inSegmentMinOccurrences) continue;
+
+        for (let k = 1; k < occurrences.length; k++) {
+          const occPos = occurrences[k];
+          const repStart = sent.start + (occPos * wordDuration);
+          const repEnd = repStart + (phraseLen * wordDuration);
+          const rangeKey = `${repStart.toFixed(2)}-${repEnd.toFixed(2)}`;
+          if (!processedRanges.has(rangeKey)) {
+            processedRanges.add(rangeKey);
+            repetitions.push({ start: repStart, end: repEnd, text: phrase });
+          }
+        }
+        logger.info(`In-sentence loop: "${phrase}" × ${occurrences.length} at ${sent.start.toFixed(2)}s (phraseLen=${phraseLen})`);
+        foundAtThisLen = true;
+        break;
       }
+      if (foundAtThisLen) break;
     }
   }
 
@@ -1104,13 +1156,121 @@ function getAudioDuration(filePath: string): Promise<number> {
   });
 }
 
-// Main post-processing function
-// NOTE: Disabled audio-level repetition removal - it was too aggressive and cutting good audio.
-// Text-level repetition removal (removeTextRepetitions) before TTS is sufficient.
+// ============================================================
+// PER-CHUNK TRANSCRIPTION VERIFICATION (Whisper-based)
+// ============================================================
+// Transcribes a single TTS chunk via Groq Whisper and compares to source text.
+// Fish Speech loop hallucinations yield transcriptions that are either (a) much
+// longer than the source (because the loop repeats words), or (b) low-similarity
+// when words get mutated. Gate on both length-ratio and LCS similarity.
+
+interface ChunkVerification {
+  ok: boolean;
+  similarity: number;
+  transcribed: string;
+  lengthRatio: number;  // transcribed words / source words
+  reason?: string;
+  skipped?: boolean;
+}
+
+async function verifyChunkTranscription(
+  audioBuffer: Buffer,
+  chunkText: string,
+  opts: { similarityThreshold?: number; lengthRatioThreshold?: number } = {}
+): Promise<ChunkVerification> {
+  const similarityThreshold = opts.similarityThreshold ?? 0.85;
+  const lengthRatioThreshold = opts.lengthRatioThreshold ?? 1.5;
+
+  const sourceWords = chunkText.split(/\s+/).filter(Boolean).length;
+  if (sourceWords < 6) {
+    return { ok: true, similarity: 1, transcribed: '', lengthRatio: 1, skipped: true, reason: 'too short' };
+  }
+
+  const groqApiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+  if (!groqApiKey) {
+    return { ok: true, similarity: 1, transcribed: '', lengthRatio: 1, skipped: true, reason: 'no API key' };
+  }
+
+  let transcribed = '';
+  try {
+    const segs = await transcribeChunk(audioBuffer, groqApiKey);
+    transcribed = segs.map(s => s.text).join(' ').trim();
+  } catch (err) {
+    logger.warn(`[verify] transcription failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    return { ok: true, similarity: 1, transcribed: '', lengthRatio: 1, skipped: true, reason: 'transcribe-error' };
+  }
+
+  if (!transcribed) {
+    // Whisper returned nothing — unusual. Fall through to signal check (caller handles).
+    return { ok: true, similarity: 1, transcribed: '', lengthRatio: 0, skipped: true, reason: 'empty transcription' };
+  }
+
+  const transcribedWords = transcribed.split(/\s+/).filter(Boolean).length;
+  const lengthRatio = transcribedWords / Math.max(sourceWords, 1);
+  const similarity = calculateLCSSimilarityNormalized(chunkText, transcribed);
+
+  if (lengthRatio > lengthRatioThreshold) {
+    return { ok: false, similarity, transcribed, lengthRatio, reason: `length ratio ${lengthRatio.toFixed(2)} > ${lengthRatioThreshold}` };
+  }
+  if (similarity < similarityThreshold) {
+    return { ok: false, similarity, transcribed, lengthRatio, reason: `similarity ${similarity.toFixed(2)} < ${similarityThreshold}` };
+  }
+  return { ok: true, similarity, transcribed, lengthRatio };
+}
+
+// Post-processing mode, controlled by AUDIO_POSTPROCESS_MODE env:
+//   off    — skip entirely (original disabled behavior)
+//   shadow — run detection, log what WOULD be cut, but don't mutate audio
+//   on     — run detection and actually trim the repeated ranges
+// Default is 'shadow' so every deploy gathers telemetry before cuts resume.
+type PostProcessMode = 'off' | 'shadow' | 'on';
+
+function getPostProcessMode(): PostProcessMode {
+  const raw = (process.env.AUDIO_POSTPROCESS_MODE || 'shadow').toLowerCase();
+  if (raw === 'off' || raw === 'shadow' || raw === 'on') return raw as PostProcessMode;
+  logger.warn(`Invalid AUDIO_POSTPROCESS_MODE="${process.env.AUDIO_POSTPROCESS_MODE}", defaulting to "shadow"`);
+  return 'shadow';
+}
+
 async function postProcessAudio(audioBuffer: Buffer): Promise<Buffer> {
-  // Skip audio post-processing entirely - return original audio unchanged
-  logger.info('Post-processing skipped (disabled - text-level removal is sufficient)');
-  return audioBuffer;
+  const mode = getPostProcessMode();
+
+  if (mode === 'off') {
+    logger.info('[postProcessAudio] mode=off, skipping');
+    return audioBuffer;
+  }
+
+  try {
+    const segments = await transcribeForRepetitionDetection(audioBuffer);
+    if (segments.length === 0) {
+      logger.info('[postProcessAudio] No transcription available, skipping');
+      return audioBuffer;
+    }
+
+    const repetitions = detectRepetitions(segments);
+    const totalRemovedSec = repetitions.reduce((s, r) => s + (r.end - r.start), 0);
+
+    // Telemetry: always emit so regressions surface without needing DEBUG=true
+    logger.info(`[postProcessAudio] mode=${mode} detections=${repetitions.length} totalRemovedSec=${totalRemovedSec.toFixed(2)}`);
+
+    if (repetitions.length === 0) {
+      return audioBuffer;
+    }
+
+    if (mode === 'shadow') {
+      logger.info(`[postProcessAudio] SHADOW: detected ${repetitions.length} ranges (${totalRemovedSec.toFixed(2)}s) — NOT mutating audio`);
+      repetitions.slice(0, 10).forEach((r, i) => {
+        logger.info(`[postProcessAudio] SHADOW[${i}] ${r.start.toFixed(2)}s-${r.end.toFixed(2)}s: "${r.text.substring(0, 80)}"`);
+      });
+      return audioBuffer;
+    }
+
+    // mode === 'on'
+    return await removeAudioSegments(audioBuffer, repetitions);
+  } catch (error) {
+    logger.error('[postProcessAudio] Failed, returning original audio:', error);
+    return audioBuffer;
+  }
 }
 
 // ============================================================
@@ -1507,16 +1667,33 @@ async function startTTSJob(
       throw new Error(`Request payload too large: ${requestSizeMB}MB (RunPod limit is ~50MB). Try using a smaller voice sample.`);
     }
 
-    logger.debug(`Sending ${requestSizeMB}MB request to RunPod...`);
+    logger.info(`[RunPod] POST /run (${requestSizeMB}MB, ${text.length} chars)...`);
 
-    const response = await fetch(`${RUNPOD_API_URL}/run`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: requestBody,
-    });
+    // Abort if the POST hangs — prevents the whole regen from silently stalling
+    // on a dead TCP connection to RunPod.
+    const ctrl = new AbortController();
+    const timeoutMs = 45_000;
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+    let response: Awaited<ReturnType<typeof fetch>>;
+    try {
+      response = await fetch(`${RUNPOD_API_URL}/run`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: requestBody,
+        signal: ctrl.signal,
+      });
+    } catch (err) {
+      if ((err as any)?.name === 'AbortError') {
+        throw new Error(`RunPod /run timed out after ${timeoutMs}ms (hung connection)`);
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -1531,7 +1708,7 @@ async function startTTSJob(
       throw new Error('No job ID returned from RunPod');
     }
 
-    logger.debug(`TTS job created: ${result.id}`);
+    logger.info(`[RunPod] job ${result.id} accepted`);
     return result.id;
   } catch (error) {
     logger.error(`Failed to start TTS job: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -2100,7 +2277,39 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
       try {
         // Use retry logic with exponential backoff
-        const audioData = await generateTTSChunkWithRetry(chunkText, apiKey, undefined, i, chunks.length, ttsJobSettings);
+        let audioData = await generateTTSChunkWithRetry(chunkText, apiKey, undefined, i, chunks.length, ttsJobSettings);
+
+        // Verify chunk: Whisper + signal check, regen once if either flags
+        if (process.env.CHUNK_VERIFICATION_MODE?.toLowerCase() !== 'off') {
+          const whisperCheck = await verifyChunkTranscription(audioData, chunkText);
+          const signalLoops = detectRepeatedWindows(audioData);
+          const whisperBad = !whisperCheck.ok;
+          const signalBad = signalLoops.length > 0;
+
+          if (whisperBad || signalBad) {
+            logger.warn(`[verify] Chunk ${i + 1}: FAIL (${whisperBad ? 'whisper:' + whisperCheck.reason : ''}${whisperBad && signalBad ? ' + ' : ''}${signalBad ? 'signal:×' + signalLoops[0].occurrences : ''}) — regenerating with fresh seed`);
+            if (whisperBad && whisperCheck.transcribed) {
+              logger.warn(`[verify]   source: "${chunkText.substring(0, 80)}"`);
+              logger.warn(`[verify]   heard:  "${whisperCheck.transcribed.substring(0, 80)}"`);
+            }
+            const altSeed = ((ttsJobSettings?.seed ?? 0) + i * 7919 + Date.now()) & 0x7fffffff;
+            const altSettings: TTSJobSettings = { ...(ttsJobSettings || {}), seed: altSeed };
+            try {
+              const retryAudio = await generateTTSChunkWithRetry(chunkText, apiKey, undefined, i, chunks.length, altSettings);
+              const retryWhisper = await verifyChunkTranscription(retryAudio, chunkText);
+              const retrySignal = detectRepeatedWindows(retryAudio);
+              audioData = retryAudio;
+              if (retryWhisper.ok && retrySignal.length === 0) {
+                logger.info(`[verify] Chunk ${i + 1}: regen clean`);
+              } else {
+                logger.error(`[verify] Chunk ${i + 1}: regen STILL flagged — keeping second attempt, flag for review`);
+              }
+            } catch (retryErr) {
+              logger.error(`[verify] Chunk ${i + 1}: regen threw ${retryErr instanceof Error ? retryErr.message : 'unknown'} — keeping original`);
+            }
+          }
+        }
+
         audioChunks.push(audioData);
         successfulTextChunks.push(chunkText); // Track successful text
         console.log(`Chunk ${i + 1} completed: ${audioData.length} bytes`);
@@ -2367,8 +2576,47 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           });
 
           try {
-            const audioData = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, ttsJobSettings);
+            let audioData = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, ttsJobSettings);
             console.log(`  Segment ${segmentNumber} - Chunk ${chunkIdx + 1}/${chunks.length}: ${audioData.length} bytes`);
+
+            // Verify chunk against source text. Primary check: Whisper transcription
+            // (catches semantic loops + mutations). Fallback: signal-based envelope
+            // self-similarity (catches audio-level loops when Whisper unavailable).
+            if (process.env.CHUNK_VERIFICATION_MODE?.toLowerCase() !== 'off') {
+              const whisperCheck = await verifyChunkTranscription(audioData, chunkText);
+              const signalLoops = detectRepeatedWindows(audioData);
+              const whisperBad = !whisperCheck.ok;
+              const signalBad = signalLoops.length > 0;
+
+              if (whisperBad || signalBad) {
+                const worst: RepeatedWindow | undefined = signalBad ? signalLoops.reduce<RepeatedWindow>((a, b) => b.occurrences > a.occurrences ? b : a, signalLoops[0]) : undefined;
+                const reason = [
+                  whisperBad ? `whisper:${whisperCheck.reason}` : null,
+                  signalBad && worst ? `signal:×${worst.occurrences}@${worst.periodMs}ms` : null,
+                ].filter(Boolean).join(' + ');
+                logger.warn(`[verify] Segment ${segmentNumber} chunk ${chunkIdx + 1}: FAIL (${reason}) — regenerating with fresh seed`);
+                if (whisperBad && whisperCheck.transcribed) {
+                  logger.warn(`[verify]   source: "${chunkText.substring(0, 80)}"`);
+                  logger.warn(`[verify]   heard:  "${whisperCheck.transcribed.substring(0, 80)}"`);
+                }
+
+                const altSeed = ((ttsJobSettings?.seed ?? 0) + chunkIdx * 7919 + Date.now()) & 0x7fffffff;
+                const altSettings: TTSJobSettings = { ...(ttsJobSettings || {}), seed: altSeed };
+                try {
+                  const retryAudio = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, altSettings);
+                  const retryWhisper = await verifyChunkTranscription(retryAudio, chunkText);
+                  const retrySignal = detectRepeatedWindows(retryAudio);
+                  audioData = retryAudio;
+                  if (retryWhisper.ok && retrySignal.length === 0) {
+                    logger.info(`[verify] Segment ${segmentNumber} chunk ${chunkIdx + 1}: regen clean`);
+                  } else {
+                    logger.error(`[verify] Segment ${segmentNumber} chunk ${chunkIdx + 1}: regen STILL flagged — keeping second attempt, flag for review`);
+                  }
+                } catch (retryErr) {
+                  logger.error(`[verify] Segment ${segmentNumber} chunk ${chunkIdx + 1}: regen threw ${retryErr instanceof Error ? retryErr.message : 'unknown'} — keeping original`);
+                }
+              }
+            }
 
             // Incrementally concatenate instead of accumulating in array
             if (segmentAudio === null) {
@@ -3051,9 +3299,11 @@ router.post('/segment', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'No valid text chunks in segment' });
     }
 
-    // Process chunks in parallel batches to speed up regeneration
-    // Use 5 concurrent workers (half of max 10 to leave capacity for other jobs)
-    const PARALLEL_CHUNKS = 5;
+    // Process chunks in parallel batches. Reduced from 5→2 on 2026-04: each
+    // request carries the full voice sample base64 (~3-5MB), so 5 parallel
+    // requests = ~20MB burst upload which was causing hangs under RunPod
+    // worker saturation. 2 is a safer sweet spot; override via env.
+    const PARALLEL_CHUNKS = Number(process.env.SEGMENT_REGEN_PARALLEL_CHUNKS || 2);
     console.log(`Segment ${segmentIndex}: processing ${chunks.length} chunks in batches of ${PARALLEL_CHUNKS}`);
 
     const results: { index: number; audio: Buffer; text: string }[] = [];
@@ -3065,6 +3315,8 @@ router.post('/segment', async (req: Request, res: Response) => {
 
       const batchPromises = batchChunks.map(async (chunkText, i) => {
         const chunkIndex = batch + i;
+        const chunkStart = Date.now();
+        console.log(`  ➤ chunk ${chunkIndex + 1}/${chunks.length}: starting (${chunkText.length} chars)`);
         try {
           // Apply global pronunciation fixes
           let ttsText = applyPronunciationFixes(chunkText);
@@ -3093,10 +3345,12 @@ router.post('/segment', async (req: Request, res: Response) => {
           const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, ttsJobSettings);
           const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
           const audioData = base64ToBuffer(output.audio_base64);
-          console.log(`  Chunk ${chunkIndex + 1}/${chunks.length}: ${audioData.length} bytes`);
+          const elapsed = ((Date.now() - chunkStart) / 1000).toFixed(1);
+          console.log(`  ✓ chunk ${chunkIndex + 1}/${chunks.length}: ${audioData.length} bytes (${elapsed}s)`);
           return { index: chunkIndex, audio: audioData, text: chunkText };
         } catch (err) {
-          logger.warn(`Skipping chunk ${chunkIndex + 1}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          const elapsed = ((Date.now() - chunkStart) / 1000).toFixed(1);
+          logger.warn(`  ✗ chunk ${chunkIndex + 1}/${chunks.length} FAILED after ${elapsed}s: ${err instanceof Error ? err.message : 'Unknown error'}`);
           return null;
         }
       });
@@ -3165,6 +3419,161 @@ router.post('/segment', async (req: Request, res: Response) => {
     logger.error('Error regenerating segment:', error);
     return res.status(500).json({
       error: error instanceof Error ? error.message : 'Segment regeneration failed'
+    });
+  }
+});
+
+// Regenerate a single segment using segment text from DB (not caller).
+// Simpler alternative to POST /segment — takes only {projectId, segmentNumber, voiceSampleUrl, ttsSettings?}
+// and reads segment text from audio_segments. Intended for one-click "regenerate this segment"
+// flows where the caller already trusts the DB as source of truth.
+router.post('/regenerate-segment', async (req: Request, res: Response) => {
+  const { projectId, segmentNumber, voiceSampleUrl, ttsSettings } = req.body;
+
+  try {
+    if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+    if (!segmentNumber || typeof segmentNumber !== 'number' || segmentNumber < 1) {
+      return res.status(400).json({ error: 'segmentNumber must be a positive integer' });
+    }
+    if (!voiceSampleUrl) return res.status(400).json({ error: 'voiceSampleUrl is required' });
+
+    const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
+    if (!RUNPOD_API_KEY) return res.status(500).json({ error: 'RUNPOD_API_KEY not configured' });
+
+    const credentials = getSupabaseCredentials();
+    if (!credentials) return res.status(500).json({ error: 'Supabase credentials not configured' });
+
+    // Look up segment text from DB — this is the feature that differentiates
+    // this endpoint from POST /segment.
+    const projectData = await getProjectData(projectId);
+    if (!projectData.exists) {
+      return res.status(404).json({ error: `Project ${projectId} not found` });
+    }
+    const segments = projectData.audioSegments || [];
+    const target = segments.find((s: any) => s.index === segmentNumber);
+    if (!target || !target.text) {
+      return res.status(404).json({ error: `Segment ${segmentNumber} not found in project audio_segments` });
+    }
+
+    logger.info(`[regenerate-segment] project=${projectId} segment=${segmentNumber} (text from DB: ${target.text.length} chars)`);
+
+    const referenceAudioBase64 = await downloadVoiceSample(voiceSampleUrl);
+
+    const cleanText = normalizeText(
+      target.text
+        .replace(/^#.*$/gm, '')
+        .replace(/^[A-Z\s]{3,}$/gm, '')
+        .replace(/^#{1,6}\s+.*$/gm, '')
+        .replace(/^[-*_]{3,}$/gm, '')
+        .replace(/\[SCENE \d+\]/g, '')
+        .replace(/\[[^\]]+\]/g, '')
+        .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+        .replace(/#\S+/g, '')
+        .replace(/\([^)]*minutes?\)/gi, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+    );
+
+    const rawChunks = splitIntoChunks(cleanText, MAX_TTS_CHUNK_LENGTH);
+    const chunks = rawChunks.filter(validateTTSInput);
+    if (chunks.length === 0) {
+      return res.status(400).json({ error: 'No valid text chunks after cleaning segment text' });
+    }
+
+    const jobSettings: TTSJobSettings | undefined = ttsSettings ? {
+      temperature: ttsSettings.temperature,
+      topP: ttsSettings.topP,
+      repetitionPenalty: ttsSettings.repetitionPenalty,
+      seed: ttsSettings.seed,
+      emotionMarker: ttsSettings.emotionMarker,
+    } : undefined;
+
+    const PARALLEL_CHUNKS = 5;
+    const results: { index: number; audio: Buffer; text: string }[] = [];
+
+    for (let batch = 0; batch < chunks.length; batch += PARALLEL_CHUNKS) {
+      const batchChunks = chunks.slice(batch, batch + PARALLEL_CHUNKS);
+      const batchPromises = batchChunks.map(async (chunkText, i) => {
+        const chunkIndex = batch + i;
+        try {
+          const ttsText = applyPronunciationFixes(chunkText);
+          let audioData = await (async () => {
+            const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, jobSettings);
+            const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
+            return base64ToBuffer(output.audio_base64);
+          })();
+
+          // Verify chunk: Whisper + signal, regen once if either flags
+          if (process.env.CHUNK_VERIFICATION_MODE?.toLowerCase() !== 'off') {
+            const whisperCheck = await verifyChunkTranscription(audioData, chunkText);
+            const signalLoops = detectRepeatedWindows(audioData);
+            if (!whisperCheck.ok || signalLoops.length > 0) {
+              logger.warn(`[regenerate-segment] chunk ${chunkIndex + 1}: FAIL (${!whisperCheck.ok ? 'whisper:' + whisperCheck.reason : ''}${!whisperCheck.ok && signalLoops.length > 0 ? ' + ' : ''}${signalLoops.length > 0 ? 'signal:×' + signalLoops[0].occurrences : ''})`);
+              const altSeed = ((jobSettings?.seed ?? 0) + chunkIndex * 7919 + Date.now()) & 0x7fffffff;
+              const altSettings: TTSJobSettings = { ...(jobSettings || {}), seed: altSeed };
+              try {
+                const jobId2 = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, altSettings);
+                const output2 = await pollJobStatus(jobId2, RUNPOD_API_KEY);
+                audioData = base64ToBuffer(output2.audio_base64);
+                const retryWhisper = await verifyChunkTranscription(audioData, chunkText);
+                const retrySignal = detectRepeatedWindows(audioData);
+                if (!retryWhisper.ok || retrySignal.length > 0) {
+                  logger.error(`[regenerate-segment] chunk ${chunkIndex + 1}: regen STILL flagged — keeping second attempt`);
+                }
+              } catch (retryErr) {
+                logger.error(`[regenerate-segment] chunk ${chunkIndex + 1}: regen threw ${retryErr instanceof Error ? retryErr.message : 'unknown'}`);
+              }
+            }
+          }
+
+          return { index: chunkIndex, audio: audioData, text: chunkText };
+        } catch (err) {
+          logger.warn(`[regenerate-segment] chunk ${chunkIndex + 1} failed: ${err instanceof Error ? err.message : 'unknown'}`);
+          return null;
+        }
+      });
+      const batchResults = await Promise.all(batchPromises);
+      for (const r of batchResults) if (r) results.push(r);
+    }
+
+    if (results.length === 0) {
+      return res.status(500).json({ error: 'All chunks failed to generate' });
+    }
+
+    results.sort((a, b) => a.index - b.index);
+    const audioChunks = results.map(r => r.audio);
+    const textChunks = results.map(r => r.text);
+    const { wav: segmentAudio, durationSeconds } = concatenateWavFilesWithPauses(audioChunks, textChunks);
+    const durationRounded = Math.round(durationSeconds * 10) / 10;
+
+    const supabase = createClient(credentials.url, credentials.key);
+    const fileName = `${projectId}/voiceover-segment-${segmentNumber}.wav`;
+    const { error: uploadError } = await supabase.storage
+      .from('generated-assets')
+      .upload(fileName, segmentAudio, { contentType: 'audio/wav', upsert: true });
+    if (uploadError) {
+      return res.status(500).json({ error: `Upload failed: ${uploadError.message}` });
+    }
+
+    const { data: urlData } = supabase.storage.from('generated-assets').getPublicUrl(fileName);
+    const cacheBustedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+    logger.info(`[regenerate-segment] segment ${segmentNumber} uploaded: ${cacheBustedUrl}`);
+
+    return res.json({
+      success: true,
+      segment: {
+        index: segmentNumber,
+        audioUrl: cacheBustedUrl,
+        duration: durationRounded,
+        size: segmentAudio.length,
+        text: target.text,
+      },
+    });
+  } catch (error) {
+    logger.error('[regenerate-segment] error:', error);
+    return res.status(500).json({
+      error: error instanceof Error ? error.message : 'Segment regeneration failed',
     });
   }
 });

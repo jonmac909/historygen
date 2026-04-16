@@ -282,8 +282,24 @@ function findWordLevelIssues(script: string, transcription: string): WordIssue[]
 
 /**
  * Calculate sequence-based similarity using Longest Common Subsequence (LCS)
- * Unlike Jaccard, this CARES about word ORDER which catches garbled audio
+ * Unlike Jaccard, this CARES about word ORDER which catches garbled audio.
+ *
+ * Exported alias `calculateLCSSimilarity` is for callers outside this module
+ * (e.g. per-chunk TTS verification). Internal callers continue to use the
+ * local `calculateSimilarity` name.
  */
+export function calculateLCSSimilarity(str1: string, str2: string): number {
+  return calculateSimilarity(str1, str2);
+}
+
+/**
+ * Normalize text then compare — convenience wrapper for callers that have
+ * raw strings (punctuation, capitalization, etc) rather than pre-normalized input.
+ */
+export function calculateLCSSimilarityNormalized(str1: string, str2: string): number {
+  return calculateSimilarity(normalizeText(str1), normalizeText(str2));
+}
+
 function calculateSimilarity(str1: string, str2: string): number {
   const words1 = str1.split(' ').filter(w => w.length > 0);
   const words2 = str2.split(' ').filter(w => w.length > 0);

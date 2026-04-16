@@ -230,6 +230,157 @@ export function checkAudioIntegrity(wavBuffer: Buffer, options: {
   }
 }
 
+// ============================================================
+// SELF-SIMILARITY LOOP DETECTOR (pure signal, no API calls)
+// ============================================================
+// Detects when a short audio pattern (300ms-2s) repeats back-to-back.
+// This catches Fish Speech loop hallucinations without needing Whisper.
+//
+// Algorithm: build a coarse RMS envelope, then for each position try all
+// plausible pattern lengths and count consecutive near-identical repeats.
+
+export interface RepeatedWindow {
+  startSec: number;
+  endSec: number;
+  occurrences: number;
+  periodMs: number;
+  similarity: number;  // avg cosine similarity between repeats
+}
+
+function buildRmsEnvelope(
+  wavBuffer: Buffer,
+  envelopeResolutionMs: number = 50
+): { envelope: number[]; sampleRate: number } {
+  const dataMarker = Buffer.from('data', 'ascii');
+  let dataIdx = -1;
+  for (let i = 0; i <= wavBuffer.length - 4; i++) {
+    if (wavBuffer.slice(i, i + 4).equals(dataMarker)) { dataIdx = i; break; }
+  }
+  if (dataIdx === -1) return { envelope: [], sampleRate: 24000 };
+
+  const fmtMarker = Buffer.from('fmt ', 'ascii');
+  let fmtIdx = -1;
+  for (let i = 0; i <= wavBuffer.length - 4; i++) {
+    if (wavBuffer.slice(i, i + 4).equals(fmtMarker)) { fmtIdx = i; break; }
+  }
+  const sampleRate = fmtIdx !== -1 ? wavBuffer.readUInt32LE(fmtIdx + 12) : 24000;
+  const bitsPerSample = fmtIdx !== -1 ? wavBuffer.readUInt16LE(fmtIdx + 22) : 16;
+  const bytesPerSample = bitsPerSample / 8;
+
+  const dataSize = wavBuffer.readUInt32LE(dataIdx + 4);
+  const dataStart = dataIdx + 8;
+  const dataEnd = Math.min(wavBuffer.length, dataStart + dataSize);
+
+  const samplesPerFrame = Math.max(1, Math.floor(sampleRate * envelopeResolutionMs / 1000));
+  const envelope: number[] = [];
+
+  let byteOffset = dataStart;
+  while (byteOffset + samplesPerFrame * bytesPerSample <= dataEnd) {
+    let sumSquares = 0;
+    for (let s = 0; s < samplesPerFrame; s++) {
+      const bi = byteOffset + s * bytesPerSample;
+      const v = bytesPerSample === 2 ? wavBuffer.readInt16LE(bi) : wavBuffer.readInt8(bi) * 256;
+      sumSquares += v * v;
+    }
+    envelope.push(Math.sqrt(sumSquares / samplesPerFrame));
+    byteOffset += samplesPerFrame * bytesPerSample;
+  }
+
+  return { envelope, sampleRate };
+}
+
+function cosineSimilarity(a: number[], b: number[], aStart: number, bStart: number, len: number): number {
+  let dot = 0, normA = 0, normB = 0;
+  for (let i = 0; i < len; i++) {
+    const x = a[aStart + i];
+    const y = b[bStart + i];
+    dot += x * y;
+    normA += x * x;
+    normB += y * y;
+  }
+  const denom = Math.sqrt(normA * normB);
+  if (denom === 0) return 0;
+  return dot / denom;
+}
+
+export function detectRepeatedWindows(
+  wavBuffer: Buffer,
+  options: {
+    envelopeResolutionMs?: number;  // envelope bin size (default 50ms)
+    minPatternMs?: number;          // shortest loop period considered (default 300ms)
+    maxPatternMs?: number;          // longest loop period considered (default 2000ms)
+    minOccurrences?: number;        // min consecutive repeats to flag (default 3)
+    similarityThreshold?: number;   // cosine threshold (default 0.92)
+  } = {}
+): RepeatedWindow[] {
+  // Defaults tuned to avoid false-positives on normal speech rhythm (which
+  // naturally has ~0.92 envelope cosine similarity at 300ms scales). At 0.98+
+  // real loops occasionally slip past when prosody drifts between repeats —
+  // that's acceptable because the Whisper-based detector (Step 1) is the
+  // primary catch; this is only a backup.
+  const envelopeResolutionMs = options.envelopeResolutionMs ?? 50;
+  const minPatternMs = options.minPatternMs ?? 500;
+  const maxPatternMs = options.maxPatternMs ?? 2500;
+  const minOccurrences = options.minOccurrences ?? 3;
+  const similarityThreshold = options.similarityThreshold ?? 0.98;
+
+  const { envelope } = buildRmsEnvelope(wavBuffer, envelopeResolutionMs);
+  if (envelope.length < 10) return [];
+
+  const framesPerSecond = 1000 / envelopeResolutionMs;
+  const minPatternFrames = Math.max(1, Math.floor(minPatternMs / envelopeResolutionMs));
+  const maxPatternFrames = Math.min(
+    Math.floor(maxPatternMs / envelopeResolutionMs),
+    Math.floor(envelope.length / minOccurrences),
+  );
+  if (maxPatternFrames < minPatternFrames) return [];
+
+  const detections: RepeatedWindow[] = [];
+  let cursor = 0;
+
+  while (cursor <= envelope.length - minPatternFrames * minOccurrences) {
+    let best: { patternFrames: number; occurrences: number; endFrame: number; avgSim: number } | null = null;
+
+    for (let patternFrames = minPatternFrames; patternFrames <= maxPatternFrames; patternFrames++) {
+      if (cursor + patternFrames * minOccurrences > envelope.length) break;
+
+      let occurrences = 1;
+      let nextStart = cursor + patternFrames;
+      let totalSim = 0;
+
+      while (nextStart + patternFrames <= envelope.length) {
+        const sim = cosineSimilarity(envelope, envelope, cursor, nextStart, patternFrames);
+        if (sim < similarityThreshold) break;
+        totalSim += sim;
+        occurrences++;
+        nextStart += patternFrames;
+      }
+
+      if (occurrences >= minOccurrences) {
+        const avgSim = totalSim / (occurrences - 1);
+        if (!best || occurrences > best.occurrences) {
+          best = { patternFrames, occurrences, endFrame: nextStart, avgSim };
+        }
+      }
+    }
+
+    if (best) {
+      detections.push({
+        startSec: cursor / framesPerSecond,
+        endSec: best.endFrame / framesPerSecond,
+        occurrences: best.occurrences,
+        periodMs: best.patternFrames * envelopeResolutionMs,
+        similarity: best.avgSim,
+      });
+      cursor = best.endFrame;
+    } else {
+      cursor++;
+    }
+  }
+
+  return detections;
+}
+
 // Log audio integrity check results
 export function logAudioIntegrity(result: AudioIntegrityResult, context: string): void {
   const { valid, issues, stats } = result;
