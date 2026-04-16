@@ -705,25 +705,31 @@ export function compareAudioSegmentsToSRT(
   }
   const allTranscribedSentences = splitIntoSentences(fullTranscription);
 
-  // Greedy forward search: for each occurrence of the script's first word
-  // (or a phonetic match of it) in the transcript, try to match subsequent
-  // script words forward, allowing small gaps. Words are compared with
-  // wordsMatchFuzzy (exact + Soundex + edit distance ≤ 2 for ≥4-char
-  // words). Returns best coverage fraction and the matched word positions
-  // in the transcript so we can build display context.
-  const scanScript = (scriptWords: string[]): { coverage: number; startIdx: number; endIdx: number } => {
+  // Greedy forward search BOUNDED to a transcript range [minStart, maxStart].
+  // For each anchor (position of the script's first word) inside that range,
+  // try to match subsequent script words forward with fuzzy comparison.
+  // This enforces that script sentences must appear in order — if sentence
+  // N+1 is found only WAY after N, it's treated as out-of-order (flagged).
+  const scanScript = (
+    scriptWords: string[],
+    minStart: number,
+    maxStart: number,
+  ): { coverage: number; startIdx: number; endIdx: number } => {
     if (scriptWords.length === 0) return { coverage: 1, startIdx: -1, endIdx: -1 };
     const MAX_GAP = 40; // max transcript words skipped between matches
     const first = scriptWords[0];
 
-    // Starting positions: exact matches for first word, plus phonetic
-    // matches (bounded scan to keep cost sane).
-    const anchors = new Set<number>((transcriptIndex.get(first) || []));
-    if (first.length >= 4) {
+    const anchors = new Set<number>();
+    for (const p of (transcriptIndex.get(first) || [])) {
+      if (p >= minStart && p <= maxStart) anchors.add(p);
+    }
+    if (first.length >= 4 && anchors.size < 50) {
       const soundCode = soundex(first);
       for (const [w, positions] of transcriptIndex) {
         if (w !== first && w.length >= 4 && soundex(w) === soundCode) {
-          for (const p of positions) anchors.add(p);
+          for (const p of positions) {
+            if (p >= minStart && p <= maxStart) anchors.add(p);
+          }
         }
       }
     }
@@ -794,6 +800,12 @@ export function compareAudioSegmentsToSRT(
     return 'Multiple differences';
   };
 
+  // Sequential read-head through the transcript. Each script sentence must
+  // match at or shortly after the cursor — not anywhere in the transcript.
+  // A script sentence whose words match only far from the cursor is treated
+  // as genuinely missing (out of order = probably not the same content).
+  let transcriptCursor = 0;
+
   for (const audioSeg of sortedAudioSegments) {
     if (!audioSeg.text || audioSeg.text.trim().length === 0) continue;
     totalSegments++;
@@ -804,19 +816,24 @@ export function compareAudioSegmentsToSRT(
 
     for (const scriptSentence of scriptSentences) {
       const scriptWords = normalizeText(scriptSentence).split(' ').filter(Boolean);
-      if (scriptWords.length < 3) continue; // skip tiny fragments
+      if (scriptWords.length < 3) continue;
       sentencesChecked++;
 
-      const result = scanScript(scriptWords);
+      // Allow lookahead proportional to sentence length (handles minor
+      // framing drift) but cap the window to prevent matching unrelated
+      // content many sentences later.
+      const lookahead = Math.max(80, scriptWords.length * 3);
+      const maxStart = Math.min(transcriptCursor + lookahead, fullTranscriptWords.length - 1);
+      const result = scanScript(scriptWords, transcriptCursor, maxStart);
 
       if (result.coverage >= 0.92) {
-        // Script sentence is present in transcript (possibly spanning multiple
-        // transcript chunks) — not a real issue, even if per-sentence match
-        // looked partial.
+        // Present, in order — advance the cursor past this match
+        transcriptCursor = result.endIdx + 1;
         continue;
       }
 
-      // Build display transcript text from the matched range
+      // Build display transcript text from matched range (may be empty if
+      // no anchor was found at all).
       let transcribedText = '';
       if (result.startIdx >= 0) {
         const sIdx = transcriptSentenceAtWordIdx(result.startIdx);
@@ -837,6 +854,16 @@ export function compareAudioSegmentsToSRT(
         label,
       });
       sentencesFlagged++;
+
+      // Advance cursor past the imperfect match (if any) so subsequent
+      // sentences don't get stuck searching behind it. If nothing matched,
+      // advance by an estimated sentence-worth of words to avoid infinite
+      // stalling at a genuinely-missing stretch.
+      if (result.endIdx >= transcriptCursor) {
+        transcriptCursor = result.endIdx + 1;
+      } else {
+        transcriptCursor += Math.max(5, Math.floor(scriptWords.length * 0.5));
+      }
     }
 
     // Score: fraction of this segment's sentences that matched cleanly

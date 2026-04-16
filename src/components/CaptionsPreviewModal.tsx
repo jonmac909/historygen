@@ -37,7 +37,7 @@ interface ScriptQAResult {
   score: number;
   totalScriptSentences: number;
   matchedSentences: number;
-  issues: { type: string; originalText: string; transcribedText: string; severity: string; similarity?: number; segmentNumber?: number }[];
+  issues: { type: string; originalText: string; transcribedText: string; severity: string; similarity?: number; segmentNumber?: number; label?: string }[];
   wordIssues?: { type: string; scriptWord: string; transcribedWord: string; context: string; severity: string }[];
   needsReview: boolean;
 }
@@ -651,6 +651,11 @@ export function CaptionsPreviewModal({
                           <span className={`font-medium ${issue.severity === 'error' ? 'text-red-600' : 'text-amber-600'}`}>
                             {segNum ? `Seg ${segNum}` : `#${idx + 1}`}:
                           </span>
+                          {issue.label && (
+                            <span className="flex-shrink-0 text-[10px] px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-700 font-medium">
+                              {issue.label}
+                            </span>
+                          )}
                           {' '}
                           {!isExpanded && (
                             <>
