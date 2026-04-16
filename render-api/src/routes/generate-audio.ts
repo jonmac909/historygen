@@ -880,8 +880,10 @@ export function detectRepetitions(
   // within one actual sentence can show up as words shifting across SRT
   // chunk boundaries. So rebuild sentences across segment boundaries:
   // concatenate the full transcript with a char->time map, then split on
-  // .!? to get real sentences with accurate start/end times.
-  type Sentence = { text: string; normalized: string; start: number; end: number };
+  // .!? to get real sentences with per-word start/end times for precise
+  // FFmpeg cuts.
+  type WordTime = { normalized: string; startTime: number; endTime: number };
+  type Sentence = { text: string; normalized: string; start: number; end: number; words: WordTime[] };
   const sentences: Sentence[] = [];
 
   const joinedParts: string[] = [];
@@ -906,20 +908,46 @@ export function detectRepetitions(
   }
   const joined = joinedParts.join('');
 
-  // Split into sentences at .!? boundaries, tracking char offsets
+  // Split into sentences at .!? boundaries, tracking char offsets.
+  // For each sentence also extract per-word timestamps so the loop-cut
+  // detector can use precise boundaries instead of a sentence-wide average.
   const sentenceMatches = joined.matchAll(/[^.!?]+[.!?]?/g);
+  const wordPattern = /\S+/g;
   for (const match of sentenceMatches) {
     const raw = match[0];
+    const matchIndex = match.index ?? 0;
     const leftTrim = raw.search(/\S/);
     if (leftTrim === -1) continue;
     const trimmed = raw.trim();
     if (!trimmed) continue;
     const rightTrim = raw.length - (raw.length - raw.replace(/\s+$/, '').length);
-    const startChar = (match.index ?? 0) + leftTrim;
-    const endChar = Math.min((match.index ?? 0) + rightTrim - 1, charEnds.length - 1);
+    const startChar = matchIndex + leftTrim;
+    const endChar = Math.min(matchIndex + rightTrim - 1, charEnds.length - 1);
     const start = charStarts[startChar] ?? segments[0].start;
     const end = charEnds[endChar] ?? segments[segments.length - 1].end;
-    sentences.push({ text: trimmed, normalized: normalizeForComparison(trimmed), start, end });
+
+    // Walk words inside this sentence, mapping each to its real time
+    // via charStarts/charEnds lookup — no sentence-wide averaging.
+    const words: WordTime[] = [];
+    const wordMatches = raw.matchAll(wordPattern);
+    for (const wMatch of wordMatches) {
+      const wRaw = wMatch[0];
+      const wStartChar = matchIndex + (wMatch.index ?? 0);
+      const wEndChar = Math.min(wStartChar + wRaw.length - 1, charEnds.length - 1);
+      const wStart = charStarts[wStartChar] ?? start;
+      const wEnd = charEnds[wEndChar] ?? end;
+      const normalized = normalizeForComparison(wRaw);
+      if (normalized.length === 0) continue;
+      words.push({ normalized, startTime: wStart, endTime: wEnd });
+    }
+
+    sentences.push({
+      text: trimmed,
+      normalized: normalizeForComparison(trimmed),
+      start,
+      end,
+      words,
+    });
   }
 
   logger.info(`Analyzing ${sentences.length} sentences for back-to-back repeats (minWords=${minWords}, simThreshold=${consecutiveSimilarityThreshold})...`);
@@ -967,27 +995,23 @@ export function detectRepetitions(
   }
 
   // In-sentence phrase repetition (chunk-internal loops).
-  // Iterate rebuilt sentences (which span SRT chunk boundaries) so a phrase
-  // repeating 3+ times within one real sentence gets caught even when
-  // Whisper's SRT chunking splits the repeats across different rows.
-  // Require ≥inSegmentMinOccurrences non-overlapping CONSECUTIVE occurrences
-  // of a ≥inSegmentMinPhraseLen-word phrase.
+  // Uses per-word timestamps (from charStarts/charEnds lookup) for precise
+  // FFmpeg cut boundaries. Requires ≥inSegmentMinOccurrences non-overlapping
+  // CONSECUTIVE occurrences of a ≥inSegmentMinPhraseLen-word phrase.
   for (const sent of sentences) {
-    const words = sent.normalized.split(' ').filter(w => w.length > 0);
+    const words = sent.words; // normalized+timestamped
+    if (words.length < inSegmentMinPhraseLen * inSegmentMinOccurrences) continue;
     const maxPhraseLen = Math.min(12, Math.floor(words.length / inSegmentMinOccurrences));
     if (maxPhraseLen < inSegmentMinPhraseLen) continue;
-
-    const sentDuration = Math.max(0.01, sent.end - sent.start);
-    const wordDuration = sentDuration / words.length;
 
     for (let phraseLen = inSegmentMinPhraseLen; phraseLen <= maxPhraseLen; phraseLen++) {
       let foundAtThisLen = false;
       for (let start = 0; start <= words.length - phraseLen * inSegmentMinOccurrences; start++) {
-        const phrase = words.slice(start, start + phraseLen).join(' ');
+        const phrase = words.slice(start, start + phraseLen).map(w => w.normalized).join(' ');
         const occurrences: number[] = [start];
         let pos = start + phraseLen;
         while (pos <= words.length - phraseLen) {
-          const candidate = words.slice(pos, pos + phraseLen).join(' ');
+          const candidate = words.slice(pos, pos + phraseLen).map(w => w.normalized).join(' ');
           if (candidate === phrase) {
             occurrences.push(pos);
             pos += phraseLen;
@@ -997,17 +1021,21 @@ export function detectRepetitions(
         }
         if (occurrences.length < inSegmentMinOccurrences) continue;
 
+        // Flag every repeat after the first, using real word timestamps.
+        // Pad the cut very slightly (10ms) on both sides so FFmpeg atrim
+        // doesn't clip into neighboring word onset/offset.
+        const pad = 0.01;
         for (let k = 1; k < occurrences.length; k++) {
           const occPos = occurrences[k];
-          const repStart = sent.start + (occPos * wordDuration);
-          const repEnd = repStart + (phraseLen * wordDuration);
+          const repStart = Math.max(0, words[occPos].startTime - pad);
+          const repEnd = words[occPos + phraseLen - 1].endTime + pad;
           const rangeKey = `${repStart.toFixed(2)}-${repEnd.toFixed(2)}`;
           if (!processedRanges.has(rangeKey)) {
             processedRanges.add(rangeKey);
             repetitions.push({ start: repStart, end: repEnd, text: phrase });
           }
         }
-        logger.info(`In-sentence loop: "${phrase}" × ${occurrences.length} at ${sent.start.toFixed(2)}s (phraseLen=${phraseLen})`);
+        logger.info(`In-sentence loop: "${phrase}" × ${occurrences.length} at ${words[occurrences[0]].startTime.toFixed(2)}s (phraseLen=${phraseLen})`);
         foundAtThisLen = true;
         break;
       }
