@@ -114,18 +114,163 @@ function numberWordsToDigits(text: string): string {
   return out.join('');
 }
 
+// British → American spelling normalization. Spelling variations are NOT
+// audio differences (Whisper can render the same sound either way), so we
+// collapse them before comparing. Skews toward American but either direction
+// works since both sides are normalized the same way.
+const SPELLING_MAP: Record<string, string> = {
+  // -our → -or
+  labour: 'labor', labours: 'labors', laboured: 'labored', labouring: 'laboring',
+  colour: 'color', colours: 'colors', coloured: 'colored', colouring: 'coloring',
+  honour: 'honor', honours: 'honors', honoured: 'honored', honouring: 'honoring', honourable: 'honorable',
+  behaviour: 'behavior', behaviours: 'behaviors',
+  favour: 'favor', favours: 'favors', favoured: 'favored', favouring: 'favoring', favourite: 'favorite', favourites: 'favorites',
+  flavour: 'flavor', flavours: 'flavors', flavoured: 'flavored',
+  neighbour: 'neighbor', neighbours: 'neighbors', neighbourhood: 'neighborhood', neighbouring: 'neighboring',
+  rumour: 'rumor', rumours: 'rumors', rumoured: 'rumored',
+  savour: 'savor', savoured: 'savored', savouring: 'savoring',
+  harbour: 'harbor', harbours: 'harbors',
+  armour: 'armor', armoured: 'armored',
+  parlour: 'parlor', parlours: 'parlors',
+  splendour: 'splendor',
+  endeavour: 'endeavor', endeavours: 'endeavors',
+  saviour: 'savior', saviours: 'saviors',
+  odour: 'odor', odours: 'odors',
+  ardour: 'ardor',
+  vigour: 'vigor',
+  clamour: 'clamor',
+  humour: 'humor', humours: 'humors', humoured: 'humored',
+  demeanour: 'demeanor',
+  candour: 'candor',
+  rancour: 'rancor',
+  tumour: 'tumor', tumours: 'tumors',
+  // -re → -er
+  centre: 'center', centres: 'centers', centred: 'centered',
+  theatre: 'theater', theatres: 'theaters',
+  metre: 'meter', metres: 'meters',
+  fibre: 'fiber', fibres: 'fibers',
+  litre: 'liter', litres: 'liters',
+  calibre: 'caliber',
+  spectre: 'specter', spectres: 'specters',
+  lustre: 'luster',
+  sabre: 'saber', sabres: 'sabers',
+  sceptre: 'scepter',
+  // -ence → -ense (nouns)
+  defence: 'defense', defences: 'defenses',
+  offence: 'offense', offences: 'offenses',
+  pretence: 'pretense',
+  licence: 'license', licences: 'licenses',
+  // -ogue → -og
+  catalogue: 'catalog', catalogues: 'catalogs',
+  dialogue: 'dialog', dialogues: 'dialogs',
+  analogue: 'analog', analogues: 'analogs',
+  monologue: 'monolog',
+  // -ise → -ize
+  realise: 'realize', realised: 'realized', realising: 'realizing', realises: 'realizes',
+  organise: 'organize', organised: 'organized', organising: 'organizing', organises: 'organizes', organisation: 'organization', organisations: 'organizations',
+  recognise: 'recognize', recognised: 'recognized', recognising: 'recognizing', recognises: 'recognizes',
+  analyse: 'analyze', analysed: 'analyzed', analysing: 'analyzing', analyses: 'analyzes',
+  emphasise: 'emphasize', emphasised: 'emphasized', emphasising: 'emphasizing',
+  memorise: 'memorize', memorised: 'memorized',
+  apologise: 'apologize', apologised: 'apologized', apologising: 'apologizing',
+  criticise: 'criticize', criticised: 'criticized',
+  summarise: 'summarize', summarised: 'summarized',
+  specialise: 'specialize', specialised: 'specialized',
+  standardise: 'standardize', standardised: 'standardized',
+  civilise: 'civilize', civilised: 'civilized',
+  characterise: 'characterize', characterised: 'characterized',
+  categorise: 'categorize', categorised: 'categorized',
+  minimise: 'minimize', minimised: 'minimized',
+  maximise: 'maximize', maximised: 'maximized',
+  utilise: 'utilize', utilised: 'utilized',
+  // -lled → -led (British doubles consonant before suffix)
+  travelled: 'traveled', travelling: 'traveling', traveller: 'traveler', travellers: 'travelers',
+  cancelled: 'canceled', cancelling: 'canceling',
+  labelled: 'labeled', labelling: 'labeling',
+  modelled: 'modeled', modelling: 'modeling',
+  counselled: 'counseled', counselling: 'counseling',
+  signalled: 'signaled', signalling: 'signaling',
+  channelled: 'channeled', channelling: 'channeling',
+  // -aemia / -oestro
+  anaemia: 'anemia', anaemic: 'anemic',
+  leukaemia: 'leukemia',
+  paediatric: 'pediatric', paediatrics: 'pediatrics',
+  oestrogen: 'estrogen',
+  // misc common
+  grey: 'gray', greys: 'grays',
+  cheque: 'check', cheques: 'checks',
+  whilst: 'while',
+  amongst: 'among',
+  tyre: 'tire', tyres: 'tires',
+  aluminium: 'aluminum',
+  practise: 'practice', practised: 'practiced', practising: 'practicing',
+  draught: 'draft', draughts: 'drafts',
+  cosy: 'cozy',
+  jewellery: 'jewelry',
+  enquiry: 'inquiry', enquiries: 'inquiries',
+  enquire: 'inquire', enquired: 'inquired',
+  enrolment: 'enrollment',
+  fulfil: 'fulfill',
+  instalment: 'installment', instalments: 'installments',
+  skilful: 'skillful',
+  manoeuvre: 'maneuver', manoeuvres: 'maneuvers',
+  manoeuvred: 'maneuvered',
+  storey: 'story', storeys: 'stories',
+  kerb: 'curb', kerbs: 'curbs',
+  plough: 'plow', ploughs: 'plows', ploughed: 'plowed',
+  sulphur: 'sulfur',
+  moustache: 'mustache',
+  pyjamas: 'pajamas',
+};
+
+// Contraction expansion runs BEFORE punctuation stripping (so we can still
+// see the apostrophes that distinguish "we'll" from "well", "he'll" from
+// "hell", etc). Each key is the apostrophe-form; value is the expansion.
+// Same audio content, different written form — Whisper often renders one
+// way while the script has the other.
+const CONTRACTIONS: Record<string, string> = {
+  "don't": 'do not', "can't": 'cannot', "won't": 'will not',
+  "isn't": 'is not', "aren't": 'are not', "wasn't": 'was not', "weren't": 'were not',
+  "hasn't": 'has not', "haven't": 'have not', "hadn't": 'had not',
+  "doesn't": 'does not', "didn't": 'did not',
+  "shouldn't": 'should not', "wouldn't": 'would not', "couldn't": 'could not',
+  "mustn't": 'must not', "needn't": 'need not',
+  "i've": 'i have', "you've": 'you have', "we've": 'we have', "they've": 'they have',
+  "i'll": 'i will', "you'll": 'you will', "he'll": 'he will', "she'll": 'she will',
+  "we'll": 'we will', "they'll": 'they will', "it'll": 'it will',
+  "i'm": 'i am', "you're": 'you are', "he's": 'he is', "she's": 'she is',
+  "we're": 'we are', "they're": 'they are', "it's": 'it is', "that's": 'that is',
+  "there's": 'there is', "what's": 'what is', "who's": 'who is',
+  "i'd": 'i would', "you'd": 'you would', "he'd": 'he would', "she'd": 'she would',
+  "we'd": 'we would', "they'd": 'they would',
+  "let's": 'let us',
+};
+
+function expandContractions(text: string): string {
+  return text.replace(/\b[A-Za-z]+'[A-Za-z]+\b/g, (m) => {
+    const lower = m.toLowerCase();
+    return CONTRACTIONS[lower] || m;
+  });
+}
+
 /**
  * Normalize text for comparison - lowercase, remove punctuation, collapse
- * whitespace, and convert spelled-out numbers to digits ("thirty-five" → "35",
- * "three hundred thousand" → "300000"). Script-vs-audio comparisons treat
- * "30" and "thirty" as identical after this pass.
+ * whitespace, convert spelled-out numbers to digits, and unify
+ * British/American spelling + common contractions. Script-vs-audio
+ * comparisons treat "30"/"thirty", "labor"/"labour", "don't"/"do not",
+ * "realize"/"realise" as identical after this pass — because none of
+ * those differences are audible.
  */
 function normalizeText(text: string): string {
-  return numberWordsToDigits(text)
-    .toLowerCase()
-    .replace(/[^\w\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
+  // 1. Expand contractions BEFORE stripping apostrophes
+  let t = expandContractions(text);
+  // 2. Convert spelled-out numbers to digits
+  t = numberWordsToDigits(t);
+  // 3. Lowercase, strip punctuation, collapse whitespace
+  const cleaned = t.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+  if (!cleaned) return '';
+  // 4. British → American spelling normalization per word
+  return cleaned.split(' ').map(w => SPELLING_MAP[w] || w).join(' ');
 }
 
 /**
