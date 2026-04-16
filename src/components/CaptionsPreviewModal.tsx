@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
-import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw, Play, Square, Wand2 } from "lucide-react";
-import { runCaptionQualityCheck, AudioSegment } from "@/lib/api";
+import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw, Play, Square, Wand2, Scissors, Search } from "lucide-react";
+import { runCaptionQualityCheck, AudioSegment, scanAudioLoops, healAudioLoops, DetectedLoop } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -67,6 +67,8 @@ interface CaptionsPreviewModalProps {
   ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number };
   audioSegments?: AudioSegment[];  // Audio segments with durations for time range calculation
   onSegmentRegenerated?: (segmentNumber: number, newAudioUrl: string, newText: string, duration: number) => void;
+  // Called after audio is healed so the parent can update audioUrl/duration
+  onAudioHealed?: (newAudioUrl: string, newDuration: number) => void;
 }
 
 // Format seconds to MM:SS
@@ -137,6 +139,7 @@ export function CaptionsPreviewModal({
   ttsSettings,
   audioSegments,
   onSegmentRegenerated,
+  onAudioHealed,
 }: CaptionsPreviewModalProps) {
   const { toast } = useToast();
   const [editedSrt, setEditedSrt] = useState(srtContent);
@@ -148,6 +151,13 @@ export function CaptionsPreviewModal({
   const [isQualityExpanded, setIsQualityExpanded] = useState(false);
   const [isScriptQaExpanded, setIsScriptQaExpanded] = useState(false);
   const [isCheckingQuality, setIsCheckingQuality] = useState(false);
+
+  // Loop scan + heal state (replaces the old script-vs-transcription QA flow
+  // that used to run on this button). `detectedLoops=null` means no scan has
+  // run yet; `[]` means scan ran and found nothing (show "no loops" message).
+  const [detectedLoops, setDetectedLoops] = useState<DetectedLoop[] | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const [isHealing, setIsHealing] = useState(false);
 
   // Regeneration modal state
   const [regenModalOpen, setRegenModalOpen] = useState(false);
@@ -213,6 +223,77 @@ export function CaptionsPreviewModal({
 
     toast({ title: "Segment regenerated", description: `Audio segment ${segmentNumber} has been updated` });
     setRegenModalOpen(false);
+  };
+
+  // Scan the SRT for back-to-back repeated sentences (TTS loop hallucinations).
+  // No API calls to RunPod — just text processing on the server. Results shown
+  // inline so the user can review before healing.
+  const handleScanLoops = async () => {
+    if (!projectId || !editedSrt) {
+      toast({ title: "Cannot scan", description: "Missing project ID or captions", variant: "destructive" });
+      return;
+    }
+    setIsScanning(true);
+    setDetectedLoops(null);
+    try {
+      const result = await scanAudioLoops(projectId, editedSrt);
+      if (!result.success) {
+        toast({ title: "Scan failed", description: result.error, variant: "destructive" });
+        return;
+      }
+      const loops = result.loops || [];
+      setDetectedLoops(loops);
+      if (loops.length === 0) {
+        toast({ title: "No loops found", description: "Captions look clean — no repeated sentences detected." });
+      } else {
+        toast({
+          title: `${loops.length} loop${loops.length > 1 ? 's' : ''} detected`,
+          description: "Review below, then click Self-Heal to remove them.",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Scan failed",
+        description: error instanceof Error ? error.message : "Network error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsScanning(false);
+    }
+  };
+
+  // Cut the detected loop ranges out of the full audio via FFmpeg. Uploads
+  // the healed voiceover.wav and updates the parent's audio URL + duration.
+  const handleSelfHeal = async () => {
+    if (!projectId || !detectedLoops || detectedLoops.length === 0) return;
+    setIsHealing(true);
+    try {
+      const result = await healAudioLoops(
+        projectId,
+        detectedLoops.map(l => ({ start: l.start, end: l.end, text: l.text })),
+      );
+      if (!result.success) {
+        toast({ title: "Heal failed", description: result.error, variant: "destructive" });
+        return;
+      }
+      toast({
+        title: `Healed ${result.cutsMade} loop${(result.cutsMade ?? 0) > 1 ? 's' : ''}`,
+        description: `Removed ${result.totalRemovedSec?.toFixed(1)}s of repeated audio`,
+      });
+      if (result.audioUrl && result.duration !== undefined) {
+        onAudioHealed?.(result.audioUrl, result.duration);
+      }
+      // Clear the loop list — audio no longer contains them.
+      setDetectedLoops([]);
+    } catch (error) {
+      toast({
+        title: "Heal failed",
+        description: error instanceof Error ? error.message : "Network error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsHealing(false);
+    }
   };
 
   // Run quality check
@@ -415,19 +496,66 @@ export function CaptionsPreviewModal({
           </div>
         )}
 
-        {/* Quality Check Button - shown when no issues but have captions */}
-        {(!qualityIssues || qualityIssues.length === 0) && captionCount > 0 && projectId && (
-          <div className="flex justify-end">
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={handleQualityCheck}
-              disabled={isCheckingQuality}
-              className="h-7 text-xs"
-            >
-              <RefreshCw className={`w-3 h-3 mr-1 ${isCheckingQuality ? 'animate-spin' : ''}`} />
-              {isCheckingQuality ? 'Checking...' : 'Quality Check'}
-            </Button>
+        {/* Loop scan + self-heal controls (replaces old Quality Check).
+            Scan runs text-only detection on the SRT for repeated sentences;
+            Self-Heal appears after scan if loops were found and cuts them
+            from the audio via FFmpeg. */}
+        {captionCount > 0 && projectId && (
+          <div className="space-y-2">
+            <div className="flex justify-end gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleScanLoops}
+                disabled={isScanning || isHealing}
+                className="h-7 text-xs"
+              >
+                <Search className={`w-3 h-3 mr-1 ${isScanning ? 'animate-pulse' : ''}`} />
+                {isScanning ? 'Scanning...' : 'Scan for Loops'}
+              </Button>
+              {detectedLoops && detectedLoops.length > 0 && (
+                <Button
+                  size="sm"
+                  onClick={handleSelfHeal}
+                  disabled={isScanning || isHealing}
+                  className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <Scissors className={`w-3 h-3 mr-1 ${isHealing ? 'animate-pulse' : ''}`} />
+                  {isHealing ? 'Healing...' : `Self-Heal (${detectedLoops.length})`}
+                </Button>
+              )}
+            </div>
+
+            {/* Scan results list */}
+            {detectedLoops && detectedLoops.length > 0 && (
+              <div className="border border-blue-200 bg-blue-50 rounded-lg p-3 space-y-2">
+                <div className="flex items-center gap-2 text-blue-700 text-sm font-medium">
+                  <AlertTriangle className="w-4 h-4" />
+                  {detectedLoops.length} repeated sentence{detectedLoops.length > 1 ? 's' : ''} detected
+                  <span className="text-xs text-blue-500 font-normal">
+                    ({detectedLoops.reduce((s, l) => s + l.durationSec, 0).toFixed(1)}s total)
+                  </span>
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {detectedLoops.map((loop, i) => (
+                    <div key={i} className="text-xs bg-white rounded px-2 py-1.5 flex gap-2">
+                      <span className="font-mono text-blue-500 flex-shrink-0">
+                        {formatTime(loop.start)}–{formatTime(loop.end)}
+                      </span>
+                      <span className="text-blue-800 italic truncate">"{loop.text}"</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Clean-scan message */}
+            {detectedLoops && detectedLoops.length === 0 && !isScanning && (
+              <div className="border border-green-200 bg-green-50 rounded-lg p-2 flex items-center gap-2 text-sm text-green-700">
+                <CheckCircle2 className="w-4 h-4" />
+                No repeated sentences detected.
+              </div>
+            )}
           </div>
         )}
 

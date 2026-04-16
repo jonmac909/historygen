@@ -5075,6 +5075,13 @@ const Index = () => {
             )});
           }
         }}
+        onAudioHealed={(newAudioUrl, newDuration) => {
+          // Backend trimmed loops out of the combined voiceover.wav and
+          // already upserted the file + updated the DB row. Keep local
+          // state in sync so the audio player picks up the new URL.
+          setPendingAudioUrl(newAudioUrl);
+          setPendingAudioDuration(newDuration);
+        }}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}
