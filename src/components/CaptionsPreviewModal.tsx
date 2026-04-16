@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Check, X, Edit3, FileText, ChevronLeft, ChevronRight, Download, Minus, Plus, Image as ImageIcon, AlertTriangle, ChevronDown, CheckCircle2, RefreshCw, Play, Square, Wand2, Scissors, Search } from "lucide-react";
 import { runCaptionQualityCheck, AudioSegment, scanAudioLoops, healAudioLoops, DetectedLoop } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -79,6 +79,94 @@ function formatTime(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+// Compute a concise, human-readable description of what the scanner
+// picked up as different between two sentences. Uses LCS backtracking
+// to identify word-level diffs and pairs adjacent missing/added runs
+// into a "X -> Y" substitution when possible.
+function describeWordDiff(script: string, heard: string): React.ReactNode {
+  const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
+  const sWords = normalize(script);
+  const hWords = normalize(heard);
+  const m = sWords.length;
+  const n = hWords.length;
+  if (m === 0 || n === 0) return null;
+
+  // LCS DP
+  const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = sWords[i - 1] === hWords[j - 1]
+        ? dp[i - 1][j - 1] + 1
+        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+    }
+  }
+
+  // Backtrack, emitting either "equal", "missing" (in script not heard),
+  // or "extra" (in heard not script). Collapse adjacent missing+extra runs
+  // into substitutions for readability.
+  type Op = { kind: 'miss' | 'add'; word: string };
+  const ops: Op[] = [];
+  let i = m, j = n;
+  while (i > 0 && j > 0) {
+    if (sWords[i - 1] === hWords[j - 1]) {
+      i--; j--;
+    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
+      ops.push({ kind: 'miss', word: sWords[i - 1] });
+      i--;
+    } else {
+      ops.push({ kind: 'add', word: hWords[j - 1] });
+      j--;
+    }
+  }
+  while (i > 0) { ops.push({ kind: 'miss', word: sWords[i - 1] }); i--; }
+  while (j > 0) { ops.push({ kind: 'add', word: hWords[j - 1] }); j--; }
+  ops.reverse();
+
+  // Group consecutive operations of the same kind into runs
+  type Run = { kind: 'miss' | 'add'; words: string[] };
+  const runs: Run[] = [];
+  for (const op of ops) {
+    const last = runs[runs.length - 1];
+    if (last && last.kind === op.kind) last.words.push(op.word);
+    else runs.push({ kind: op.kind, words: [op.word] });
+  }
+
+  if (runs.length === 0) return null;
+
+  // Pair adjacent miss+add runs as a substitution "X -> Y"
+  const parts: React.ReactNode[] = [];
+  for (let k = 0; k < runs.length; k++) {
+    const run = runs[k];
+    const next = runs[k + 1];
+    if (run.kind === 'miss' && next && next.kind === 'add') {
+      parts.push(
+        <span key={k} className="block">
+          <span className="text-green-700 font-medium">"{run.words.join(' ')}"</span>
+          <span className="text-slate-500"> in script, </span>
+          <span className="text-red-600 font-medium">"{next.words.join(' ')}"</span>
+          <span className="text-slate-500"> in audio</span>
+        </span>
+      );
+      k++; // consume the paired add
+    } else if (run.kind === 'miss') {
+      parts.push(
+        <span key={k} className="block">
+          <span className="text-slate-500">Missing from audio: </span>
+          <span className="text-green-700 font-medium">"{run.words.join(' ')}"</span>
+        </span>
+      );
+    } else {
+      parts.push(
+        <span key={k} className="block">
+          <span className="text-slate-500">Extra in audio (not in script): </span>
+          <span className="text-red-600 font-medium">"{run.words.join(' ')}"</span>
+        </span>
+      );
+    }
+  }
+  return <>{parts}</>;
 }
 
 // Convert SRT timestamp (00:00:05,123) to seconds
@@ -693,44 +781,18 @@ export function CaptionsPreviewModal({
                             {!issue.transcribedText && issue.type === 'missing' && (
                               <p className="text-xs text-red-500 italic">(This text was not found in the audio)</p>
                             )}
-                            {/* Action buttons */}
-                            <div className="flex flex-wrap gap-2 mt-1">
-                              {/* Play button */}
-                              {audioUrl && segNum && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (isPlaying) {
-                                      stopPlayback();
-                                    } else {
-                                      playSegment(segNum);
-                                    }
-                                  }}
-                                  className={`flex items-center gap-1 text-xs px-2 py-1 rounded ${
-                                    isPlaying
-                                      ? 'bg-blue-500 text-white'
-                                      : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                  }`}
-                                >
-                                  {isPlaying ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-                                  {isPlaying ? 'Stop' : 'Play'}
-                                </button>
-                              )}
-
-                              {/* Regenerate button - only show if we have voiceSampleUrl and segmentNumber */}
-                              {voiceSampleUrl && issue.segmentNumber && projectId && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    openRegenModal(issue);
-                                  }}
-                                  className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-amber-100 text-amber-700 hover:bg-amber-200"
-                                >
-                                  <Wand2 className="w-3 h-3" />
-                                  Regenerate
-                                </button>
-                              )}
-                            </div>
+                            {/* Specific word-level diff — tells the user exactly what the
+                                scanner picked up as different between script and heard. */}
+                            {issue.originalText && issue.transcribedText && (() => {
+                              const diff = describeWordDiff(issue.originalText, issue.transcribedText);
+                              if (!diff) return null;
+                              return (
+                                <div className="text-xs bg-slate-50 border border-slate-200 rounded p-2 mt-1">
+                                  <span className="text-[10px] text-muted-foreground uppercase block mb-1">Scanner noted:</span>
+                                  <div className="text-slate-700 leading-relaxed">{diff}</div>
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>

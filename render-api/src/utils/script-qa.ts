@@ -714,9 +714,11 @@ export function compareAudioSegmentsToSRT(
     scriptWords: string[],
     minStart: number,
     maxStart: number,
-  ): { coverage: number; startIdx: number; endIdx: number } => {
-    if (scriptWords.length === 0) return { coverage: 1, startIdx: -1, endIdx: -1 };
-    const MAX_GAP = 40; // max transcript words skipped between matches
+  ): { coverage: number; startIdx: number; endIdx: number; matchedScriptIndices: Set<number> } => {
+    if (scriptWords.length === 0) {
+      return { coverage: 1, startIdx: -1, endIdx: -1, matchedScriptIndices: new Set() };
+    }
+    const MAX_GAP = 40;
     const first = scriptWords[0];
 
     const anchors = new Set<number>();
@@ -734,25 +736,32 @@ export function compareAudioSegmentsToSRT(
       }
     }
 
-    let best = { matches: 0, startIdx: -1, endIdx: -1 };
+    let best = { matches: 0, startIdx: -1, endIdx: -1, matched: new Set<number>() };
     for (const startPos of anchors) {
       let pos = startPos;
       let matches = 1;
       let lastMatch = startPos;
+      const matchedHere = new Set<number>([0]);
       for (let si = 1; si < scriptWords.length; si++) {
         const target = scriptWords[si];
         const searchEnd = Math.min(pos + MAX_GAP, fullTranscriptWords.length);
         let found = -1;
         for (let j = pos + 1; j < searchEnd; j++) {
           if (wordsMatchFuzzy(fullTranscriptWords[j], target)) { found = j; break; }
+          // Compound-word tolerance: "schoolrooms" == "school"+"rooms"
+          if (j + 1 < searchEnd) {
+            const joined = fullTranscriptWords[j] + fullTranscriptWords[j + 1];
+            if (joined === target) { found = j + 1; break; }
+          }
         }
-        if (found === -1) break;
+        if (found === -1) continue; // unmatched — keep trying later script words in case of skip
         matches++;
+        matchedHere.add(si);
         lastMatch = found;
         pos = found;
       }
       if (matches > best.matches) {
-        best = { matches, startIdx: startPos, endIdx: lastMatch };
+        best = { matches, startIdx: startPos, endIdx: lastMatch, matched: matchedHere };
       }
       if (best.matches === scriptWords.length) break;
     }
@@ -760,6 +769,7 @@ export function compareAudioSegmentsToSRT(
       coverage: best.matches / scriptWords.length,
       startIdx: best.startIdx,
       endIdx: best.endIdx,
+      matchedScriptIndices: best.matched,
     };
   };
 
@@ -783,6 +793,28 @@ export function compareAudioSegmentsToSRT(
     };
   })();
 
+  // Stopwords / function words whose presence or absence rarely matters.
+  // When the ONLY differences between script and transcript are these, the
+  // scanner should not flag the sentence as a real issue.
+  const STOPWORDS = new Set([
+    'a', 'an', 'the', 'and', 'or', 'but', 'nor', 'so', 'yet',
+    'of', 'in', 'on', 'at', 'to', 'for', 'from', 'with', 'by', 'as',
+    'is', 'are', 'was', 'were', 'be', 'been', 'being', 'am',
+    'this', 'that', 'these', 'those',
+    'it', 'he', 'she', 'we', 'they', 'you', 'i', 'his', 'her', 'their', 'its', 'our',
+    'if', 'then', 'than', 'into', 'onto', 'about', 'over', 'under',
+  ]);
+
+  const isTriviallyDifferent = (scriptWords: string[], matchedScriptIndices: Set<number>): boolean => {
+    // If all unmatched script words are stopwords, the mismatch is not a
+    // real content issue — just a filler-word variation.
+    for (let i = 0; i < scriptWords.length; i++) {
+      if (matchedScriptIndices.has(i)) continue;
+      if (!STOPWORDS.has(scriptWords[i])) return false;
+    }
+    return true;
+  };
+
   // Classify the mismatch so the UI can show a human-readable label.
   const classifyIssue = (scriptWords: string[], matchStart: number, matchEnd: number, coverage: number): string => {
     const unmatched = scriptWords.length - Math.round(coverage * scriptWords.length);
@@ -791,8 +823,6 @@ export function compareAudioSegmentsToSRT(
     if (unmatched === 1) return 'One word different';
     if (unmatched <= 3) return 'A few words different';
     // Look at where unmatched words are — is it a block or scattered?
-    // Simple heuristic: if match span is much shorter than script length,
-    // likely prefix/suffix missing.
     if (matchStart >= 0 && matchEnd >= matchStart) {
       const span = matchEnd - matchStart + 1;
       if (span < scriptWords.length * 0.7) return 'Partial match — portion missing or reworded';
@@ -829,6 +859,14 @@ export function compareAudioSegmentsToSRT(
       if (result.coverage >= 0.92) {
         // Present, in order — advance the cursor past this match
         transcriptCursor = result.endIdx + 1;
+        continue;
+      }
+
+      // "Smart" filter: if the only unmatched script words are stopwords
+      // (function-word swaps like "and"/"in", "a"/"the"), don't flag —
+      // content is effectively present, variation is not a real issue.
+      if (result.coverage >= 0.7 && isTriviallyDifferent(scriptWords, result.matchedScriptIndices)) {
+        transcriptCursor = (result.endIdx >= 0 ? result.endIdx : transcriptCursor) + 1;
         continue;
       }
 
