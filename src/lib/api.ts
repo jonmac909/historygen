@@ -1791,6 +1791,7 @@ export async function healAudioLoops(
   duration?: number;
   cuts?: Array<{ start: number; end: number; text: string }>;
   updatedSrt?: string;
+  residualLoops?: DetectedLoop[];
   error?: string;
 }> {
   const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';

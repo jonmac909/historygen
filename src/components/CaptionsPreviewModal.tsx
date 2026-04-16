@@ -287,15 +287,25 @@ export function CaptionsPreviewModal({
       if (result.audioUrl && result.duration !== undefined) {
         onAudioHealed?.(result.audioUrl, result.duration);
       }
-      // Backend returned a rewritten SRT that reflects the cuts. Adopt it
-      // locally so the next "Scan for Loops" runs against the post-heal
-      // transcript (otherwise it would re-find the same loops).
+      // Backend re-transcribed the healed audio with Whisper for HONEST
+      // verification. Adopt the new SRT locally so subsequent scans run
+      // against the post-heal transcript.
       if (result.updatedSrt) {
         setEditedSrt(result.updatedSrt);
         setSegments(parseSRT(result.updatedSrt));
       }
-      // Clear the loop list — audio no longer contains them.
-      setDetectedLoops([]);
+      // If the post-heal transcription still shows loops, don't lie —
+      // surface them so the user sees the heal didn't fully work.
+      if (result.residualLoops && result.residualLoops.length > 0) {
+        setDetectedLoops(result.residualLoops);
+        toast({
+          title: `Heal incomplete — ${result.residualLoops.length} loop${result.residualLoops.length > 1 ? 's' : ''} still present`,
+          description: "The cut didn't fully remove the loops. Click Self-Heal again or Regenerate the affected segment.",
+          variant: "destructive",
+        });
+      } else {
+        setDetectedLoops([]);
+      }
     } catch (error) {
       toast({
         title: "Heal failed",
