@@ -69,6 +69,9 @@ interface CaptionsPreviewModalProps {
   onSegmentRegenerated?: (segmentNumber: number, newAudioUrl: string, newText: string, duration: number) => void;
   // Called after audio is healed so the parent can update audioUrl/duration
   onAudioHealed?: (newAudioUrl: string, newDuration: number) => void;
+  // Called after Scan Script Match so the parent can persist needsReview
+  // flags on the affected audio_segments rows. Map is keyed by segment index.
+  onSegmentsNeedReview?: (updates: Record<number, { issues: { type: string; severity: string; originalText?: string; transcribedText?: string; similarity?: number }[] } | null>) => void;
 }
 
 // Format seconds to MM:SS
@@ -140,6 +143,7 @@ export function CaptionsPreviewModal({
   audioSegments,
   onSegmentRegenerated,
   onAudioHealed,
+  onSegmentsNeedReview,
 }: CaptionsPreviewModalProps) {
   const { toast } = useToast();
   const [editedSrt, setEditedSrt] = useState(srtContent);
@@ -313,10 +317,33 @@ export function CaptionsPreviewModal({
       if (result.success && result.scriptQa) {
         onScriptQaUpdate?.(result.scriptQa);
         const qa = result.scriptQa;
+
+        // Mark each flagged segment with a needsReview tag so the Audio
+        // Segments list can show an orange "Needs Review" pill. Segments
+        // without issues get null so any prior flag clears on re-scan.
+        if (onSegmentsNeedReview && audioSegments && audioSegments.length > 0) {
+          const updates: Record<number, { issues: { type: string; severity: string; originalText?: string; transcribedText?: string; similarity?: number }[] } | null> = {};
+          for (const seg of audioSegments) updates[seg.index] = null;
+          for (const issue of qa.issues) {
+            if (!issue.segmentNumber) continue;
+            if (!updates[issue.segmentNumber] || updates[issue.segmentNumber] === null) {
+              updates[issue.segmentNumber] = { issues: [] };
+            }
+            updates[issue.segmentNumber]!.issues.push({
+              type: issue.type,
+              severity: issue.severity,
+              originalText: issue.originalText,
+              transcribedText: issue.transcribedText,
+              similarity: issue.similarity,
+            });
+          }
+          onSegmentsNeedReview(updates);
+        }
+
         if (qa.needsReview) {
           toast({
             title: `Script match: ${qa.score}%`,
-            description: `${qa.issues.length} issues found - check the yellow/red box below`,
+            description: `${qa.issues.length} issues found - flagged segments show an orange "Needs Review" pill`,
             variant: "destructive",
           });
         } else {
@@ -499,19 +526,32 @@ export function CaptionsPreviewModal({
         {/* Loop scan + self-heal controls (replaces old Quality Check).
             Scan runs text-only detection on the SRT for repeated sentences;
             Self-Heal appears after scan if loops were found and cuts them
-            from the audio via FFmpeg. */}
+            from the audio via FFmpeg. Scan Script Match is a separate,
+            manual-only check for garbled content / regen mess-ups — compares
+            the SRT (Whisper output) against the original script text. */}
         {captionCount > 0 && projectId && (
           <div className="space-y-2">
-            <div className="flex justify-end gap-2">
+            <div className="flex justify-end gap-2 flex-wrap">
               <Button
                 size="sm"
                 variant="outline"
                 onClick={handleScanLoops}
-                disabled={isScanning || isHealing}
+                disabled={isScanning || isHealing || isCheckingQuality}
                 className="h-7 text-xs"
               >
                 <Search className={`w-3 h-3 mr-1 ${isScanning ? 'animate-pulse' : ''}`} />
                 {isScanning ? 'Scanning...' : 'Scan for Loops'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleQualityCheck}
+                disabled={isScanning || isHealing || isCheckingQuality}
+                className="h-7 text-xs"
+                title="Compare Whisper transcription against the original script — catches garbled audio, missing sentences, or regen mess-ups"
+              >
+                <FileText className={`w-3 h-3 mr-1 ${isCheckingQuality ? 'animate-pulse' : ''}`} />
+                {isCheckingQuality ? 'Checking...' : 'Scan Script Match'}
               </Button>
               {detectedLoops && detectedLoops.length > 0 && (
                 <Button

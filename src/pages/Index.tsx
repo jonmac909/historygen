@@ -5082,6 +5082,24 @@ const Index = () => {
           setPendingAudioUrl(newAudioUrl);
           setPendingAudioDuration(newDuration);
         }}
+        onSegmentsNeedReview={(updates) => {
+          // Script match scan flagged (or cleared) certain segments. Stamp
+          // needsReview on each affected segment so the orange pill shows
+          // in the Audio Segments preview. Persist to DB so it survives a
+          // reload.
+          setPendingAudioSegments(prev => {
+            const next = prev.map(seg => {
+              if (!(seg.index in updates)) return seg;
+              const flag = updates[seg.index];
+              const { needsReview: _drop, ...rest } = seg as typeof seg & { needsReview?: unknown };
+              return flag ? { ...rest, needsReview: flag } : { ...rest };
+            });
+            if (projectId) {
+              saveProject(projectId, { audioSegments: next });
+            }
+            return next;
+          });
+        }}
       />
 
       {/* Video Clip Prompts Modal (LTX-2) - Review clip descriptions */}

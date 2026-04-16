@@ -369,6 +369,15 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
               Healed × {segment.heal.ranges.length}
             </span>
           )}
+          {segment.needsReview && segment.needsReview.issues.length > 0 && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-medium"
+              title={`Script match flagged ${segment.needsReview.issues.length} issue${segment.needsReview.issues.length > 1 ? 's' : ''} — relisten to verify`}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              Needs Review × {segment.needsReview.issues.length}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -1065,10 +1074,11 @@ export function AudioSegmentsPreviewModal({
             const isPlaying = playingGroupIndex === group.groupIndex;
             const startTimeFormatted = formatTime(group.startTime);
             const endTimeFormatted = formatTime(group.startTime + group.duration);
-            // Count healed segments in this group so the collapsed row can
-            // flag it — avoids having to expand every group to find the one
-            // with cuts. Number is segments-healed, not total cuts.
+            // Count healed + flagged segments in this group so the collapsed
+            // row can surface both without forcing the user to expand and
+            // scan manually. Numbers are segments-affected, not total hits.
             const healedCount = group.segments.filter(s => s.heal && s.heal.ranges.length > 0).length;
+            const reviewCount = group.segments.filter(s => s.needsReview && s.needsReview.issues.length > 0).length;
 
             return (
               <div key={group.groupIndex} className="border rounded-lg overflow-hidden">
@@ -1098,6 +1108,15 @@ export function AudioSegmentsPreviewModal({
                       >
                         <RefreshCw className="w-3 h-3" />
                         Healed × {healedCount}
+                      </span>
+                    )}
+                    {reviewCount > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-xs font-medium"
+                        title={`${reviewCount} segment${reviewCount > 1 ? 's' : ''} flagged by Script Match — relisten to verify`}
+                      >
+                        <AlertTriangle className="w-3 h-3" />
+                        Needs Review × {reviewCount}
                       </span>
                     )}
                   </div>

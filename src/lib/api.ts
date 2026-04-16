@@ -56,6 +56,14 @@ export interface HealInfo {
   totalRemovedSec: number;
 }
 
+export interface ReviewIssue {
+  type: 'missing' | 'garbled' | 'extra' | 'mismatch' | string;
+  severity: 'warning' | 'error' | string;
+  originalText?: string;
+  transcribedText?: string;
+  similarity?: number;
+}
+
 export interface AudioSegment {
   index: number;
   audioUrl: string;
@@ -65,6 +73,10 @@ export interface AudioSegment {
   // Present when loop detection removed one or more phrases from this
   // segment's audio. Caller can surface these for manual review.
   heal?: HealInfo;
+  // Present when script-match QA flagged this segment as needing a
+  // manual relisten (garbled audio, missing sentences, etc).
+  // Populated by Captions-page "Scan Script Match" action.
+  needsReview?: { issues: ReviewIssue[] };
 }
 
 export interface AudioResult {
