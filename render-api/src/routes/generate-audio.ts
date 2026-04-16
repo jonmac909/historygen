@@ -2476,10 +2476,12 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
     console.log(`Concatenated audio: ${finalAudio.length} bytes from ${audioChunks.length} chunks`);
 
-    // Post-process to remove repeated audio segments
-    sendEvent({ type: 'progress', progress: 75, message: 'Removing repeated segments...' });
-    finalAudio = await postProcessAudio(finalAudio);
-    console.log(`Post-processed audio: ${finalAudio.length} bytes`);
+    // Heal: transcribe + cut any residual loops that slipped past per-chunk
+    // verification. Runs unconditionally (not gated by AUDIO_POSTPROCESS_MODE)
+    // because this is the only healing pass in the non-voice-cloning flow.
+    sendEvent({ type: 'progress', progress: 75, message: 'Healing audio...' });
+    finalAudio = await healSegmentAudio(finalAudio, 'full audio');
+    console.log(`Healed audio: ${finalAudio.length} bytes`);
 
     // Check audio integrity BEFORE upload (skip if file too large to avoid V8 crash)
     const MAX_INTEGRITY_CHECK_SIZE = 50 * 1024 * 1024; // 50MB threshold
@@ -2829,6 +2831,12 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
         } else {
           logger.info(`[SEGMENT ${segmentNumber}] Audio integrity: CLEAN (no glitches)`);
         }
+
+        // Heal: transcribe assembled segment via Whisper, detect any residual
+        // loops that slipped past per-chunk verification, FFmpeg-cut them.
+        // Same logic that runs on manual regens — now also runs during
+        // full-script generation so the output ships clean from the start.
+        segmentAudio = await healSegmentAudio(segmentAudio, `seg ${segmentNumber} (gen)`);
 
         // Upload this segment
         const fileName = `${actualProjectId}/voiceover-segment-${segmentNumber}.wav`;
@@ -3298,10 +3306,10 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
   console.log(`Concatenated audio: ${combinedAudio.length} bytes from ${audioChunks.length} chunks`);
 
-  // Post-process to remove repeated audio segments
-  console.log('Post-processing to remove repeated segments...');
-  let finalAudio = await postProcessAudio(combinedAudio);
-  console.log(`Post-processed audio: ${finalAudio.length} bytes`);
+  // Heal: transcribe + cut any residual loops (same as streaming path)
+  console.log('Healing audio...');
+  let finalAudio = await healSegmentAudio(combinedAudio, 'full audio (non-stream)');
+  console.log(`Healed audio: ${finalAudio.length} bytes`);
 
   // Apply speed adjustment if not 1.0
   if (speed !== 1.0) {
@@ -3742,8 +3750,17 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
     results.sort((a, b) => a.index - b.index);
     const audioChunks = results.map(r => r.audio);
     const textChunks = results.map(r => r.text);
-    const { wav: segmentAudio, durationSeconds } = concatenateWavFilesWithPauses(audioChunks, textChunks);
-    const durationRounded = Math.round(durationSeconds * 10) / 10;
+    const { wav: concatenatedAudio, durationSeconds: preHealDuration } = concatenateWavFilesWithPauses(audioChunks, textChunks);
+
+    // Heal residual loops before upload (same as /segment route)
+    const segmentAudio = await healSegmentAudio(concatenatedAudio, `regen seg ${segmentNumber}`);
+    let finalDurationSeconds = preHealDuration;
+    try {
+      const info = extractWavInfo(segmentAudio);
+      const bytesPerSecond = info.sampleRate * info.channels * (info.bitsPerSample / 8);
+      if (bytesPerSecond > 0) finalDurationSeconds = info.pcmData.length / bytesPerSecond;
+    } catch { /* keep pre-heal duration */ }
+    const durationRounded = Math.round(finalDurationSeconds * 10) / 10;
 
     const supabase = createClient(credentials.url, credentials.key);
     const fileName = `${projectId}/voiceover-segment-${segmentNumber}.wav`;
