@@ -3825,6 +3825,148 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
   }
 });
 
+// Parse SRT into WhisperSegment[] for loop detection.
+// Shape: "1\n00:00:01,000 --> 00:00:02,500\nHello there\n\n2\n..."
+function parseSrtToWhisperSegments(srt: string): WhisperSegment[] {
+  const out: WhisperSegment[] = [];
+  const blocks = srt.replace(/\r/g, '').split(/\n\n+/);
+  for (const block of blocks) {
+    const lines = block.trim().split('\n');
+    if (lines.length < 2) continue;
+    const m = /^([\d:,]+)\s*-->\s*([\d:,]+)/.exec(lines[1]);
+    if (!m) continue;
+    const toSec = (t: string) => {
+      const [hms, ms] = t.split(',');
+      const [h, mn, s] = hms.split(':').map(Number);
+      return h * 3600 + mn * 60 + s + Number(ms) / 1000;
+    };
+    out.push({
+      start: toSec(m[1]),
+      end: toSec(m[2]),
+      text: lines.slice(2).join(' ').trim(),
+    });
+  }
+  return out;
+}
+
+// Scan the project's SRT for repeated sentences. Text-only, no API calls.
+// Returns the detected loops with their timestamps in the full audio.
+router.post('/scan-loops', async (req: Request, res: Response) => {
+  const { srtContent, projectId } = req.body;
+  try {
+    let srt: string | undefined = srtContent;
+    if (!srt && projectId) {
+      const projectData = await getProjectData(projectId);
+      if (!projectData.exists) return res.status(404).json({ error: 'Project not found' });
+      srt = (projectData as any).srtContent || undefined;
+    }
+    if (!srt) return res.status(400).json({ error: 'srtContent or projectId with stored SRT is required' });
+
+    const segments = parseSrtToWhisperSegments(srt);
+    if (segments.length < 2) return res.json({ loops: [] });
+
+    const loops = detectRepetitions(segments);
+    logger.info(`[scan-loops] project=${projectId || 'n/a'} segments=${segments.length} loops=${loops.length}`);
+    return res.json({
+      loops: loops.map(l => ({
+        start: l.start,
+        end: l.end,
+        text: l.text,
+        durationSec: l.end - l.start,
+      })),
+    });
+  } catch (error) {
+    logger.error('[scan-loops] error:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Scan failed' });
+  }
+});
+
+// Heal the project's full combined audio by cutting repeated-phrase ranges.
+// If ranges are supplied, uses them directly; otherwise re-detects via Whisper.
+// Uploads healed audio back to voiceover.wav (upsert), updates audio_url/duration.
+router.post('/heal-audio', async (req: Request, res: Response) => {
+  const { projectId, ranges } = req.body as {
+    projectId?: string;
+    ranges?: Array<{ start: number; end: number; text?: string }>;
+  };
+  try {
+    if (!projectId) return res.status(400).json({ error: 'projectId is required' });
+
+    const credentials = getSupabaseCredentials();
+    if (!credentials) return res.status(500).json({ error: 'Supabase credentials not configured' });
+
+    const projectData = await getProjectData(projectId);
+    if (!projectData.exists || !projectData.audioUrl) {
+      return res.status(404).json({ error: 'Project or combined audio not found' });
+    }
+
+    const audioFileName = `${projectId}/voiceover.wav`;
+    const supabase = createClient(credentials.url, credentials.key);
+    const { data: audioBlob, error: dlError } = await supabase.storage
+      .from('generated-assets')
+      .download(audioFileName);
+    if (dlError || !audioBlob) {
+      return res.status(500).json({ error: `Failed to download voiceover.wav: ${dlError?.message || 'unknown'}` });
+    }
+    const audioBuffer = Buffer.from(await audioBlob.arrayBuffer());
+    logger.info(`[heal-audio] project=${projectId} audio=${(audioBuffer.length / 1024 / 1024).toFixed(1)}MB`);
+
+    let cutRanges: RepetitionRange[] = [];
+    if (ranges && ranges.length > 0) {
+      // Trust caller's ranges (typically from /scan-loops on the SRT)
+      cutRanges = ranges
+        .filter(r => typeof r.start === 'number' && typeof r.end === 'number' && r.end > r.start)
+        .map(r => ({ start: r.start, end: r.end, text: r.text || '' }));
+    } else {
+      // Re-detect via Whisper
+      const segs = await transcribeForRepetitionDetection(audioBuffer);
+      cutRanges = detectRepetitions(segs);
+    }
+
+    if (cutRanges.length === 0) {
+      return res.json({ success: true, cutsMade: 0, audioUrl: projectData.audioUrl, duration: projectData.audioDuration });
+    }
+
+    logger.info(`[heal-audio] cutting ${cutRanges.length} ranges, total=${cutRanges.reduce((s, r) => s + (r.end - r.start), 0).toFixed(2)}s`);
+    const healed = await removeAudioSegments(audioBuffer, cutRanges);
+
+    const { error: uploadError } = await supabase.storage
+      .from('generated-assets')
+      .upload(audioFileName, healed, { contentType: 'audio/wav', upsert: true });
+    if (uploadError) return res.status(500).json({ error: `Upload failed: ${uploadError.message}` });
+
+    const { data: urlData } = supabase.storage.from('generated-assets').getPublicUrl(audioFileName);
+    const cacheBustedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+
+    // Recompute duration from healed WAV header
+    let durationSec = projectData.audioDuration || 0;
+    try {
+      const info = extractWavInfo(healed);
+      const bytesPerSecond = info.sampleRate * info.channels * (info.bitsPerSample / 8);
+      if (bytesPerSecond > 0) durationSec = info.pcmData.length / bytesPerSecond;
+    } catch { /* keep existing */ }
+
+    // Persist new URL + duration so the frontend picks it up on next load
+    await supabase
+      .from('generation_projects')
+      .update({ audio_url: cacheBustedUrl, audio_duration: Math.round(durationSec) })
+      .eq('id', projectId);
+
+    logger.info(`[heal-audio] done: ${(healed.length / 1024 / 1024).toFixed(1)}MB, ${durationSec.toFixed(1)}s`);
+    return res.json({
+      success: true,
+      cutsMade: cutRanges.length,
+      totalRemovedSec: cutRanges.reduce((s, r) => s + (r.end - r.start), 0),
+      audioUrl: cacheBustedUrl,
+      duration: Math.round(durationSec),
+      cuts: cutRanges.map(r => ({ start: r.start, end: r.end, text: r.text })),
+    });
+  } catch (error) {
+    logger.error('[heal-audio] error:', error);
+    return res.status(500).json({ error: error instanceof Error ? error.message : 'Heal failed' });
+  }
+});
+
 // Lookup phonetic spelling for a word (for auto-fill in frontend)
 router.get('/phonetic/:word', (req: Request, res: Response) => {
   const word = req.params.word;

@@ -1065,6 +1065,10 @@ export function AudioSegmentsPreviewModal({
             const isPlaying = playingGroupIndex === group.groupIndex;
             const startTimeFormatted = formatTime(group.startTime);
             const endTimeFormatted = formatTime(group.startTime + group.duration);
+            // Count healed segments in this group so the collapsed row can
+            // flag it — avoids having to expand every group to find the one
+            // with cuts. Number is segments-healed, not total cuts.
+            const healedCount = group.segments.filter(s => s.heal && s.heal.ranges.length > 0).length;
 
             return (
               <div key={group.groupIndex} className="border rounded-lg overflow-hidden">
@@ -1075,7 +1079,7 @@ export function AudioSegmentsPreviewModal({
                   }`}
                   onClick={() => setExpandedGroup(isExpanded ? null : group.groupIndex)}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {isExpanded ? (
                       <ChevronDown className="w-4 h-4 text-muted-foreground" />
                     ) : (
@@ -1087,6 +1091,15 @@ export function AudioSegmentsPreviewModal({
                     <span className="text-sm text-muted-foreground">
                       {group.segments.length} segments
                     </span>
+                    {healedCount > 0 && (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium"
+                        title={`${healedCount} segment${healedCount > 1 ? 's' : ''} in this group were auto-healed`}
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Healed × {healedCount}
+                      </span>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2">
