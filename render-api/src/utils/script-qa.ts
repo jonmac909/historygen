@@ -543,108 +543,72 @@ export function compareAudioSegmentsToSRT(
   let totalMatched = 0;
   let totalSegments = 0;
 
-  // Sort audio segments by index
   const sortedAudioSegments = [...audioSegments].sort((a, b) => a.index - b.index);
 
-  // Calculate time ranges for each audio segment
-  let cumulativeTime = 0;
-  const audioTimeRanges: { segment: AudioSegment; startTime: number; endTime: number }[] = [];
+  // Build a GLOBAL transcription sentence list from all SRT entries.
+  // Time-range matching was too brittle: Whisper chunks the audio at pause
+  // boundaries that don't match TTS segment boundaries, so a script sentence
+  // near a segment edge would show up in the wrong time window, producing
+  // false "mismatch" flags (e.g. "script: 'This was custom, ... required
+  // witnesses to prove...' vs heard: 'went back to times when...' — both
+  // are actually the same sentence, just framed differently).
+  // By searching the ENTIRE transcription for each script sentence, we only
+  // flag sentences that are truly absent or mangled — not ones that are
+  // just positioned differently.
+  const fullTranscription = [...srtSegments]
+    .sort((a, b) => a.startTime - b.startTime)
+    .map(s => s.text)
+    .join(' ')
+    .trim();
+  const allTranscribedSentences = splitIntoSentences(fullTranscription);
+  const globalUsedIndices = new Set<number>();
 
-  for (const seg of sortedAudioSegments) {
-    audioTimeRanges.push({
-      segment: seg,
-      startTime: cumulativeTime,
-      endTime: cumulativeTime + seg.duration,
-    });
-    cumulativeTime += seg.duration;
-  }
-
-  // For each audio segment, find matching SRT segments and compare
-  for (const { segment: audioSeg, startTime, endTime } of audioTimeRanges) {
-    // Skip empty segments
+  for (const audioSeg of sortedAudioSegments) {
     if (!audioSeg.text || audioSeg.text.trim().length === 0) continue;
     totalSegments++;
 
-    // Find all SRT segments within this audio segment's time range
-    // Use a small buffer (0.5s) to account for timing inaccuracies
-    const matchingSrtSegments = srtSegments.filter(srt => {
-      const srtMid = (srt.startTime + srt.endTime) / 2;
-      return srtMid >= startTime - 0.5 && srtMid < endTime + 0.5;
-    });
-
-    // Concatenate SRT texts
-    const transcribedText = matchingSrtSegments
-      .sort((a, b) => a.startTime - b.startTime)
-      .map(s => s.text)
-      .join(' ')
-      .trim();
-
-    // If no SRT segments found, it's missing
-    if (!transcribedText) {
-      issues.push({
-        type: 'missing',
-        originalText: audioSeg.text.substring(0, 150) + (audioSeg.text.length > 150 ? '...' : ''),
-        transcribedText: '',
-        severity: 'error',
-        segmentNumber: audioSeg.index,
-      });
-      continue;
-    }
-
-    // Compare at the segment level first to get an overall similarity score
-    const normalizedScript = normalizeText(audioSeg.text);
-    const normalizedTranscript = normalizeText(transcribedText);
-    const segmentSimilarity = calculateSimilarity(normalizedScript, normalizedTranscript);
-
-    if (segmentSimilarity >= 0.92) {
-      totalMatched++;
-      continue;
-    }
-
-    // Segment similarity is below threshold — drill down into per-sentence
-    // matching so the reported pairs actually line up semantically (not
-    // just "first 150 chars of each", which produced useless display rows
-    // where script start vs heard middle looked like unrelated text).
     const scriptSentences = splitIntoSentences(audioSeg.text);
-    const transcribedSentences = splitIntoSentences(transcribedText);
-    const usedTranscriptIndices = new Set<number>();
     let sentencesFlagged = 0;
+    let sentencesChecked = 0;
+
     for (const scriptSentence of scriptSentences) {
       const normScript = normalizeText(scriptSentence);
       if (normScript.split(' ').filter(Boolean).length < 3) continue; // skip tiny fragments
+      sentencesChecked++;
 
-      const match = findBestMatch(scriptSentence, transcribedSentences, usedTranscriptIndices);
+      // Search the ENTIRE transcription, not just this segment's time range
+      const match = findBestMatch(scriptSentence, allTranscribedSentences, globalUsedIndices);
 
       if (!match || match.similarity < 0.6) {
         issues.push({
           type: 'missing',
           originalText: scriptSentence,
-          transcribedText: match ? transcribedSentences[match.index] : '',
+          transcribedText: match ? allTranscribedSentences[match.index] : '',
           similarity: match?.similarity,
           severity: 'error',
           segmentNumber: audioSeg.index,
         });
         sentencesFlagged++;
       } else if (match.similarity < 0.92) {
-        usedTranscriptIndices.add(match.index);
+        globalUsedIndices.add(match.index);
         issues.push({
           type: 'mismatch',
           originalText: scriptSentence,
-          transcribedText: transcribedSentences[match.index],
+          transcribedText: allTranscribedSentences[match.index],
           similarity: match.similarity,
           severity: 'warning',
           segmentNumber: audioSeg.index,
         });
         sentencesFlagged++;
       } else {
-        // Good match at sentence level
-        usedTranscriptIndices.add(match.index);
+        globalUsedIndices.add(match.index);
       }
     }
-    // Partial credit toward score proportional to how much of the segment matched
-    const segmentScore = scriptSentences.length > 0
-      ? Math.max(0, 1 - sentencesFlagged / scriptSentences.length)
-      : segmentSimilarity;
+
+    // Score: fraction of this segment's sentences that matched cleanly
+    const segmentScore = sentencesChecked > 0
+      ? Math.max(0, 1 - sentencesFlagged / sentencesChecked)
+      : 1;
     totalMatched += segmentScore;
   }
 
