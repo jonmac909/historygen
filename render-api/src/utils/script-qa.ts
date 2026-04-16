@@ -55,34 +55,17 @@ const NUM_MULTIPLIERS = new Map<string, number>([
   ['hundred', 100], ['thousand', 1000], ['million', 1000000], ['billion', 1000000000],
 ]);
 
-// Ordinal word → digit (nineteenth → 19, twentieth → 20, first → 1…).
-// Applied before scalar number normalization so "nineteenth century"
-// becomes "19 century" and matches Whisper's "19th century".
-const ORDINAL_TO_CARDINAL: Record<string, number> = {
-  first: 1, second: 2, third: 3, fourth: 4, fifth: 5, sixth: 6, seventh: 7, eighth: 8, ninth: 9, tenth: 10,
-  eleventh: 11, twelfth: 12, thirteenth: 13, fourteenth: 14, fifteenth: 15,
-  sixteenth: 16, seventeenth: 17, eighteenth: 18, nineteenth: 19, twentieth: 20,
-  thirtieth: 30, fortieth: 40, fiftieth: 50, sixtieth: 60, seventieth: 70,
-  eightieth: 80, ninetieth: 90, hundredth: 100, thousandth: 1000,
-};
-
 function numberWordsToDigits(text: string): string {
   // "thirty-five" → "thirty five" so we can merge tokens
   const hyphenExpanded = text.replace(/([a-zA-Z])-([a-zA-Z])/g, '$1 $2');
-  const tokens = hyphenExpanded.split(/(\s+)/);
+  const tokens = hyphenExpanded.split(/(\s+)/); // keep whitespace for rebuild
   const out: string[] = [];
   let i = 0;
   while (i < tokens.length) {
     const tok = tokens[i];
     const low = tok.toLowerCase().replace(/[^a-z]/g, '');
-    // Ordinals become their cardinal digit (nineteenth → 19)
-    if (ORDINAL_TO_CARDINAL[low] !== undefined) {
-      out.push(String(ORDINAL_TO_CARDINAL[low]));
-      i++;
-      continue;
-    }
     if (NUM_ONES.has(low) || NUM_TENS.has(low)) {
-      // Start of a number phrase — consume greedily, with YEAR detection.
+      // Start of a number phrase — consume greedily
       let total = 0;
       let current = 0;
       let j = i;
@@ -92,24 +75,12 @@ function numberWordsToDigits(text: string): string {
         if (/^\s+$/.test(piece)) { j++; continue; }
         const p = piece.toLowerCase().replace(/[^a-z]/g, '');
         if (NUM_ONES.has(p)) {
-          const val = NUM_ONES.get(p)!;
-          // Year construction: "seventeen sixty" pattern — if current is
-          // a "teen" (10-19) and next is tens, treat as century+tens.
-          // Handled via NUM_TENS branch below. For ones after tens in a
-          // year (e.g., "seventeen sixty-two"), just add.
-          current += val;
+          current += NUM_ONES.get(p)!;
           consumed = j + 1;
           j++;
         } else if (NUM_TENS.has(p)) {
-          const tensVal = NUM_TENS.get(p)!;
-          if (current >= 10 && current < 20) {
-            // YEAR: "seventeen sixty" → 17 * 100 + 60 = 1760
-            current = current * 100 + tensVal;
-          } else if (current > 0 && current < 100) {
-            break; // two unrelated numbers
-          } else {
-            current += tensVal;
-          }
+          if (current > 0 && current < 100) break; // "seventeen ninety" is a year, don't merge
+          current += NUM_TENS.get(p)!;
           consumed = j + 1;
           j++;
         } else if (NUM_MULTIPLIERS.has(p)) {
@@ -1105,18 +1076,14 @@ export function compareAudioSegmentsToSRT(
       continue;
     }
 
-    // Aligned pair — check similarity. Dice 0.75 means ~75% content
-    // match after fuzzy/compound/number normalization — anything above
-    // that is usually just formatting/framing drift that isn't an audio
-    // issue. Real mismatches (word substitutions, skipped phrases) score
-    // noticeably lower.
+    // Aligned pair — check similarity
     const sim = a.sim;
-    if (sim >= 0.75) continue;
+    if (sim >= 0.85) continue; // Dice ≥0.85 is a clean match
 
     // Stopword / trivial-diff dismiss
     const pairedTransWords = transcribedNormWords[a.tj];
     const matchedScriptIndices = scriptWordsMatchedByTrans(entry.words, pairedTransWords);
-    if (sim >= 0.5 && isTriviallyDifferent(entry.words, matchedScriptIndices)) continue;
+    if (sim >= 0.6 && isTriviallyDifferent(entry.words, matchedScriptIndices)) continue;
 
     const label = classifyIssue(entry.words, 0, entry.words.length - 1, sim);
     issues.push({
