@@ -13,6 +13,10 @@ export interface QAIssue {
   similarity?: number;
   severity: 'warning' | 'error';
   segmentNumber?: number;  // Which SRT segment this issue relates to
+  // Human-readable label like "Missing phrase", "Word change",
+  // "Pronunciation difference" — helps the user understand at a glance
+  // whether a "mismatch" is a real problem or just framing drift.
+  label?: string;
 }
 
 export interface WordIssue {
@@ -32,11 +36,92 @@ export interface QAResult {
   needsReview: boolean;       // true if score < 95% or has word issues
 }
 
+// Spelled-out number words → digits. Handles simple cases (thirty = 30,
+// thirty-five = 35), compound multipliers (three hundred thousand =
+// 300000), and connector "and". Years written as words ("seventeen
+// ninety-three") are NOT handled — users typically write years as digits
+// in scripts anyway, and ambiguous cases are left untouched.
+const NUM_ONES = new Map<string, number>([
+  ['zero', 0], ['one', 1], ['two', 2], ['three', 3], ['four', 4], ['five', 5],
+  ['six', 6], ['seven', 7], ['eight', 8], ['nine', 9], ['ten', 10],
+  ['eleven', 11], ['twelve', 12], ['thirteen', 13], ['fourteen', 14],
+  ['fifteen', 15], ['sixteen', 16], ['seventeen', 17], ['eighteen', 18], ['nineteen', 19],
+]);
+const NUM_TENS = new Map<string, number>([
+  ['twenty', 20], ['thirty', 30], ['forty', 40], ['fifty', 50],
+  ['sixty', 60], ['seventy', 70], ['eighty', 80], ['ninety', 90],
+]);
+const NUM_MULTIPLIERS = new Map<string, number>([
+  ['hundred', 100], ['thousand', 1000], ['million', 1000000], ['billion', 1000000000],
+]);
+
+function numberWordsToDigits(text: string): string {
+  // "thirty-five" → "thirty five" so we can merge tokens
+  const hyphenExpanded = text.replace(/([a-zA-Z])-([a-zA-Z])/g, '$1 $2');
+  const tokens = hyphenExpanded.split(/(\s+)/); // keep whitespace for rebuild
+  const out: string[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const tok = tokens[i];
+    const low = tok.toLowerCase().replace(/[^a-z]/g, '');
+    if (NUM_ONES.has(low) || NUM_TENS.has(low)) {
+      // Start of a number phrase — consume greedily
+      let total = 0;
+      let current = 0;
+      let j = i;
+      let consumed = 0;
+      while (j < tokens.length) {
+        const piece = tokens[j];
+        if (/^\s+$/.test(piece)) { j++; continue; }
+        const p = piece.toLowerCase().replace(/[^a-z]/g, '');
+        if (NUM_ONES.has(p)) {
+          current += NUM_ONES.get(p)!;
+          consumed = j + 1;
+          j++;
+        } else if (NUM_TENS.has(p)) {
+          if (current > 0 && current < 100) break; // "seventeen ninety" is a year, don't merge
+          current += NUM_TENS.get(p)!;
+          consumed = j + 1;
+          j++;
+        } else if (NUM_MULTIPLIERS.has(p)) {
+          const m = NUM_MULTIPLIERS.get(p)!;
+          if (m === 100) {
+            current = Math.max(1, current) * 100;
+          } else {
+            total += Math.max(1, current) * m;
+            current = 0;
+          }
+          consumed = j + 1;
+          j++;
+        } else if (p === 'and' && (current > 0 || total > 0)) {
+          j++;
+        } else {
+          break;
+        }
+      }
+      if (consumed > i) {
+        out.push(String(total + current));
+        i = consumed;
+      } else {
+        out.push(tok);
+        i++;
+      }
+    } else {
+      out.push(tok);
+      i++;
+    }
+  }
+  return out.join('');
+}
+
 /**
- * Normalize text for comparison - lowercase, remove punctuation, collapse whitespace
+ * Normalize text for comparison - lowercase, remove punctuation, collapse
+ * whitespace, and convert spelled-out numbers to digits ("thirty-five" → "35",
+ * "three hundred thousand" → "300000"). Script-vs-audio comparisons treat
+ * "30" and "thirty" as identical after this pass.
  */
 function normalizeText(text: string): string {
-  return text
+  return numberWordsToDigits(text)
     .toLowerCase()
     .replace(/[^\w\s]/g, '')
     .replace(/\s+/g, ' ')
@@ -278,6 +363,51 @@ function findWordLevelIssues(script: string, transcription: string): WordIssue[]
   }
 
   return issues;
+}
+
+// Soundex: phonetic encoding that maps similar-sounding words to the same
+// 4-char code. Handles Austen/Austin, bawl/ball, led/lead, etc. Used in
+// conjunction with edit distance for our fuzzy word match.
+function soundex(word: string): string {
+  const w = word.toUpperCase().replace(/[^A-Z]/g, '');
+  if (!w) return '';
+  const CODES: Record<string, string> = {
+    B: '1', F: '1', P: '1', V: '1',
+    C: '2', G: '2', J: '2', K: '2', Q: '2', S: '2', X: '2', Z: '2',
+    D: '3', T: '3',
+    L: '4',
+    M: '5', N: '5',
+    R: '6',
+  };
+  let result = w[0];
+  let lastCode = CODES[w[0]] || '';
+  for (let i = 1; i < w.length && result.length < 4; i++) {
+    const ch = w[i];
+    const code = CODES[ch];
+    if (code) {
+      if (code !== lastCode) result += code;
+      lastCode = code;
+    } else if (ch !== 'H' && ch !== 'W') {
+      // vowels break the dedup chain
+      lastCode = '';
+    }
+  }
+  return (result + '000').slice(0, 4);
+}
+
+// Treat two words as matching if they're identical, phonetically equivalent
+// (Soundex), or within a small edit distance (handles minor spelling drift).
+// Short words (< 4 chars) require exact match to avoid false merges of
+// "the" vs "she" etc.
+function wordsMatchFuzzy(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length < 4 || b.length < 4) return false;
+  if (soundex(a) === soundex(b)) return true;
+  if (a[0] !== b[0]) return false;
+  const maxLen = Math.max(a.length, b.length);
+  const distance = levenshteinDistance(a, b);
+  const threshold = maxLen <= 6 ? 1 : 2;
+  return distance <= threshold;
 }
 
 /**
@@ -555,45 +685,113 @@ export function compareAudioSegmentsToSRT(
   // By searching the ENTIRE transcription for each script sentence, we only
   // flag sentences that are truly absent or mangled — not ones that are
   // just positioned differently.
+  // Build a flat transcript view: a single word list spanning all SRT rows
+  // plus an index mapping each word to the positions it appears. We'll
+  // search the ENTIRE transcript (not per-sentence) for each script
+  // sentence — that way "script sentence spans multiple transcript
+  // sentences" no longer triggers false mismatches.
   const fullTranscription = [...srtSegments]
     .sort((a, b) => a.startTime - b.startTime)
     .map(s => s.text)
     .join(' ')
     .trim();
+  const fullTranscriptWords = normalizeText(fullTranscription).split(' ').filter(Boolean);
+  const transcriptIndex = new Map<string, number[]>();
+  for (let i = 0; i < fullTranscriptWords.length; i++) {
+    const w = fullTranscriptWords[i];
+    let bucket = transcriptIndex.get(w);
+    if (!bucket) { bucket = []; transcriptIndex.set(w, bucket); }
+    bucket.push(i);
+  }
   const allTranscribedSentences = splitIntoSentences(fullTranscription);
 
-  // Asymmetric "containment" similarity: what fraction of the script
-  // sentence's words appear in-order in the transcript sentence? This
-  // treats "script fully inside a longer transcript sentence" as a
-  // perfect match (1.0), which is the correct reading when Whisper
-  // merges two script sentences into one comma-joined utterance.
-  // Symmetric LCS/max would falsely penalize those as missing.
-  const containmentSimilarity = (scriptSentence: string, transcriptSentence: string): number => {
-    const scriptWords = normalizeText(scriptSentence).split(' ').filter(Boolean);
-    const transWords = normalizeText(transcriptSentence).split(' ').filter(Boolean);
-    if (scriptWords.length === 0) return 1;
-    if (transWords.length === 0) return 0;
-    const m = scriptWords.length;
-    const n = transWords.length;
-    const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        dp[i][j] = scriptWords[i - 1] === transWords[j - 1]
-          ? dp[i - 1][j - 1] + 1
-          : Math.max(dp[i - 1][j], dp[i][j - 1]);
+  // Greedy forward search: for each occurrence of the script's first word
+  // (or a phonetic match of it) in the transcript, try to match subsequent
+  // script words forward, allowing small gaps. Words are compared with
+  // wordsMatchFuzzy (exact + Soundex + edit distance ≤ 2 for ≥4-char
+  // words). Returns best coverage fraction and the matched word positions
+  // in the transcript so we can build display context.
+  const scanScript = (scriptWords: string[]): { coverage: number; startIdx: number; endIdx: number } => {
+    if (scriptWords.length === 0) return { coverage: 1, startIdx: -1, endIdx: -1 };
+    const MAX_GAP = 40; // max transcript words skipped between matches
+    const first = scriptWords[0];
+
+    // Starting positions: exact matches for first word, plus phonetic
+    // matches (bounded scan to keep cost sane).
+    const anchors = new Set<number>((transcriptIndex.get(first) || []));
+    if (first.length >= 4) {
+      const soundCode = soundex(first);
+      for (const [w, positions] of transcriptIndex) {
+        if (w !== first && w.length >= 4 && soundex(w) === soundCode) {
+          for (const p of positions) anchors.add(p);
+        }
       }
     }
-    return dp[m][n] / scriptWords.length;
+
+    let best = { matches: 0, startIdx: -1, endIdx: -1 };
+    for (const startPos of anchors) {
+      let pos = startPos;
+      let matches = 1;
+      let lastMatch = startPos;
+      for (let si = 1; si < scriptWords.length; si++) {
+        const target = scriptWords[si];
+        const searchEnd = Math.min(pos + MAX_GAP, fullTranscriptWords.length);
+        let found = -1;
+        for (let j = pos + 1; j < searchEnd; j++) {
+          if (wordsMatchFuzzy(fullTranscriptWords[j], target)) { found = j; break; }
+        }
+        if (found === -1) break;
+        matches++;
+        lastMatch = found;
+        pos = found;
+      }
+      if (matches > best.matches) {
+        best = { matches, startIdx: startPos, endIdx: lastMatch };
+      }
+      if (best.matches === scriptWords.length) break;
+    }
+    return {
+      coverage: best.matches / scriptWords.length,
+      startIdx: best.startIdx,
+      endIdx: best.endIdx,
+    };
   };
 
-  const findBestContainment = (scriptSentence: string) => {
-    let best = { index: -1, similarity: 0 };
-    for (let i = 0; i < allTranscribedSentences.length; i++) {
-      const sim = containmentSimilarity(scriptSentence, allTranscribedSentences[i]);
-      if (sim > best.similarity) best = { index: i, similarity: sim };
-      if (best.similarity >= 1.0) break; // short-circuit on perfect match
+  // For display: pick the transcript sentence whose range overlaps the
+  // match region best. If no match region, fall back to best single-
+  // sentence containment.
+  const transcriptSentenceAtWordIdx = (() => {
+    // Compute start word index of each transcript sentence
+    const starts: number[] = [];
+    let acc = 0;
+    for (const s of allTranscribedSentences) {
+      starts.push(acc);
+      acc += normalizeText(s).split(' ').filter(Boolean).length;
     }
-    return best.index >= 0 ? best : null;
+    return (wordIdx: number): number => {
+      if (wordIdx < 0) return -1;
+      for (let i = starts.length - 1; i >= 0; i--) {
+        if (starts[i] <= wordIdx) return i;
+      }
+      return -1;
+    };
+  })();
+
+  // Classify the mismatch so the UI can show a human-readable label.
+  const classifyIssue = (scriptWords: string[], matchStart: number, matchEnd: number, coverage: number): string => {
+    const unmatched = scriptWords.length - Math.round(coverage * scriptWords.length);
+    if (coverage < 0.5) return 'Likely missing / skipped';
+    if (unmatched === 0) return 'Framing drift (content present)';
+    if (unmatched === 1) return 'One word different';
+    if (unmatched <= 3) return 'A few words different';
+    // Look at where unmatched words are — is it a block or scattered?
+    // Simple heuristic: if match span is much shorter than script length,
+    // likely prefix/suffix missing.
+    if (matchStart >= 0 && matchEnd >= matchStart) {
+      const span = matchEnd - matchStart + 1;
+      if (span < scriptWords.length * 0.7) return 'Partial match — portion missing or reworded';
+    }
+    return 'Multiple differences';
   };
 
   for (const audioSeg of sortedAudioSegments) {
@@ -605,35 +803,40 @@ export function compareAudioSegmentsToSRT(
     let sentencesChecked = 0;
 
     for (const scriptSentence of scriptSentences) {
-      const normScript = normalizeText(scriptSentence);
-      if (normScript.split(' ').filter(Boolean).length < 3) continue; // skip tiny fragments
+      const scriptWords = normalizeText(scriptSentence).split(' ').filter(Boolean);
+      if (scriptWords.length < 3) continue; // skip tiny fragments
       sentencesChecked++;
 
-      // No used-index restriction — multiple script sentences may
-      // legitimately match the same long transcript sentence.
-      const match = findBestContainment(scriptSentence);
+      const result = scanScript(scriptWords);
 
-      if (!match || match.similarity < 0.6) {
-        issues.push({
-          type: 'missing',
-          originalText: scriptSentence,
-          transcribedText: match ? allTranscribedSentences[match.index] : '',
-          similarity: match?.similarity,
-          severity: 'error',
-          segmentNumber: audioSeg.index,
-        });
-        sentencesFlagged++;
-      } else if (match.similarity < 0.92) {
-        issues.push({
-          type: 'mismatch',
-          originalText: scriptSentence,
-          transcribedText: allTranscribedSentences[match.index],
-          similarity: match.similarity,
-          severity: 'warning',
-          segmentNumber: audioSeg.index,
-        });
-        sentencesFlagged++;
+      if (result.coverage >= 0.92) {
+        // Script sentence is present in transcript (possibly spanning multiple
+        // transcript chunks) — not a real issue, even if per-sentence match
+        // looked partial.
+        continue;
       }
+
+      // Build display transcript text from the matched range
+      let transcribedText = '';
+      if (result.startIdx >= 0) {
+        const sIdx = transcriptSentenceAtWordIdx(result.startIdx);
+        const eIdx = transcriptSentenceAtWordIdx(result.endIdx);
+        if (sIdx >= 0) {
+          transcribedText = allTranscribedSentences.slice(sIdx, Math.max(sIdx, eIdx) + 1).join(' ');
+        }
+      }
+      const label = classifyIssue(scriptWords, result.startIdx, result.endIdx, result.coverage);
+
+      issues.push({
+        type: result.coverage < 0.6 ? 'missing' : 'mismatch',
+        originalText: scriptSentence,
+        transcribedText,
+        similarity: result.coverage,
+        severity: result.coverage < 0.6 ? 'error' : 'warning',
+        segmentNumber: audioSeg.index,
+        label,
+      });
+      sentencesFlagged++;
     }
 
     // Score: fraction of this segment's sentences that matched cleanly
