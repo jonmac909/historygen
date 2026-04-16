@@ -1232,6 +1232,33 @@ function getPostProcessMode(): PostProcessMode {
   return 'shadow';
 }
 
+// Heal a single segment: transcribe -> detect loops -> FFmpeg-cut them.
+// This is an unconditional "on" version (not gated by AUDIO_POSTPROCESS_MODE)
+// because it's invoked after a user-triggered regeneration — the user
+// explicitly wants the loop fixed. Never throws; falls back to original audio.
+async function healSegmentAudio(audioBuffer: Buffer, segmentLabel: string): Promise<Buffer> {
+  try {
+    const segments = await transcribeForRepetitionDetection(audioBuffer);
+    if (segments.length === 0) {
+      logger.info(`[heal ${segmentLabel}] no transcription, skipping heal`);
+      return audioBuffer;
+    }
+    const repetitions = detectRepetitions(segments);
+    const totalRemovedSec = repetitions.reduce((s, r) => s + (r.end - r.start), 0);
+    logger.info(`[heal ${segmentLabel}] detections=${repetitions.length} totalRemovedSec=${totalRemovedSec.toFixed(2)}`);
+    if (repetitions.length === 0) return audioBuffer;
+    repetitions.slice(0, 10).forEach((r, i) => {
+      logger.info(`[heal ${segmentLabel}] cut[${i}] ${r.start.toFixed(2)}s-${r.end.toFixed(2)}s: "${r.text.substring(0, 80)}"`);
+    });
+    const cleaned = await removeAudioSegments(audioBuffer, repetitions);
+    logger.info(`[heal ${segmentLabel}] healed: ${audioBuffer.length} -> ${cleaned.length} bytes`);
+    return cleaned;
+  } catch (err) {
+    logger.error(`[heal ${segmentLabel}] failed, keeping original:`, err);
+    return audioBuffer;
+  }
+}
+
 async function postProcessAudio(audioBuffer: Buffer): Promise<Buffer> {
   const mode = getPostProcessMode();
 
@@ -3412,10 +3439,28 @@ router.post('/segment', async (req: Request, res: Response) => {
     console.log(`Successfully processed ${audioChunks.length}/${chunks.length} chunks`)
 
     // Concatenate chunks with pause insertion based on punctuation
-    const { wav: segmentAudio, durationSeconds } = concatenateWavFilesWithPauses(audioChunks, textChunks);
-    const durationRounded = Math.round(durationSeconds * 10) / 10;
+    const { wav: concatenatedAudio, durationSeconds: preHealDuration } = concatenateWavFilesWithPauses(audioChunks, textChunks);
 
-    console.log(`Segment ${segmentIndex} audio: ${segmentAudio.length} bytes, ${durationRounded}s`);
+    console.log(`Segment ${segmentIndex} audio: ${concatenatedAudio.length} bytes (pre-heal, ${preHealDuration.toFixed(1)}s)`);
+
+    // Heal: transcribe the assembled segment, detect any residual loops
+    // that slipped past per-chunk verification, FFmpeg-cut them out.
+    // User-triggered regen == explicit intent to fix, so we mutate here.
+    const segmentAudio = await healSegmentAudio(concatenatedAudio, `seg ${segmentIndex}`);
+
+    // Derive final duration from WAV header (byte ratio) — avoids an
+    // ffprobe round-trip when heal was a no-op; stays accurate after cuts.
+    let finalDurationSeconds = preHealDuration;
+    try {
+      const info = extractWavInfo(segmentAudio);
+      const bytesPerSecond = info.sampleRate * info.channels * (info.bitsPerSample / 8);
+      if (bytesPerSecond > 0) {
+        finalDurationSeconds = info.pcmData.length / bytesPerSecond;
+      }
+    } catch { /* keep preHealDuration */ }
+    const durationRounded = Math.round(finalDurationSeconds * 10) / 10;
+
+    console.log(`Segment ${segmentIndex} final audio: ${segmentAudio.length} bytes, ${durationRounded}s`);
 
     // Upload to Supabase
     const supabase = createClient(credentials.url, credentials.key);
