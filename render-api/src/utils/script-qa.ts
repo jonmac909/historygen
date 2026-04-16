@@ -830,121 +830,186 @@ export function compareAudioSegmentsToSRT(
   // By searching the ENTIRE transcription for each script sentence, we only
   // flag sentences that are truly absent or mangled — not ones that are
   // just positioned differently.
-  // Build a flat transcript view: a single word list spanning all SRT rows
-  // plus an index mapping each word to the positions it appears. We'll
-  // search the ENTIRE transcript (not per-sentence) for each script
-  // sentence — that way "script sentence spans multiple transcript
-  // sentences" no longer triggers false mismatches.
   const fullTranscription = [...srtSegments]
     .sort((a, b) => a.startTime - b.startTime)
     .map(s => s.text)
     .join(' ')
     .trim();
-  const fullTranscriptWords = normalizeText(fullTranscription).split(' ').filter(Boolean);
-  const transcriptIndex = new Map<string, number[]>();
-  for (let i = 0; i < fullTranscriptWords.length; i++) {
-    const w = fullTranscriptWords[i];
-    let bucket = transcriptIndex.get(w);
-    if (!bucket) { bucket = []; transcriptIndex.set(w, bucket); }
-    bucket.push(i);
-  }
   const allTranscribedSentences = splitIntoSentences(fullTranscription);
+  const transcribedNormWords: string[][] = allTranscribedSentences.map(
+    s => normalizeText(s).split(' ').filter(Boolean)
+  );
 
-  // Greedy forward search BOUNDED to a transcript range [minStart, maxStart].
-  // For each anchor (position of the script's first word) inside that range,
-  // try to match subsequent script words forward with fuzzy comparison.
-  // This enforces that script sentences must appear in order — if sentence
-  // N+1 is found only WAY after N, it's treated as out-of-order (flagged).
-  const scanScript = (
-    scriptWords: string[],
-    minStart: number,
-    maxStart: number,
-  ): { coverage: number; startIdx: number; endIdx: number; matchedScriptIndices: Set<number> } => {
-    if (scriptWords.length === 0) {
-      return { coverage: 1, startIdx: -1, endIdx: -1, matchedScriptIndices: new Set() };
-    }
-    // Tighter gap — too loose lets the scan jump to coincidental matches
-    // 200 words away and report massive "Heard" ranges. 15 words is
-    // ample for normal TTS timing drift.
-    const MAX_GAP = 15;
-    const first = scriptWords[0];
-
-    const anchors = new Set<number>();
-    for (const p of (transcriptIndex.get(first) || [])) {
-      if (p >= minStart && p <= maxStart) anchors.add(p);
-    }
-    if (first.length >= 4 && anchors.size < 50) {
-      const soundCode = soundex(first);
-      for (const [w, positions] of transcriptIndex) {
-        if (w !== first && w.length >= 4 && soundex(w) === soundCode) {
-          for (const p of positions) {
-            if (p >= minStart && p <= maxStart) anchors.add(p);
-          }
-        }
+  // LCS length between two word arrays, with fuzzy/compound tolerance.
+  const lcsWithFuzzy = (a: string[], b: string[]): number => {
+    if (a.length === 0 || b.length === 0) return 0;
+    const m = a.length, n = b.length;
+    let prev = new Int32Array(n + 1);
+    let curr = new Int32Array(n + 1);
+    for (let i = 1; i <= m; i++) {
+      curr[0] = 0;
+      for (let j = 1; j <= n; j++) {
+        let hit = wordsMatchFuzzy(a[i - 1], b[j - 1]);
+        if (!hit && j < n && a[i - 1] === b[j - 1] + b[j]) hit = true; // compound
+        curr[j] = hit ? prev[j - 1] + 1 : Math.max(prev[j], curr[j - 1]);
       }
+      [prev, curr] = [curr, prev];
     }
-
-    let best = { matches: 0, startIdx: -1, endIdx: -1, matched: new Set<number>(), span: Infinity };
-    for (const startPos of anchors) {
-      let pos = startPos;
-      let matches = 1;
-      let lastMatch = startPos;
-      const matchedHere = new Set<number>([0]);
-      for (let si = 1; si < scriptWords.length; si++) {
-        const target = scriptWords[si];
-        const searchEnd = Math.min(pos + MAX_GAP, fullTranscriptWords.length);
-        let found = -1;
-        for (let j = pos + 1; j < searchEnd; j++) {
-          if (wordsMatchFuzzy(fullTranscriptWords[j], target)) { found = j; break; }
-          // Compound-word tolerance: "schoolrooms" == "school"+"rooms"
-          if (j + 1 < searchEnd) {
-            const joined = fullTranscriptWords[j] + fullTranscriptWords[j + 1];
-            if (joined === target) { found = j + 1; break; }
-          }
-        }
-        if (found === -1) continue; // unmatched — keep trying later script words in case of skip
-        matches++;
-        matchedHere.add(si);
-        lastMatch = found;
-        pos = found;
-      }
-      const span = lastMatch - startPos + 1;
-      // Prefer more matches; on tie, prefer TIGHTER span (avoids picking
-      // coincidental "She" matches 200 words before the real sentence).
-      const better = matches > best.matches || (matches === best.matches && span < best.span);
-      if (better) {
-        best = { matches, startIdx: startPos, endIdx: lastMatch, matched: matchedHere, span };
-      }
-      // Early-exit only on perfect match WITH reasonable density
-      if (best.matches === scriptWords.length && best.span <= scriptWords.length * 2) break;
-    }
-    return {
-      coverage: best.matches / scriptWords.length,
-      startIdx: best.startIdx,
-      endIdx: best.endIdx,
-      matchedScriptIndices: best.matched,
-    };
+    return prev[n];
   };
 
-  // For display: pick the transcript sentence whose range overlaps the
-  // match region best. If no match region, fall back to best single-
-  // sentence containment.
-  const transcriptSentenceAtWordIdx = (() => {
-    // Compute start word index of each transcript sentence
-    const starts: number[] = [];
-    let acc = 0;
-    for (const s of allTranscribedSentences) {
-      starts.push(acc);
-      acc += normalizeText(s).split(' ').filter(Boolean).length;
-    }
-    return (wordIdx: number): number => {
-      if (wordIdx < 0) return -1;
-      for (let i = starts.length - 1; i >= 0; i--) {
-        if (starts[i] <= wordIdx) return i;
+  // Dice similarity on LCS — symmetric, 1.0 for identical, scales with
+  // differences in either direction. Good for alignment scoring.
+  const sentenceSim = (a: string[], b: string[]): number => {
+    if (a.length === 0 && b.length === 0) return 1;
+    if (a.length === 0 || b.length === 0) return 0;
+    const lcs = lcsWithFuzzy(a, b);
+    return (2 * lcs) / (a.length + b.length);
+  };
+
+  // Set of script word indices matched when aligned against transWords.
+  // Used only to drive the stopword dismiss heuristic on flagged pairs.
+  const scriptWordsMatchedByTrans = (scriptWords: string[], transWords: string[]): Set<number> => {
+    const matched = new Set<number>();
+    if (scriptWords.length === 0 || transWords.length === 0) return matched;
+    let pos = 0;
+    for (let si = 0; si < scriptWords.length; si++) {
+      for (let j = pos; j < transWords.length; j++) {
+        if (wordsMatchFuzzy(transWords[j], scriptWords[si])) {
+          matched.add(si); pos = j + 1; break;
+        }
+        if (j + 1 < transWords.length && transWords[j] + transWords[j + 1] === scriptWords[si]) {
+          matched.add(si); pos = j + 2; break;
+        }
       }
-      return -1;
+    }
+    return matched;
+  };
+
+  // ------------------------------------------------------------------
+  // Needleman-Wunsch sentence alignment. Script and transcript are both
+  // sequences of sentences; NW finds the best 1:1 order-preserving
+  // alignment allowing insertions (missing from audio / extra in audio).
+  // ------------------------------------------------------------------
+
+  // Flatten all script sentences WITH their originating audio segment so
+  // each aligned pair can be attributed back to the right segment.
+  type ScriptEntry = { text: string; words: string[]; segmentIndex: number };
+  const scriptEntries: ScriptEntry[] = [];
+  for (const audioSeg of sortedAudioSegments) {
+    if (!audioSeg.text) continue;
+    for (const sent of splitIntoSentences(audioSeg.text)) {
+      const words = normalizeText(sent).split(' ').filter(Boolean);
+      if (words.length === 0) continue;
+      scriptEntries.push({ text: sent, words, segmentIndex: audioSeg.index });
+    }
+  }
+  totalSegments = sortedAudioSegments.filter(s => s.text && s.text.trim()).length;
+
+  const N = scriptEntries.length;
+  const M = allTranscribedSentences.length;
+
+  if (N === 0 || M === 0) {
+    return {
+      score: 100,
+      totalScriptSentences: 0,
+      matchedSentences: 0,
+      issues: [],
+      wordIssues: [],
+      needsReview: false,
     };
-  })();
+  }
+
+  // Quick-reject bag-of-words prefilter: only score full LCS for pairs
+  // with at least some word overlap. Cuts ~90% of NxM comparisons.
+  const scriptWordSets = scriptEntries.map(e => new Set(e.words));
+  const transWordSets = transcribedNormWords.map(w => new Set(w));
+
+  // Precompute similarity within a diagonal BAND to respect order. For
+  // script sentence i, only consider transcript sentences j roughly near
+  // its expected position. Band width is generous to handle misalignment.
+  const expectedJ = (i: number) => Math.round((i / Math.max(1, N - 1)) * (M - 1));
+  const BAND = Math.max(50, Math.ceil(Math.max(N, M) * 0.2));
+
+  const simMatrix: Map<number, number>[] = Array.from({ length: N + 1 }, () => new Map<number, number>());
+  for (let i = 1; i <= N; i++) {
+    const jCenter = expectedJ(i - 1);
+    const jLo = Math.max(1, jCenter + 1 - BAND);
+    const jHi = Math.min(M, jCenter + 1 + BAND);
+    const sSet = scriptWordSets[i - 1];
+    const sWords = scriptEntries[i - 1].words;
+    for (let j = jLo; j <= jHi; j++) {
+      const tSet = transWordSets[j - 1];
+      // Prefilter: require word overlap proportional to script length
+      let overlap = 0;
+      for (const w of sSet) if (tSet.has(w)) overlap++;
+      if (overlap < Math.min(3, Math.ceil(sWords.length * 0.3))) continue;
+      simMatrix[i].set(j, sentenceSim(sWords, transcribedNormWords[j - 1]));
+    }
+  }
+
+  const simAt = (i: number, j: number): number => simMatrix[i].get(j) ?? 0;
+
+  // NW DP. Gap penalty balances "prefer alignment" vs "allow skips for
+  // missing/extra sentences". -0.3 is gentle enough that true mismatches
+  // still align (with low score) rather than both get skipped.
+  const GAP = -0.3;
+  // Only store dp cells within the band to save memory. Use dense array
+  // indexed by (i, j-jLo).
+  const bandLo: number[] = new Array(N + 1).fill(0);
+  const bandHi: number[] = new Array(N + 1).fill(0);
+  for (let i = 0; i <= N; i++) {
+    if (i === 0) { bandLo[i] = 0; bandHi[i] = M; continue; }
+    const jCenter = expectedJ(i - 1);
+    bandLo[i] = Math.max(0, jCenter - BAND);
+    bandHi[i] = Math.min(M, jCenter + BAND);
+  }
+
+  // Use full 2D for simplicity (N*M ~ 500K cells = 4MB Float32). Fine.
+  const dp = new Float32Array((N + 1) * (M + 1));
+  const bt = new Uint8Array((N + 1) * (M + 1)); // 1=diag 2=up(missing) 3=left(extra)
+  const idx = (i: number, j: number) => i * (M + 1) + j;
+
+  for (let i = 1; i <= N; i++) dp[idx(i, 0)] = i * GAP;
+  for (let j = 1; j <= M; j++) dp[idx(0, j)] = j * GAP;
+
+  for (let i = 1; i <= N; i++) {
+    for (let j = 1; j <= M; j++) {
+      const diag = dp[idx(i - 1, j - 1)] + simAt(i, j);
+      const up = dp[idx(i - 1, j)] + GAP;
+      const left = dp[idx(i, j - 1)] + GAP;
+      if (diag >= up && diag >= left) {
+        dp[idx(i, j)] = diag; bt[idx(i, j)] = 1;
+      } else if (up >= left) {
+        dp[idx(i, j)] = up; bt[idx(i, j)] = 2;
+      } else {
+        dp[idx(i, j)] = left; bt[idx(i, j)] = 3;
+      }
+    }
+  }
+
+  // Backtrack to get the alignment
+  type Aligned = { si: number; tj: number; sim: number } | { si: number; tj: -1; sim: 0 } | { si: -1; tj: number; sim: 0 };
+  const aligned: Aligned[] = [];
+  {
+    let i = N, j = M;
+    while (i > 0 || j > 0) {
+      if (i === 0) { aligned.push({ si: -1, tj: j - 1, sim: 0 }); j--; continue; }
+      if (j === 0) { aligned.push({ si: i - 1, tj: -1, sim: 0 }); i--; continue; }
+      const op = bt[idx(i, j)];
+      if (op === 1) {
+        aligned.push({ si: i - 1, tj: j - 1, sim: simAt(i, j) });
+        i--; j--;
+      } else if (op === 2) {
+        aligned.push({ si: i - 1, tj: -1, sim: 0 });
+        i--;
+      } else {
+        aligned.push({ si: -1, tj: j - 1, sim: 0 });
+        j--;
+      }
+    }
+    aligned.reverse();
+  }
 
   // Stopwords / function words whose presence or absence rarely matters.
   // When the ONLY differences between script and transcript are these, the
@@ -983,64 +1048,60 @@ export function compareAudioSegmentsToSRT(
     return 'Multiple differences';
   };
 
-  // Search the FULL transcript for each script sentence independently.
-  // Strict cursor-based sequential enforcement cascades: if one sentence
-  // fails to find its match, the cursor stalls and every subsequent
-  // sentence also misses. Trading that for possible out-of-order matches
-  // (which are rare because script sentences are usually unique content).
-  for (const audioSeg of sortedAudioSegments) {
-    if (!audioSeg.text || audioSeg.text.trim().length === 0) continue;
-    totalSegments++;
+  // Walk the alignment. Each aligned pair gives us a script sentence (or
+  // none for "extra in audio") and a transcript sentence (or none for
+  // "missing from audio"). Clean 1:1 pairing by construction.
+  const perSegmentChecked = new Map<number, number>();
+  const perSegmentFlagged = new Map<number, number>();
 
-    const scriptSentences = splitIntoSentences(audioSeg.text);
-    let sentencesFlagged = 0;
-    let sentencesChecked = 0;
+  for (const a of aligned) {
+    if (a.si < 0) continue; // "extra in audio" — skip for now (not tied to a script segment)
 
-    for (const scriptSentence of scriptSentences) {
-      const scriptWords = normalizeText(scriptSentence).split(' ').filter(Boolean);
-      if (scriptWords.length < 3) continue;
-      sentencesChecked++;
+    const entry = scriptEntries[a.si];
+    if (entry.words.length < 3) continue;
+    perSegmentChecked.set(entry.segmentIndex, (perSegmentChecked.get(entry.segmentIndex) || 0) + 1);
 
-      const result = scanScript(scriptWords, 0, fullTranscriptWords.length - 1);
-
-      if (result.coverage >= 0.92) continue;
-
-      // Smart filter: if only unmatched words are stopwords (function-word
-      // swaps like "and"/"in", "a"/"the"), don't flag — not a real issue.
-      if (result.coverage >= 0.7 && isTriviallyDifferent(scriptWords, result.matchedScriptIndices)) {
-        continue;
-      }
-
-      // Build display "heard" text from the matched range, but cap it so
-      // it's roughly comparable to the script sentence length (±30%) and
-      // never spans more than ~2x the script sentence. Prevents giant
-      // multi-paragraph dumps when the match span is wide.
-      let transcribedText = '';
-      if (result.startIdx >= 0) {
-        const maxWords = Math.max(scriptWords.length * 2, scriptWords.length + 10);
-        const sliceStart = result.startIdx;
-        const sliceEnd = Math.min(result.startIdx + maxWords, fullTranscriptWords.length);
-        transcribedText = fullTranscriptWords.slice(sliceStart, sliceEnd).join(' ');
-      }
-      const label = classifyIssue(scriptWords, result.startIdx, result.endIdx, result.coverage);
-
+    // Script sentence with no transcript counterpart → genuinely missing.
+    if (a.tj < 0) {
       issues.push({
-        type: result.coverage < 0.6 ? 'missing' : 'mismatch',
-        originalText: scriptSentence,
-        transcribedText,
-        similarity: result.coverage,
-        severity: result.coverage < 0.6 ? 'error' : 'warning',
-        segmentNumber: audioSeg.index,
-        label,
+        type: 'missing',
+        originalText: entry.text,
+        transcribedText: '',
+        similarity: 0,
+        severity: 'error',
+        segmentNumber: entry.segmentIndex,
+        label: 'Likely missing / skipped',
       });
-      sentencesFlagged++;
+      perSegmentFlagged.set(entry.segmentIndex, (perSegmentFlagged.get(entry.segmentIndex) || 0) + 1);
+      continue;
     }
 
-    // Score: fraction of this segment's sentences that matched cleanly
-    const segmentScore = sentencesChecked > 0
-      ? Math.max(0, 1 - sentencesFlagged / sentencesChecked)
-      : 1;
-    totalMatched += segmentScore;
+    // Aligned pair — check similarity
+    const sim = a.sim;
+    if (sim >= 0.85) continue; // Dice ≥0.85 is a clean match
+
+    // Stopword / trivial-diff dismiss
+    const pairedTransWords = transcribedNormWords[a.tj];
+    const matchedScriptIndices = scriptWordsMatchedByTrans(entry.words, pairedTransWords);
+    if (sim >= 0.6 && isTriviallyDifferent(entry.words, matchedScriptIndices)) continue;
+
+    const label = classifyIssue(entry.words, 0, entry.words.length - 1, sim);
+    issues.push({
+      type: sim < 0.5 ? 'missing' : 'mismatch',
+      originalText: entry.text,
+      transcribedText: allTranscribedSentences[a.tj],
+      similarity: sim,
+      severity: sim < 0.5 ? 'error' : 'warning',
+      segmentNumber: entry.segmentIndex,
+      label,
+    });
+    perSegmentFlagged.set(entry.segmentIndex, (perSegmentFlagged.get(entry.segmentIndex) || 0) + 1);
+  }
+
+  // Segment-level score: fraction of a segment's sentences that matched cleanly
+  for (const [segIdx, checked] of perSegmentChecked) {
+    const flagged = perSegmentFlagged.get(segIdx) || 0;
+    totalMatched += checked > 0 ? Math.max(0, 1 - flagged / checked) : 1;
   }
 
   // Calculate overall score

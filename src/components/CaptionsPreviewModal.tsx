@@ -100,8 +100,9 @@ function highlightWordDiff(text: string, otherText: string): React.ReactNode {
 
 // Compute a concise, human-readable description of what the scanner
 // picked up as different between two sentences. Uses LCS backtracking
-// to identify word-level diffs and pairs adjacent missing/added runs
-// into a "X -> Y" substitution when possible.
+// with compound-word tolerance so "lacemaking" matches "lace making",
+// "glovemaking" matches "glove making", etc. Pairs adjacent missing+extra
+// runs into "X -> Y" substitutions for readability.
 function describeWordDiff(script: string, heard: string): React.ReactNode {
   const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').split(/\s+/).filter(Boolean);
   const sWords = normalize(script);
@@ -110,35 +111,50 @@ function describeWordDiff(script: string, heard: string): React.ReactNode {
   const n = hWords.length;
   if (m === 0 || n === 0) return null;
 
-  // LCS DP
+  // Word equivalence: exact match OR compound merge (sWord == hWord+hWord+1).
+  // We check on the "diagonal" step of the DP only; compound consumes 2
+  // heard words for 1 script word.
+  const wordsEq = (s: string, h: string): boolean => s === h;
+  const compoundEq = (s: string, h1: string, h2: string): boolean => s === h1 + h2;
+
+  // Custom DP: dp[i][j] = max "matched" count. Allow either normal
+  // diagonal (1 script + 1 heard) or compound (1 script + 2 heard).
   const dp: number[][] = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
   for (let i = 1; i <= m; i++) {
     for (let j = 1; j <= n; j++) {
-      dp[i][j] = sWords[i - 1] === hWords[j - 1]
-        ? dp[i - 1][j - 1] + 1
-        : Math.max(dp[i - 1][j], dp[i][j - 1]);
+      let best = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      if (wordsEq(sWords[i - 1], hWords[j - 1])) {
+        best = Math.max(best, dp[i - 1][j - 1] + 1);
+      }
+      if (j >= 2 && compoundEq(sWords[i - 1], hWords[j - 2], hWords[j - 1])) {
+        best = Math.max(best, dp[i - 1][j - 2] + 1);
+      }
+      dp[i][j] = best;
     }
   }
 
-  // Backtrack, emitting either "equal", "missing" (in script not heard),
-  // or "extra" (in heard not script). Collapse adjacent missing+extra runs
-  // into substitutions for readability.
-  type Op = { kind: 'miss' | 'add'; word: string };
+  // Backtrack, emitting operations. Compound matches are emitted as a
+  // single substitution "X -> H1 H2" so the pairing is semantically correct.
+  type Op =
+    | { kind: 'miss'; word: string }
+    | { kind: 'add'; word: string }
+    | { kind: 'compound'; scriptWord: string; heardWords: string };
   const ops: Op[] = [];
   let i = m, j = n;
-  while (i > 0 && j > 0) {
-    if (sWords[i - 1] === hWords[j - 1]) {
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && wordsEq(sWords[i - 1], hWords[j - 1]) && dp[i][j] === dp[i - 1][j - 1] + 1) {
       i--; j--;
-    } else if (dp[i - 1][j] >= dp[i][j - 1]) {
-      ops.push({ kind: 'miss', word: sWords[i - 1] });
-      i--;
-    } else {
+    } else if (i > 0 && j >= 2 && compoundEq(sWords[i - 1], hWords[j - 2], hWords[j - 1]) && dp[i][j] === dp[i - 1][j - 2] + 1) {
+      // Compound match — not a diff, just different word-break rendering
+      i--; j -= 2;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
       ops.push({ kind: 'add', word: hWords[j - 1] });
       j--;
+    } else {
+      ops.push({ kind: 'miss', word: sWords[i - 1] });
+      i--;
     }
   }
-  while (i > 0) { ops.push({ kind: 'miss', word: sWords[i - 1] }); i--; }
-  while (j > 0) { ops.push({ kind: 'add', word: hWords[j - 1] }); j--; }
   ops.reverse();
 
   // Group consecutive operations of the same kind into runs
