@@ -3946,10 +3946,51 @@ router.post('/heal-audio', async (req: Request, res: Response) => {
       if (bytesPerSecond > 0) durationSec = info.pcmData.length / bytesPerSecond;
     } catch { /* keep existing */ }
 
-    // Persist new URL + duration so the frontend picks it up on next load
+    // Rewrite the SRT to reflect the cuts: drop entries that landed inside a
+    // cut range, and shift subsequent entries earlier by the cumulative cut
+    // length. Without this the next "Scan for Loops" would re-find the same
+    // loops (the SRT still describes pre-cut audio).
+    let updatedSrt: string | undefined;
+    const srtFromDb = (projectData as any).srtContent as string | undefined;
+    if (srtFromDb) {
+      const entries = parseSrtToWhisperSegments(srtFromDb);
+      const sortedCuts = [...cutRanges].sort((a, b) => a.start - b.start);
+      const kept: { start: number; end: number; text: string }[] = [];
+      for (const e of entries) {
+        const mid = (e.start + e.end) / 2;
+        const inCut = sortedCuts.some(c => mid >= c.start && mid < c.end);
+        if (inCut) continue;
+        let shift = 0;
+        for (const c of sortedCuts) {
+          if (e.end <= c.start) break;
+          if (e.start >= c.end) shift += c.end - c.start;
+        }
+        kept.push({
+          start: Math.max(0, e.start - shift),
+          end: Math.max(0, e.end - shift),
+          text: e.text,
+        });
+      }
+      const fmt = (sec: number) => {
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = Math.floor(sec % 60);
+        const ms = Math.round((sec - Math.floor(sec)) * 1000);
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms).padStart(3, '0')}`;
+      };
+      updatedSrt = kept.map((e, i) => `${i + 1}\n${fmt(e.start)} --> ${fmt(e.end)}\n${e.text}\n`).join('\n');
+      logger.info(`[heal-audio] rewrote SRT: ${entries.length} -> ${kept.length} entries`);
+    }
+
+    // Persist new URL + duration + updated SRT so the frontend picks them up
+    const updatePayload: Record<string, unknown> = {
+      audio_url: cacheBustedUrl,
+      audio_duration: Math.round(durationSec),
+    };
+    if (updatedSrt) updatePayload.srt_content = updatedSrt;
     await supabase
       .from('generation_projects')
-      .update({ audio_url: cacheBustedUrl, audio_duration: Math.round(durationSec) })
+      .update(updatePayload)
       .eq('id', projectId);
 
     logger.info(`[heal-audio] done: ${(healed.length / 1024 / 1024).toFixed(1)}MB, ${durationSec.toFixed(1)}s`);
@@ -3957,6 +3998,7 @@ router.post('/heal-audio', async (req: Request, res: Response) => {
       success: true,
       cutsMade: cutRanges.length,
       totalRemovedSec: cutRanges.reduce((s, r) => s + (r.end - r.start), 0),
+      updatedSrt,
       audioUrl: cacheBustedUrl,
       duration: Math.round(durationSec),
       cuts: cutRanges.map(r => ({ start: r.start, end: r.end, text: r.text })),

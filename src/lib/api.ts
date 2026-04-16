@@ -1790,6 +1790,7 @@ export async function healAudioLoops(
   audioUrl?: string;
   duration?: number;
   cuts?: Array<{ start: number; end: number; text: string }>;
+  updatedSrt?: string;
   error?: string;
 }> {
   const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
@@ -1811,6 +1812,7 @@ export async function healAudioLoops(
       audioUrl: data.audioUrl,
       duration: data.duration,
       cuts: data.cuts,
+      updatedSrt: data.updatedSrt,
     };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : 'Heal failed' };

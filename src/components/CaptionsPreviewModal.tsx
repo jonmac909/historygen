@@ -287,6 +287,13 @@ export function CaptionsPreviewModal({
       if (result.audioUrl && result.duration !== undefined) {
         onAudioHealed?.(result.audioUrl, result.duration);
       }
+      // Backend returned a rewritten SRT that reflects the cuts. Adopt it
+      // locally so the next "Scan for Loops" runs against the post-heal
+      // transcript (otherwise it would re-find the same loops).
+      if (result.updatedSrt) {
+        setEditedSrt(result.updatedSrt);
+        setSegments(parseSRT(result.updatedSrt));
+      }
       // Clear the loop list — audio no longer contains them.
       setDetectedLoops([]);
     } catch (error) {
@@ -536,7 +543,7 @@ export function CaptionsPreviewModal({
                 size="sm"
                 variant="outline"
                 onClick={handleScanLoops}
-                disabled={isScanning || isHealing || isCheckingQuality}
+                disabled={isScanning}
                 className="h-7 text-xs"
               >
                 <Search className={`w-3 h-3 mr-1 ${isScanning ? 'animate-pulse' : ''}`} />
@@ -546,7 +553,7 @@ export function CaptionsPreviewModal({
                 size="sm"
                 variant="outline"
                 onClick={handleQualityCheck}
-                disabled={isScanning || isHealing || isCheckingQuality}
+                disabled={isCheckingQuality}
                 className="h-7 text-xs"
                 title="Compare Whisper transcription against the original script — catches garbled audio, missing sentences, or regen mess-ups"
               >
@@ -557,7 +564,7 @@ export function CaptionsPreviewModal({
                 <Button
                   size="sm"
                   onClick={handleSelfHeal}
-                  disabled={isScanning || isHealing}
+                  disabled={isHealing}
                   className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white"
                 >
                   <Scissors className={`w-3 h-3 mr-1 ${isHealing ? 'animate-pulse' : ''}`} />
