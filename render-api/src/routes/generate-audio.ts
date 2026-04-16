@@ -1341,12 +1341,23 @@ function getPostProcessMode(): PostProcessMode {
 // This is an unconditional "on" version (not gated by AUDIO_POSTPROCESS_MODE)
 // because it's invoked after a user-triggered regeneration — the user
 // explicitly wants the loop fixed. Never throws; falls back to original audio.
-async function healSegmentAudio(audioBuffer: Buffer, segmentLabel: string): Promise<Buffer> {
+// Returned alongside the healed audio so callers (and ultimately the UI)
+// can surface what was cut and let the user review.
+export interface HealInfo {
+  ranges: Array<{ startSec: number; endSec: number; text: string }>;
+  totalRemovedSec: number;
+}
+
+async function healSegmentAudio(
+  audioBuffer: Buffer,
+  segmentLabel: string,
+): Promise<{ audio: Buffer; heal: HealInfo }> {
+  const empty: HealInfo = { ranges: [], totalRemovedSec: 0 };
   try {
     const segments = await transcribeForRepetitionDetection(audioBuffer);
     if (segments.length === 0) {
       logger.info(`[heal ${segmentLabel}] no transcription, skipping heal`);
-      return audioBuffer;
+      return { audio: audioBuffer, heal: empty };
     }
 
     // Dump the full Whisper output so we can see exactly what the detector
@@ -1354,7 +1365,6 @@ async function healSegmentAudio(audioBuffer: Buffer, segmentLabel: string): Prom
     // Whisper collapsed it into one utterance or chunked it unexpectedly.
     const fullTranscript = segments.map(s => s.text).join(' ').trim();
     logger.info(`[heal ${segmentLabel}] whisper transcript (${segments.length} segs, ${fullTranscript.length} chars):`);
-    // Log in ~200-char slices so long lines don't get truncated
     for (let i = 0; i < fullTranscript.length; i += 200) {
       logger.info(`[heal ${segmentLabel}]   "${fullTranscript.substring(i, i + 200)}"`);
     }
@@ -1362,16 +1372,22 @@ async function healSegmentAudio(audioBuffer: Buffer, segmentLabel: string): Prom
     const repetitions = detectRepetitions(segments);
     const totalRemovedSec = repetitions.reduce((s, r) => s + (r.end - r.start), 0);
     logger.info(`[heal ${segmentLabel}] detections=${repetitions.length} totalRemovedSec=${totalRemovedSec.toFixed(2)}`);
-    if (repetitions.length === 0) return audioBuffer;
+    if (repetitions.length === 0) return { audio: audioBuffer, heal: empty };
+
     repetitions.slice(0, 10).forEach((r, i) => {
       logger.info(`[heal ${segmentLabel}] cut[${i}] ${r.start.toFixed(2)}s-${r.end.toFixed(2)}s: "${r.text.substring(0, 120)}"`);
     });
     const cleaned = await removeAudioSegments(audioBuffer, repetitions);
     logger.info(`[heal ${segmentLabel}] healed: ${audioBuffer.length} -> ${cleaned.length} bytes`);
-    return cleaned;
+
+    const heal: HealInfo = {
+      ranges: repetitions.map(r => ({ startSec: r.start, endSec: r.end, text: r.text })),
+      totalRemovedSec,
+    };
+    return { audio: cleaned, heal };
   } catch (err) {
     logger.error(`[heal ${segmentLabel}] failed, keeping original:`, err);
-    return audioBuffer;
+    return { audio: audioBuffer, heal: empty };
   }
 }
 
@@ -2480,8 +2496,9 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
     // verification. Runs unconditionally (not gated by AUDIO_POSTPROCESS_MODE)
     // because this is the only healing pass in the non-voice-cloning flow.
     sendEvent({ type: 'progress', progress: 75, message: 'Healing audio...' });
-    finalAudio = await healSegmentAudio(finalAudio, 'full audio');
-    console.log(`Healed audio: ${finalAudio.length} bytes`);
+    const streamingHealResult = await healSegmentAudio(finalAudio, 'full audio');
+    finalAudio = streamingHealResult.audio;
+    console.log(`Healed audio: ${finalAudio.length} bytes (${streamingHealResult.heal.ranges.length} cuts)`);
 
     // Check audio integrity BEFORE upload (skip if file too large to avoid V8 crash)
     const MAX_INTEGRITY_CHECK_SIZE = 50 * 1024 * 1024; // 50MB threshold
@@ -2590,6 +2607,7 @@ interface AudioSegmentResult {
   duration: number;
   size: number;
   text: string;
+  heal?: HealInfo;
 }
 
 // Handle streaming with voice cloning - generates 10 separate segments
@@ -2658,6 +2676,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       text: string;
       audioBuffer: Buffer | null; // null until we re-download for concatenation
       durationSeconds: number;
+      heal?: HealInfo;
     }> = [];
 
     let nextSegmentIndex = 0;
@@ -2836,7 +2855,9 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
         // loops that slipped past per-chunk verification, FFmpeg-cut them.
         // Same logic that runs on manual regens — now also runs during
         // full-script generation so the output ships clean from the start.
-        segmentAudio = await healSegmentAudio(segmentAudio, `seg ${segmentNumber} (gen)`);
+        const healResult = await healSegmentAudio(segmentAudio, `seg ${segmentNumber} (gen)`);
+        segmentAudio = healResult.audio;
+        const segmentHeal = healResult.heal;
 
         // Upload this segment
         const fileName = `${actualProjectId}/voiceover-segment-${segmentNumber}.wav`;
@@ -2870,6 +2891,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           text: segmentText,
           audioBuffer: null as any, // Placeholder - will download later
           durationSeconds,
+          heal: segmentHeal.ranges.length > 0 ? segmentHeal : undefined,
         });
 
         // Send progress update
@@ -2886,6 +2908,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
             audioUrl: r.audioUrl,
             duration: r.duration,
             text: r.text,
+            heal: r.heal,
           })), 'generating').catch(err =>
             console.warn('[Audio] Failed to save progress:', err)
           );
@@ -3204,6 +3227,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       duration: r.duration,
       size: r.size,
       text: r.text,
+      heal: r.heal,
     }));
 
     // Save to project database (fire-and-forget - allows user to close browser)
@@ -3308,8 +3332,9 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
   // Heal: transcribe + cut any residual loops (same as streaming path)
   console.log('Healing audio...');
-  let finalAudio = await healSegmentAudio(combinedAudio, 'full audio (non-stream)');
-  console.log(`Healed audio: ${finalAudio.length} bytes`);
+  const nsHealResult = await healSegmentAudio(combinedAudio, 'full audio (non-stream)');
+  let finalAudio = nsHealResult.audio;
+  console.log(`Healed audio: ${finalAudio.length} bytes (${nsHealResult.heal.ranges.length} cuts)`);
 
   // Apply speed adjustment if not 1.0
   if (speed !== 1.0) {
@@ -3570,7 +3595,9 @@ router.post('/segment', async (req: Request, res: Response) => {
     // Heal: transcribe the assembled segment, detect any residual loops
     // that slipped past per-chunk verification, FFmpeg-cut them out.
     // User-triggered regen == explicit intent to fix, so we mutate here.
-    const segmentAudio = await healSegmentAudio(concatenatedAudio, `seg ${segmentIndex}`);
+    const healResult = await healSegmentAudio(concatenatedAudio, `seg ${segmentIndex}`);
+    const segmentAudio = healResult.audio;
+    const segmentHeal = healResult.heal;
 
     // Derive final duration from WAV header (byte ratio) — avoids an
     // ffprobe round-trip when heal was a no-op; stays accurate after cuts.
@@ -3619,6 +3646,7 @@ router.post('/segment', async (req: Request, res: Response) => {
         duration: durationRounded,
         size: segmentAudio.length,
         text: segmentText,
+        heal: segmentHeal.ranges.length > 0 ? segmentHeal : undefined,
       },
     });
 
@@ -3753,7 +3781,9 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
     const { wav: concatenatedAudio, durationSeconds: preHealDuration } = concatenateWavFilesWithPauses(audioChunks, textChunks);
 
     // Heal residual loops before upload (same as /segment route)
-    const segmentAudio = await healSegmentAudio(concatenatedAudio, `regen seg ${segmentNumber}`);
+    const healResult = await healSegmentAudio(concatenatedAudio, `regen seg ${segmentNumber}`);
+    const segmentAudio = healResult.audio;
+    const segmentHeal = healResult.heal;
     let finalDurationSeconds = preHealDuration;
     try {
       const info = extractWavInfo(segmentAudio);
@@ -3784,6 +3814,7 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
         duration: durationRounded,
         size: segmentAudio.length,
         text: target.text,
+        heal: segmentHeal.ranges.length > 0 ? segmentHeal : undefined,
       },
     });
   } catch (error) {

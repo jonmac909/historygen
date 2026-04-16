@@ -358,7 +358,18 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
       />
 
       <div className="flex items-center justify-between">
-        <span className="font-medium text-lg">Segment {segment.index}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-lg">Segment {segment.index}</span>
+          {segment.heal && segment.heal.ranges.length > 0 && (
+            <span
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 border border-blue-200 text-blue-700 text-xs font-medium"
+              title={`Auto-healed ${segment.heal.ranges.length} loop${segment.heal.ranges.length > 1 ? 's' : ''} (${segment.heal.totalRemovedSec.toFixed(1)}s removed)`}
+            >
+              <RefreshCw className="w-3 h-3" />
+              Healed × {segment.heal.ranges.length}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <Button
             size="sm"
@@ -374,6 +385,24 @@ function AudioSegmentCard({ segment, isRegenerating, onRegenerate, editedText, o
           </Button>
         </div>
       </div>
+
+      {/* Heal details — show which sentences were cut so user can verify */}
+      {segment.heal && segment.heal.ranges.length > 0 && (
+        <div className="text-xs bg-blue-50 border border-blue-200 rounded-md p-2 space-y-1">
+          <div className="font-medium text-blue-800">
+            Auto-healed: removed {segment.heal.totalRemovedSec.toFixed(1)}s of repeated audio
+          </div>
+          {segment.heal.ranges.map((r, i) => (
+            <div key={i} className="text-blue-700 pl-2">
+              <span className="font-mono text-blue-500">
+                {formatTime(r.startSec)}–{formatTime(r.endSec)}
+              </span>
+              {' → '}
+              <span className="italic">"{r.text}"</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Audio Player */}
       <div className="flex items-center gap-3">

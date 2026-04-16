@@ -45,12 +45,26 @@ export interface ScriptResult {
   error?: string;
 }
 
+export interface HealRange {
+  startSec: number;
+  endSec: number;
+  text: string;
+}
+
+export interface HealInfo {
+  ranges: HealRange[];
+  totalRemovedSec: number;
+}
+
 export interface AudioSegment {
   index: number;
   audioUrl: string;
   duration: number;
   size: number;
   text: string;
+  // Present when loop detection removed one or more phrases from this
+  // segment's audio. Caller can surface these for manual review.
+  heal?: HealInfo;
 }
 
 export interface AudioResult {
