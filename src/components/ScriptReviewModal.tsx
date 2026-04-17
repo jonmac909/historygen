@@ -74,6 +74,11 @@ export function ScriptReviewModal({
   const wordCount = editedScript.split(/\s+/).filter(Boolean).length;
 
   const handleRate = async () => {
+    // Skip silently when the script isn't ready — backend returns 400 on empty
+    // input and the toast would be misleading (common during regeneration races).
+    if (!editedScript?.trim()) {
+      return;
+    }
     setIsRating(true);
     // Save current issues before re-rating (normalized)
     if (rating?.issues && rating.issues.length > 0) {
