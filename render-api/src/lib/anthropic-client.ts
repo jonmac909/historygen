@@ -1,14 +1,24 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { createBridgeClient } from './bridge-client';
 
 type SystemBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } };
 
 /**
- * Creates an Anthropic client.
+ * Creates a client with the Anthropic.messages surface used across render-api.
  *
- * Auto-detects OAuth tokens (sk-ant-oat) vs regular API keys (sk-ant-api)
- * and configures the client accordingly.
+ * Routing (see plan humming-munching-platypus.md):
+ *  - USE_CLAUDE_BRIDGE=true  → route through the local Claude Code CLI sidecar
+ *                              (subscription billing, no api.anthropic.com)
+ *  - USE_CLAUDE_BRIDGE=false → direct SDK (OAuth token or API key); break-glass
+ *                              fallback kept permanently.
+ *
+ * Default is OFF until Phase 2 flips it on Railway.
  */
 export function createAnthropicClient(apiKey?: string): Anthropic {
+  if (process.env.USE_CLAUDE_BRIDGE === 'true') {
+    return createBridgeClient();
+  }
+
   const key = (apiKey || process.env.ANTHROPIC_API_KEY || '').trim();
 
   if (!key) {
@@ -33,13 +43,18 @@ export function createAnthropicClient(apiKey?: string): Anthropic {
 }
 
 /**
- * Wraps a system prompt with the required Claude Code prefix.
- * Required for OAuth tokens — without the prefix, the API returns 400.
- * Safe to use with regular API keys (just passes through).
+ * Wraps a system prompt with the required Claude Code OAuth prefix when using
+ * the direct SDK on an OAuth token. Under the bridge, the CLI owns its own
+ * identity — no prefix needed and cache_control is stripped inside the bridge
+ * client — so this becomes a passthrough.
  */
 export function formatSystemPrompt(
   prompt?: string | SystemBlock[]
 ): string | SystemBlock[] | undefined {
+  if (process.env.USE_CLAUDE_BRIDGE === 'true') {
+    return prompt;
+  }
+
   const key = (process.env.ANTHROPIC_API_KEY || '').trim();
 
   if (!key.includes('sk-ant-oat')) {
@@ -52,7 +67,6 @@ export function formatSystemPrompt(
     cache_control: { type: 'ephemeral' },
   };
 
-  // If already an array of SystemBlocks, prepend the prefix block
   if (Array.isArray(prompt)) {
     return [prefixBlock, ...prompt];
   }

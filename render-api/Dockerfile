@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# Install system dependencies
+# System dependencies
 RUN apt-get update && apt-get install -y \
     fontconfig \
     fonts-dejavu-core \
@@ -9,31 +9,47 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
     python3 \
+    tmux \
+    supervisor \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
-# Download yt-dlp binary
+# yt-dlp binary
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp
-
-# Verify yt-dlp is installed
 RUN yt-dlp --version
+
+# Claude Code CLI — pinned so silent auto-updates can't break builds.
+RUN npm install -g @anthropic-ai/claude-code@2.1.112
+ENV DISABLE_AUTOUPDATER=1 \
+    CLAUDE_CODE_USE_BEDROCK=0 \
+    CLAUDE_CODE_WORKDIR=/tmp/claude-bridge/workdir \
+    BRIDGE_TMP_DIR=/tmp/claude-bridge \
+    BRIDGE_TMP_BUDGET=104857600
 
 WORKDIR /app
 
-# Copy package files
+# Install render-api deps.
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci
 
-# Copy source code
+# Install claude-bridge deps.
+COPY claude-bridge/package*.json ./claude-bridge/
+RUN cd claude-bridge && npm ci
+
+# Copy source + build both.
 COPY . .
-
-# Build TypeScript
 RUN npm run build
+RUN cd claude-bridge && npm run build
 
-# Expose port
+# Supervisord + entrypoint.
+COPY supervisord.conf /etc/supervisor/conf.d/app.conf
+RUN chmod +x entrypoint.sh
+
+# Neutral workdir for the CLI (no CLAUDE.md auto-discovery).
+RUN mkdir -p /tmp/claude-bridge/workdir
+
 EXPOSE 10000
 
-# Start the server
-CMD ["npm", "start"]
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/app.conf"]

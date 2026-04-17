@@ -222,16 +222,29 @@ export async function getYouTubeTranscript(url: string): Promise<TranscriptResul
 }
 
 export async function rewriteScript(transcript: string, template: string, title: string): Promise<ScriptResult> {
-  const { data, error } = await supabase.functions.invoke('rewrite-script', {
-    body: { transcript, template, title }
-  });
-
-  if (error) {
-    console.error('Script error:', error);
-    return { success: false, error: error.message };
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env' };
   }
 
-  return data;
+  try {
+    const response = await fetch(`${renderUrl}/rewrite-script`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ transcript, template, title, stream: false }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Script error:', response.status, errorText);
+      return { success: false, error: `Failed to rewrite script: ${response.status}` };
+    }
+
+    return (await response.json()) as ScriptResult;
+  } catch (error) {
+    console.error('Script error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to rewrite script' };
+  }
 }
 
 export async function rewriteScriptStreaming(
@@ -1194,23 +1207,31 @@ export async function generateImagePrompts(
     }
   }
 
-  // Fallback to Supabase Edge Function (no streaming)
-  const { data, error } = await supabase.functions.invoke('generate-image-prompts', {
-    body: { script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, clipCount, clipDuration }
-  });
+  // Fallback: non-streaming render-api call (e.g. when onProgress is not provided
+  // or the streaming path above threw). Uses the same backend route so Claude
+  // calls still flow through the CLI bridge when enabled.
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env' };
+  }
 
-  if (error) {
+  try {
+    const response = await fetch(`${renderUrl}/generate-image-prompts`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, clipCount, clipDuration, stream: false }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Image prompt generation error:', response.status, errorText);
+      return { success: false, error: `Failed to generate image prompts: ${response.status}` };
+    }
+
+    return (await response.json()) as ImagePromptsResult;
+  } catch (error) {
     console.error('Image prompt generation error:', error);
-    const errorMessage = error.message || 'Unknown error';
-    console.error('Error details:', JSON.stringify(error, null, 2));
-    return { success: false, error: errorMessage };
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate image prompts' };
   }
-
-  if (!data) {
-    return { success: false, error: 'No data returned from image prompt generation' };
-  }
-
-  return data;
 }
 
 // Extend existing image prompts by adding N more at the end

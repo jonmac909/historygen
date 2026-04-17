@@ -1,3 +1,14 @@
+// DEPRECATED — 2026-04-17.
+// The frontend no longer invokes this function. Image-prompt generation is
+// served by render-api at POST /generate-image-prompts, which routes through
+// the Claude Code CLI bridge so requests bill against the user's Claude.ai
+// subscription instead of api.anthropic.com (see plan humming-munching-platypus.md).
+//
+// This file still calls api.anthropic.com directly. Do NOT re-wire any
+// caller to this edge function. When convenient, run:
+//   supabase functions delete generate-image-prompts --project-ref udqfdeoullsxttqguupz
+// to remove the deployed version.
+
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 const corsHeaders = {
