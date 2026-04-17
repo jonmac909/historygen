@@ -79,6 +79,10 @@ export class ClaudeSession {
       '--system-prompt', systemPrompt,
       '--allowedTools', '',           // disable all tools — text-only + vision via content blocks
       '--no-session-persistence',     // don't write session files to disk
+      '--disable-slash-commands',     // skip plugin slash-command discovery
+      '--strict-mcp-config',          // ignore all MCP configs on disk
+      '--mcp-config', '{"mcpServers":{}}', // explicit empty MCP
+      '--setting-sources', '',        // no user/project/local settings merging
     ];
 
     log.info('session.spawn', { tag: this.sessionTag, model: config.forceModel, effort: config.forceEffort });
@@ -95,10 +99,18 @@ export class ClaudeSession {
   }
 
   /** Resolve when the session emits its first `init` event (fully warm). */
-  async waitReady(): Promise<void> {
+  async waitReady(timeoutMs: number = 60000): Promise<void> {
     if (this.ready) return;
     if (this.dead) throw new SessionDeadError('died before ready');
-    await new Promise<boolean>((resolve) => this.readinessResolvers.push(resolve));
+    await new Promise<boolean>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`session did not emit init event within ${timeoutMs}ms`));
+      }, timeoutMs);
+      this.readinessResolvers.push((v) => {
+        clearTimeout(timeoutId);
+        resolve(v);
+      });
+    });
     if (this.dead) throw new SessionDeadError('died during warm-up');
   }
 
