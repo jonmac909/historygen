@@ -54,12 +54,10 @@ interface PendingTurn {
 
 export class ClaudeSession {
   private proc: ChildProcessWithoutNullStreams;
-  private ready = false;
   private dead = false;
   private turnsCompleted = 0;
   private lastCacheCreationTokens = 0;
   private currentTurn: PendingTurn | null = null;
-  private readinessResolvers: Array<(v: boolean) => void> = [];
 
   readonly systemPromptHash: string;
   readonly sessionTag: string;
@@ -98,20 +96,13 @@ export class ClaudeSession {
     this.wireExit();
   }
 
-  /** Resolve when the session emits its first `init` event (fully warm). */
-  async waitReady(timeoutMs: number = 60000): Promise<void> {
-    if (this.ready) return;
-    if (this.dead) throw new SessionDeadError('died before ready');
-    await new Promise<boolean>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error(`session did not emit init event within ${timeoutMs}ms`));
-      }, timeoutMs);
-      this.readinessResolvers.push((v) => {
-        clearTimeout(timeoutId);
-        resolve(v);
-      });
-    });
-    if (this.dead) throw new SessionDeadError('died during warm-up');
+  /**
+   * Claude Code emits the `init` event AFTER receiving a user message, not at
+   * process spawn. The session is usable as soon as the process is alive;
+   * the first turn pays whatever warm-up cost exists.
+   */
+  async waitReady(): Promise<void> {
+    if (this.dead) throw new SessionDeadError('process died before first turn');
   }
 
   /** Age of the session in ms. */
@@ -150,7 +141,6 @@ export class ClaudeSession {
   ): Promise<SessionTurnResult> {
     if (this.dead) throw new SessionDeadError('cannot send to dead session');
     if (this.currentTurn) throw new Error('session is busy — serialize calls at the pool level');
-    if (!this.ready) await this.waitReady();
 
     const event = {
       type: 'user' as const,
@@ -228,8 +218,6 @@ export class ClaudeSession {
 
       const turn = this.currentTurn;
       this.currentTurn = null;
-      for (const r of this.readinessResolvers.splice(0)) r(false);
-
       if (turn) {
         clearTimeout(turn.timeoutId);
         turn.reject(new SessionDeadError(`exit code=${code ?? 'null'} signal=${signal ?? 'null'}`));
@@ -242,14 +230,6 @@ export class ClaudeSession {
   }
 
   private handleEvent(ev: CliEvent) {
-    // First init event flips the session to ready.
-    if (!this.ready && ev.type === 'system' && (ev as { subtype?: string }).subtype === 'init') {
-      this.ready = true;
-      log.info('session.ready', { tag: this.sessionTag });
-      for (const r of this.readinessResolvers.splice(0)) r(true);
-      return;
-    }
-
     if (!this.currentTurn) {
       // stray event outside a turn — fine, just ignore
       return;
