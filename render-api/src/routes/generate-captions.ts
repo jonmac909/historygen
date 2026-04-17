@@ -317,8 +317,21 @@ function parseWavHeaderFromFile(filePath: string): { format: AudioFormat; dataOf
       };
     }
 
-    const dataSize = headerBuffer.readUInt32LE(dataIdx + 4);
+    const rawDataSize = headerBuffer.readUInt32LE(dataIdx + 4);
     const dataOffset = dataIdx + 8;
+
+    // FFmpeg's WAV muxer writes 0xFFFFFFFF for RIFF/data size fields when it
+    // can't seek back to patch them (non-seekable pipe output). Our own
+    // adjustAudioSpeed historically did this, so existing voiceover.wav files
+    // in Supabase carry the sentinel. Clamp to what the file can actually hold.
+    const fileSize = fs.statSync(filePath).size;
+    const maxPossibleDataSize = fileSize - dataOffset;
+    const dataSize = (rawDataSize === 0xFFFFFFFF || rawDataSize > maxPossibleDataSize)
+      ? maxPossibleDataSize
+      : rawDataSize;
+    if (dataSize !== rawDataSize) {
+      console.warn(`WAV dataSize=${rawDataSize} invalid for ${fileSize}B file — clamping to ${dataSize}`);
+    }
 
     console.log(`WAV from file: fmt@${fmtIdx}, data@${dataIdx}, dataSize=${dataSize}`);
     console.log(`WAV format: ${sampleRate}Hz, ${channels}ch, ${bitsPerSample}bit`);
@@ -617,6 +630,15 @@ router.post('/', async (req: Request, res: Response) => {
     const bytesPerSecond = audioFormat.sampleRate * audioFormat.channels * (audioFormat.bitsPerSample / 8);
     const totalDuration = dataSize / bytesPerSecond;
     console.log('Total audio duration:', totalDuration.toFixed(2), 's');
+
+    // Defensive: reject files where header duration diverges from file-size-derived
+    // duration. Catches unknown future corruption beyond the 0xFFFFFFFF sentinel.
+    const fileDerivedDuration = (fs.statSync(tempFilePath).size - dataOffset) / bytesPerSecond;
+    if (fileDerivedDuration > 0 && Math.abs(totalDuration - fileDerivedDuration) / fileDerivedDuration > 0.10) {
+      throw new Error(
+        `WAV header duration (${totalDuration.toFixed(0)}s) mismatches file size (${fileDerivedDuration.toFixed(0)}s) — refusing to transcribe`
+      );
+    }
 
     // Calculate chunk size in bytes using actual audio parameters
     const maxChunkDuration = Math.floor(MAX_CHUNK_BYTES / bytesPerSecond);

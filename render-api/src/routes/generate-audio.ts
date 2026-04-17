@@ -8,7 +8,6 @@ import { promisify } from 'util';
 import { exec as execCallback } from 'child_process';
 
 const exec = promisify(execCallback);
-import { Readable, PassThrough } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -1999,56 +1998,48 @@ function concatenateWavFilesWithPauses(
   return concatenateWavFiles(buffersWithPauses);
 }
 
-// Adjust audio speed using FFmpeg
-// speed < 1.0 = slower (longer duration), speed > 1.0 = faster (shorter duration)
+// Adjust audio speed using FFmpeg.
+// speed < 1.0 = slower (longer duration), speed > 1.0 = faster (shorter duration).
+//
+// Writes input/output through temp files rather than piping. FFmpeg's WAV muxer
+// emits 0xFFFFFFFF for RIFF and data size fields when it can't seek back on its
+// output stream — non-seekable pipes always trip this. File paths are seekable,
+// so FFmpeg patches the size fields correctly.
 async function adjustAudioSpeed(wavBuffer: Buffer, speed: number): Promise<Buffer> {
-  // If speed is 1.0, no adjustment needed
   if (speed === 1.0) {
     return wavBuffer;
   }
 
-  // Clamp speed to valid range (0.5-2.0 for atempo)
   const clampedSpeed = Math.max(0.5, Math.min(2.0, speed));
-
   logger.info(`Adjusting audio speed: ${clampedSpeed}x`);
 
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
+  const tag = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const inputPath = path.join(os.tmpdir(), `speed-in-${tag}.wav`);
+  const outputPath = path.join(os.tmpdir(), `speed-out-${tag}.wav`);
 
-    // Create readable stream from buffer
-    const inputStream = new Readable();
-    inputStream.push(wavBuffer);
-    inputStream.push(null);
+  await fs.promises.writeFile(inputPath, wavBuffer);
 
-    // Create output stream
-    const outputStream = new PassThrough();
-
-    outputStream.on('data', (chunk: Buffer) => {
-      chunks.push(chunk);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(inputPath)
+        .inputFormat('wav')
+        .audioFilters(`atempo=${clampedSpeed}`)
+        .format('wav')
+        .on('error', (err) => {
+          logger.error('FFmpeg error:', err);
+          reject(err);
+        })
+        .on('end', () => resolve())
+        .save(outputPath);
     });
 
-    outputStream.on('end', () => {
-      const result = Buffer.concat(chunks);
-      logger.info(`Speed adjustment complete: ${wavBuffer.length} -> ${result.length} bytes`);
-      resolve(result);
-    });
-
-    outputStream.on('error', (err) => {
-      logger.error('Speed adjustment output error:', err);
-      reject(err);
-    });
-
-    // Use atempo filter for speed adjustment
-    ffmpeg(inputStream)
-      .inputFormat('wav')
-      .audioFilters(`atempo=${clampedSpeed}`)
-      .format('wav')
-      .on('error', (err) => {
-        logger.error('FFmpeg error:', err);
-        reject(err);
-      })
-      .pipe(outputStream);
-  });
+    const result = await fs.promises.readFile(outputPath);
+    logger.info(`Speed adjustment complete: ${wavBuffer.length} -> ${result.length} bytes`);
+    return result;
+  } finally {
+    await fs.promises.unlink(inputPath).catch(() => {});
+    await fs.promises.unlink(outputPath).catch(() => {});
+  }
 }
 
 // Main route handler
