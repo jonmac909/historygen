@@ -143,10 +143,12 @@ async function ensureTmpDirs() {
   await fs.mkdir(config.tmpDir, { recursive: true });
 }
 
-// Write ~/.claude/credentials.json from $CLAUDE_CODE_OAUTH_TOKEN so the CLI
+// Write ~/.claude/.credentials.json from $CLAUDE_CODE_OAUTH_TOKEN so the CLI
 // authenticates against the user's Claude.ai subscription (not a per-token
-// API key). Runs inline instead of via entrypoint.sh so the bridge works
-// under any builder (Railpack, Dockerfile, bare `node`).
+// API key). On macOS, Claude Code reads credentials from the keychain under
+// the entry "Claude Code-credentials"; on Linux it falls back to the dotfile.
+// Schema matches what `claude setup-token` actually writes:
+//   { "claudeAiOauth": { "accessToken", "refreshToken", "expiresAt", ... } }
 async function writeOAuthCredentials() {
   const token = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
   if (!token) {
@@ -155,9 +157,26 @@ async function writeOAuthCredentials() {
   }
   const home = process.env.HOME || '/root';
   const dir = path.join(home, '.claude');
-  const file = path.join(dir, 'credentials.json');
+  const file = path.join(dir, '.credentials.json');
+  const payload = {
+    claudeAiOauth: {
+      accessToken: token,
+      refreshToken: '',
+      // `claude setup-token` issues long-lived tokens. Stamp a far-future expiry
+      // so the CLI doesn't short-circuit on an apparent expiration.
+      expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000,
+      scopes: [
+        'user:file_upload',
+        'user:inference',
+        'user:mcp_servers',
+        'user:profile',
+        'user:sessions:claude_code',
+      ],
+      subscriptionType: 'max',
+    },
+  };
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(file, JSON.stringify({ oauth_token: token }), { mode: 0o600 });
+  await fs.writeFile(file, JSON.stringify(payload), { mode: 0o600 });
   log.info('bridge.credentials_written', { path: file, mode: '0600' });
 }
 

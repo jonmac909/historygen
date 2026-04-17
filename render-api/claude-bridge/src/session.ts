@@ -85,9 +85,15 @@ export class ClaudeSession {
 
     log.info('session.spawn', { tag: this.sessionTag, model: config.forceModel, effort: config.forceEffort });
 
+    // Strip ANTHROPIC_API_KEY from the child env. Claude Code prefers env API
+    // keys over OAuth credentials; leaving it in forces per-token billing.
+    const childEnv = { ...process.env };
+    delete childEnv.ANTHROPIC_API_KEY;
+    delete childEnv.ANTHROPIC_AUTH_TOKEN;
+
     this.proc = spawn(config.claudeBin, args, {
       cwd: config.workdir,
-      env: process.env,
+      env: childEnv,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
