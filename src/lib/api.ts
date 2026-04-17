@@ -800,10 +800,47 @@ export async function generateAudioStreaming(
     let buffer = '';
     let result: AudioResult = { success: false, error: 'No response received' };
     let lastEventTime = Date.now();
+    let supabaseResolved = false;
     const EVENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes between events (voice cloning takes longer)
+
+    // Supabase fallback poll. Railway's fastly edge can buffer/drop SSE on long
+    // quiet stretches (RunPod 32GB GPUs make chunks take longer). Poll the
+    // project row every 30s; if the backend advanced past the audio step and
+    // saved audio_url, treat as complete and abandon the SSE reader.
+    const POLL_INTERVAL_MS = 30_000;
+    const pollTimer = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('generation_projects')
+          .select('audio_url, audio_duration, current_step, audio_segments')
+          .eq('id', projectId)
+          .single();
+        if (!data?.audio_url || data.current_step === 'audio') return;
+        const segments = Array.isArray(data.audio_segments)
+          ? (data.audio_segments as unknown as AudioSegment[])
+          : undefined;
+        result = {
+          success: true,
+          audioUrl: data.audio_url,
+          duration: data.audio_duration ?? segments?.reduce((s, seg) => s + seg.duration, 0),
+          size: segments?.reduce((s, seg) => s + (seg.size ?? 0), 0),
+          segments,
+          totalDuration: data.audio_duration,
+        };
+        supabaseResolved = true;
+        onProgress(100, 'Complete!');
+        clearInterval(pollTimer);
+        reader.cancel().catch(() => {});
+      } catch {
+        // Ignore — SSE may still deliver the complete event first
+      }
+    }, POLL_INTERVAL_MS);
 
     try {
       while (true) {
+        // Polling already resolved us — stop reading SSE
+        if (supabaseResolved) break;
+
         // Check if we've been waiting too long for an event
         if (Date.now() - lastEventTime > EVENT_TIMEOUT_MS) {
           console.error('[Audio Generation] Event timeout - no data received for 10 minutes');
@@ -889,8 +926,9 @@ export async function generateAudioStreaming(
         error: errorMsg
       };
     } finally {
-      // Always clear the timeout to prevent memory leaks
+      // Always clear the timeout + polling to prevent memory leaks
       clearTimeout(timeoutId);
+      clearInterval(pollTimer);
     }
 
     return result;
