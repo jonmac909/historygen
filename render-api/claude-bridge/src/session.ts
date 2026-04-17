@@ -78,7 +78,6 @@ export class ClaudeSession {
       '--effort', config.forceEffort,
       '--system-prompt', systemPrompt,
       '--allowedTools', '',           // disable all tools — text-only + vision via content blocks
-      '--output-style', 'default',
       '--no-session-persistence',     // don't write session files to disk
     ];
 
