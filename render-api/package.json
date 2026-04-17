@@ -5,8 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "npm install --include=dev && tsc",
-    "start": "node dist/index.js",
+    "build": "npm install --include=dev && tsc && cd claude-bridge && npm install && npm run build",
+    "start": "concurrently --names bridge,api --kill-others-on-fail \"node claude-bridge/dist/server.js\" \"node dist/index.js\"",
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
@@ -17,7 +17,9 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.112",
     "@anthropic-ai/sdk": "^0.31.0",
+    "concurrently": "^9.1.0",
     "@remotion/bundler": "^4.0.406",
     "@remotion/renderer": "^4.0.406",
     "@supabase/supabase-js": "^2.89.0",

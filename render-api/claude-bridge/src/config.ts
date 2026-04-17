@@ -25,6 +25,9 @@ export const config = {
   // Where claude subprocesses run. Plain dir with no CLAUDE.md = clean behavior.
   workdir: process.env.CLAUDE_CODE_WORKDIR ?? '/tmp/claude-bridge/workdir',
 
-  // Claude binary; override only if the global install is elsewhere.
+  // Claude binary — resolve from local node_modules if present, else PATH.
+  // `render-api/package.json` installs `@anthropic-ai/claude-code` as a local
+  // dep, so on Railway the CLI is at render-api/node_modules/.bin/claude.
   claudeBin: process.env.CLAUDE_BIN ?? 'claude',
 };
+

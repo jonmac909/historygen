@@ -143,8 +143,27 @@ async function ensureTmpDirs() {
   await fs.mkdir(config.tmpDir, { recursive: true });
 }
 
+// Write ~/.claude/credentials.json from $CLAUDE_CODE_OAUTH_TOKEN so the CLI
+// authenticates against the user's Claude.ai subscription (not a per-token
+// API key). Runs inline instead of via entrypoint.sh so the bridge works
+// under any builder (Railpack, Dockerfile, bare `node`).
+async function writeOAuthCredentials() {
+  const token = process.env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  if (!token) {
+    log.warn('bridge.no_oauth_token', { hint: 'set CLAUDE_CODE_OAUTH_TOKEN on Railway to enable subscription auth' });
+    return;
+  }
+  const home = process.env.HOME || '/root';
+  const dir = path.join(home, '.claude');
+  const file = path.join(dir, 'credentials.json');
+  await fs.mkdir(dir, { recursive: true });
+  await fs.writeFile(file, JSON.stringify({ oauth_token: token }), { mode: 0o600 });
+  log.info('bridge.credentials_written', { path: file, mode: '0600' });
+}
+
 async function main() {
   await ensureTmpDirs();
+  await writeOAuthCredentials();
 
   const server = app.listen(config.port, config.host, () => {
     log.info('bridge.listening', { host: config.host, port: config.port });
