@@ -780,7 +780,11 @@ export async function generateAudioStreaming(
         projectId,
         speed,
         stream: true,
-        ttsSettings: ttsSettings || {}
+        ttsSettings: ttsSettings || {},
+        // Front-weighted split: first 30 min of audio → 10s segments,
+        // remaining time → 30s segments. Gives fine-grained regen on the
+        // retention-critical opening and chunkier segments for the tail.
+        segmentationMode: 'progressive',
       }),
       signal: controller.signal
     });
