@@ -287,7 +287,10 @@ const Index = () => {
   const [pendingAudioSize, setPendingAudioSize] = useState<number>(0);
   // New: Audio segments state
   const [pendingAudioSegments, setPendingAudioSegments] = useState<AudioSegment[]>([]);
-  const [regeneratingSegmentIndex, setRegeneratingSegmentIndex] = useState<number | null>(null);
+  // Set of segment indexes currently being regenerated. Multiple can run in
+  // parallel so the user can rapid-fire regen on segments 1, 3, 7, etc. — they
+  // all proceed independently instead of being serialized through the UI.
+  const [regeneratingSegmentIndexes, setRegeneratingSegmentIndexes] = useState<Set<number>>(new Set());
   const [segmentsNeedRecombine, setSegmentsNeedRecombine] = useState(false);
   const [isRecombining, setIsRecombining] = useState(false);
   const [pendingSrtContent, setPendingSrtContent] = useState("");
@@ -1308,7 +1311,8 @@ const Index = () => {
     handleScriptConfirm(confirmedScript);
   };
 
-  // Regenerate a single audio segment
+  // Regenerate a single audio segment. Supports concurrent regens — the user
+  // can click regen on several segments in a row and each runs independently.
   const handleSegmentRegenerate = async (segmentIndex: number, editedText?: string) => {
     const segment = pendingAudioSegments.find(s => s.index === segmentIndex);
     if (!segment) {
@@ -1320,7 +1324,16 @@ const Index = () => {
       return;
     }
 
-    setRegeneratingSegmentIndex(segmentIndex);
+    // Ignore if this exact segment is already regenerating (prevents double-clicks).
+    if (regeneratingSegmentIndexes.has(segmentIndex)) {
+      return;
+    }
+
+    setRegeneratingSegmentIndexes(prev => {
+      const next = new Set(prev);
+      next.add(segmentIndex);
+      return next;
+    });
 
     // Use edited text if provided, otherwise use original segment text
     const textToUse = editedText || segment.text;
@@ -1339,28 +1352,26 @@ const Index = () => {
         throw new Error(result.error || "Failed to regenerate segment");
       }
 
-      // Compute updated segments array
-      const updatedSegments = pendingAudioSegments.map(seg =>
-        seg.index === segmentIndex
-          ? { ...result.segment!, text: textToUse }
-          : seg
-      );
-
-      // Update the segment in state
-      setPendingAudioSegments(updatedSegments);
-
-      // Recalculate totals
-      const newTotalDuration = updatedSegments.reduce((sum, seg) => sum + seg.duration, 0);
-      setPendingAudioDuration(newTotalDuration);
-
-      // Mark that combined audio needs to be recombined before generating captions
-      setSegmentsNeedRecombine(true);
-
-      // CRITICAL: Save updated segments to database so they persist after page refresh
-      autoSave("audio", {
-        audioSegments: updatedSegments,
-        audioDuration: newTotalDuration,
-        segmentsNeedRecombine: true,
+      // Functional setState so concurrent regens merge correctly: each update
+      // reads the latest state (which may already include another segment's
+      // regen that finished first) and applies only its own patch on top.
+      const newSegment = { ...result.segment!, text: textToUse };
+      setPendingAudioSegments(prev => {
+        const updated = prev.map(seg => seg.index === segmentIndex ? newSegment : seg);
+        // Schedule side effects outside the reducer — autoSave sees the merged
+        // array, so if two regens land nearly simultaneously both updates
+        // persist.
+        queueMicrotask(() => {
+          const newTotalDuration = updated.reduce((sum, seg) => sum + seg.duration, 0);
+          setPendingAudioDuration(newTotalDuration);
+          setSegmentsNeedRecombine(true);
+          autoSave("audio", {
+            audioSegments: updated,
+            audioDuration: newTotalDuration,
+            segmentsNeedRecombine: true,
+          });
+        });
+        return updated;
       });
 
       toast({
@@ -1376,7 +1387,11 @@ const Index = () => {
         variant: "destructive",
       });
     } finally {
-      setRegeneratingSegmentIndex(null);
+      setRegeneratingSegmentIndexes(prev => {
+        const next = new Set(prev);
+        next.delete(segmentIndex);
+        return next;
+      });
     }
   };
 
@@ -3049,7 +3064,7 @@ const Index = () => {
     setPendingAudioDuration(0);
     setPendingAudioSize(0);
     setPendingAudioSegments([]);
-    setRegeneratingSegmentIndex(null);
+    setRegeneratingSegmentIndexes(new Set());
     setPendingSrtContent("");
     setPendingSrtUrl("");
     setPendingImages([]);
@@ -5000,7 +5015,7 @@ const Index = () => {
           onCancel={handleCancelRequest}
           onBack={handleBackToScript}
           onForward={canGoForwardFromAudio() ? handleForwardToCaptions : undefined}
-          regeneratingIndex={regeneratingSegmentIndex}
+          regeneratingIndexes={regeneratingSegmentIndexes}
           projectId={projectId}
           voiceSampleUrl={settings.voiceSampleUrl || undefined}
           ttsSettings={{

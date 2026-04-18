@@ -39,7 +39,9 @@ interface AudioSegmentsPreviewModalProps {
   onCancel: () => void;
   onBack?: () => void;
   onForward?: () => void;
-  regeneratingIndex: number | null;
+  // Set of segment indexes currently being regenerated. Multiple regens can run
+  // concurrently (e.g. user clicks regen on 1, 3, 7 in quick succession).
+  regeneratingIndexes: Set<number>;
   // For pronunciation fixes
   projectId?: string;
   voiceSampleUrl?: string;
@@ -661,7 +663,7 @@ export function AudioSegmentsPreviewModal({
   onCancel,
   onBack,
   onForward,
-  regeneratingIndex,
+  regeneratingIndexes,
   projectId,
   voiceSampleUrl,
   ttsSettings,
@@ -1189,7 +1191,7 @@ export function AudioSegmentsPreviewModal({
                           )}
                           <AudioSegmentCard
                             segment={segment}
-                            isRegenerating={regeneratingIndex === segment.index}
+                            isRegenerating={regeneratingIndexes.has(segment.index)}
                             onRegenerate={(editedText) => handleSegmentRegenerate(segment.index, editedText)}
                             editedText={editedTexts[segment.index] || segment.text}
                             onTextChange={(text) => handleTextChange(segment.index, text)}
@@ -1235,7 +1237,7 @@ export function AudioSegmentsPreviewModal({
             <Button
               onClick={onForward}
               className="w-full sm:w-auto"
-              disabled={regeneratingIndex !== null}
+              disabled={regeneratingIndexes.size > 0}
             >
               Captions
               <ChevronRight className="w-4 h-4 ml-2" />
@@ -1244,7 +1246,7 @@ export function AudioSegmentsPreviewModal({
             <Button
               onClick={onConfirmAll}
               className="w-full sm:w-auto"
-              disabled={regeneratingIndex !== null}
+              disabled={regeneratingIndexes.size > 0}
             >
               <Check className="w-4 h-4 mr-2" />
               Generate Captions

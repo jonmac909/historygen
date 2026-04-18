@@ -1331,21 +1331,45 @@ function removeTextRepetitions(text: string, minWords: number = 4): { cleaned: s
   return { cleaned, removedCount: toRemove.size };
 }
 
-function splitIntoSegments(text: string): string[] {
+export type SegmentationMode = 'legacy' | 'progressive';
+
+export interface ProgressiveOpts {
+  fastRegionSec?: number;   // seconds of audio from start treated as "fast region" (default 1800 = 30 min)
+  fastSegmentSec?: number;  // target segment duration inside fast region (default 10)
+  slowSegmentSec?: number;  // target segment duration after fast region (default 30)
+}
+
+// Split a sleep-friendly script into TTS segments.
+//
+// Legacy mode (default — current production behavior):
+//   First divide into 10 equal chunks (like original 10-segment system)
+//   Then subdivide early chunks for finer control where it matters most:
+//   Chunk 1: 5 segments, Chunk 2: 4, Chunks 3-4: 2 each, Chunks 5-10: 1 each.
+//   Total ≈ 19 segments for any script length.
+//
+// Progressive mode (opt-in via segmentationMode='progressive'):
+//   Duration-targeted, front-weighted. First `fastRegionSec` of estimated
+//   audio gets chopped into `fastSegmentSec`-second segments; rest into
+//   `slowSegmentSec`-second segments. Estimated audio time per sentence
+//   uses word count at ~2.5 wps × speed. Retention-critical opening gets
+//   much finer regeneration granularity (e.g. 10s vs current ~2 min).
+export function splitIntoSegments(
+  text: string,
+  speed: number = 1.0,
+  mode: SegmentationMode = 'legacy',
+  opts: ProgressiveOpts = {}
+): string[] {
   const sentences = text.split(/(?<=[.!?])\s+/).filter(Boolean);
   if (sentences.length === 0) return [];
 
-  // Chunk-based subdivision:
-  // First divide into 10 equal chunks (like original 10-segment system)
-  // Then subdivide early chunks for finer control where it matters most
-  //
-  // Chunk 1: 5 segments (~2 min each for 2-hour script)
-  // Chunk 2: 4 segments (~2.5 min each)
-  // Chunk 3: 2 segments (~5 min each)
-  // Chunk 4: 2 segments (~5 min each)
-  // Chunks 5-10: 1 segment each (~10 min each)
-  // Total: ~19 segments
+  if (mode === 'progressive') {
+    return splitProgressive(sentences, speed, opts);
+  }
 
+  return splitLegacy(sentences);
+}
+
+function splitLegacy(sentences: string[]): string[] {
   const total = sentences.length;
   const chunkSize = Math.ceil(total / 10);
 
@@ -1404,6 +1428,57 @@ function splitIntoSegments(text: string): string[] {
     }
   }
 
+  return segments;
+}
+
+function splitProgressive(
+  sentences: string[],
+  speed: number,
+  opts: ProgressiveOpts,
+): string[] {
+  const FAST_REGION = opts.fastRegionSec ?? 1800;
+  const FAST_TARGET = opts.fastSegmentSec ?? 10;
+  const SLOW_TARGET = opts.slowSegmentSec ?? 30;
+
+  // Fish Speech narrates ~2.5 words/sec at speed=1.0. Speed param stretches
+  // audio proportionally, so effective wps scales with speed.
+  const WPS = 2.5 * Math.max(0.1, speed);
+
+  const estimateSec = (sentence: string): number => {
+    const wc = sentence.split(/\s+/).filter(Boolean).length;
+    return wc / WPS;
+  };
+
+  const segments: string[] = [];
+  let buf: string[] = [];
+  let bufSec = 0;
+  let cumulativeSec = 0;
+
+  const currentTarget = () =>
+    cumulativeSec < FAST_REGION ? FAST_TARGET : SLOW_TARGET;
+
+  const flush = () => {
+    if (buf.length > 0) {
+      segments.push(buf.join(' '));
+      cumulativeSec += bufSec;
+      buf = [];
+      bufSec = 0;
+    }
+  };
+
+  for (const sentence of sentences) {
+    const sentSec = estimateSec(sentence);
+    // If adding this sentence would push us past the target, flush first.
+    // Exception: empty buffer always takes the sentence even if oversized,
+    // since a single sentence cannot be split without mid-sentence TTS cuts
+    // (which degrade prosody badly).
+    if (buf.length > 0 && bufSec + sentSec > currentTarget()) {
+      flush();
+    }
+    buf.push(sentence);
+    bufSec += sentSec;
+  }
+  flush();
   return segments;
 }
 
@@ -2044,7 +2119,10 @@ async function adjustAudioSpeed(wavBuffer: Buffer, speed: number): Promise<Buffe
 
 // Main route handler
 router.post('/', async (req: Request, res: Response) => {
-  const { script, voiceSampleUrl, projectId, stream, speed = 1, ttsSettings = {} } = req.body;
+  const { script, voiceSampleUrl, projectId, stream, speed = 1, ttsSettings = {}, segmentationMode } = req.body;
+  // Opt-in to front-weighted progressive segmentation (10s first 30 min, 30s after).
+  // Default stays 'legacy' so existing callers get byte-identical ~19-segment output.
+  const segMode: SegmentationMode = segmentationMode === 'progressive' ? 'progressive' : 'legacy';
 
   // Extract TTS settings with defaults
   const emotionMarker = ttsSettings.emotionMarker ?? '(sincere) (soft tone)';
@@ -2198,8 +2276,8 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Voice cloning support - now generates 10 separate segments
     if (voiceSampleUrl && stream) {
-      logger.info('Using streaming mode with voice cloning (10 segments)');
-      return handleVoiceCloningStreaming(req, res, cleanScript, projectId, wordCount, RUNPOD_API_KEY, voiceSampleUrl, speed, ttsJobSettings);
+      logger.info(`Using streaming mode with voice cloning (segmentation=${segMode})`);
+      return handleVoiceCloningStreaming(req, res, cleanScript, projectId, wordCount, RUNPOD_API_KEY, voiceSampleUrl, speed, ttsJobSettings, segMode);
     }
 
     if (stream) {
@@ -2387,8 +2465,8 @@ interface AudioSegmentResult {
   text: string;
 }
 
-// Handle streaming with voice cloning - generates 10 separate segments
-async function handleVoiceCloningStreaming(req: Request, res: Response, script: string, projectId: string, wordCount: number, apiKey: string, voiceSampleUrl: string, speed: number = 1, ttsJobSettings?: TTSJobSettings) {
+// Handle streaming with voice cloning - generates N separate segments
+async function handleVoiceCloningStreaming(req: Request, res: Response, script: string, projectId: string, wordCount: number, apiKey: string, voiceSampleUrl: string, speed: number = 1, ttsJobSettings?: TTSJobSettings, segMode: SegmentationMode = 'legacy') {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -2414,9 +2492,11 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
     console.log(`  - First 200 chars: "${script.substring(0, 200)}..."`);
     console.log(`========================================\n`);
 
-    // Split script using progressive segmentation (more segments early, fewer later)
-    const segments = splitIntoSegments(script);
+    // Split script. Legacy mode preserves the 19-segment layout; progressive
+    // mode chops the first 30 min into 10s segments and the rest into 30s.
+    const segments = splitIntoSegments(script, speed, segMode);
     const actualSegmentCount = segments.length;
+    logger.info(`Segmentation: mode=${segMode}, speed=${speed}, segments=${actualSegmentCount}`);
 
     // Log segment breakdown
     console.log(`SEGMENT BREAKDOWN:`);
@@ -2442,7 +2522,10 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
     const supabase = createClient(credentials.url, credentials.key);
     const actualProjectId = projectId || crypto.randomUUID();
 
-    const MAX_CONCURRENT_SEGMENTS = 10; // Match Fish Speech RunPod worker allocation
+    // Match Fish Speech RunPod worker allocation. Progressive mode can produce
+    // 300+ segments, so allow scaling up via env var without redeploy. Default
+    // stays at 10 for legacy-mode parity.
+    const MAX_CONCURRENT_SEGMENTS = parseInt(process.env.MAX_CONCURRENT_SEGMENTS ?? '10', 10);
     console.log(`\n=== Processing ${actualSegmentCount} segments with rolling concurrency (max ${MAX_CONCURRENT_SEGMENTS} concurrent) ===`);
 
     const allSegmentResults: Array<{
