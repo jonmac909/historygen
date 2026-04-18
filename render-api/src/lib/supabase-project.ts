@@ -42,6 +42,7 @@ export interface ProjectUpdate {
   status?: string;
   updated_at?: string;
   video_title?: string;
+  segments_need_recombine?: boolean;
 }
 
 /**
@@ -191,7 +192,30 @@ export async function saveAudioToProject(
     audio_duration: audioDuration,
     audio_segments: audioSegments,
     current_step: 'captions',
+    segments_need_recombine: false,
   });
+}
+
+/**
+ * Mark a project as "audio generation starting".
+ *
+ * The frontend polling fallback in src/lib/api.ts guards on
+ * `current_step === 'audio'` to decide whether the audio step is still in
+ * flight. Without this call, a regen against a previously-completed project
+ * starts with stale fields: old audio_url present and current_step === 'captions'.
+ * The first poll tick (30s) then resolves with the previous run's snapshot
+ * before the new run has produced any segments, leaving the frontend stuck
+ * showing stale segments.
+ *
+ * Throws on failure — callers must return an error to the client instead of
+ * silently proceeding, because a silent failure reproduces the exact bug
+ * this helper exists to prevent.
+ */
+export async function markAudioGenerationStarted(projectId: string): Promise<void> {
+  const result = await updateProject(projectId, { current_step: 'audio' });
+  if (!result.success) {
+    throw new Error(`Failed to mark audio generation started: ${result.error}`);
+  }
 }
 
 /**

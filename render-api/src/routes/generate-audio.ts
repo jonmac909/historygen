@@ -13,7 +13,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { getPronunciationFixesRecord } from './pronunciation';
 import { saveCost } from '../lib/cost-tracker';
-import { saveAudioToProject, saveAudioProgress, getProjectData } from '../lib/supabase-project';
+import { saveAudioToProject, saveAudioProgress, getProjectData, markAudioGenerationStarted } from '../lib/supabase-project';
 
 // Set FFmpeg and FFprobe paths
 if (ffmpegStatic) {
@@ -2275,6 +2275,23 @@ router.post('/', async (req: Request, res: Response) => {
       logger.info(`First chunk preview: "${chunks[0].substring(0, 100)}..."`);
       if (chunks.length > 1) logger.debug(`Second chunk preview: "${chunks[1].substring(0, 100)}..."`);
       if (chunks.length > 2) logger.debug(`Third chunk preview: "${chunks[2].substring(0, 100)}..."`);
+    }
+
+    // Flip current_step to 'audio' BEFORE dispatching so the frontend polling
+    // fallback (src/lib/api.ts) doesn't race with the first segment completion
+    // and resolve against the previous run's stale audio_url + current_step.
+    // Only applies when regenerating an existing project; new projects skip it.
+    if (projectId) {
+      try {
+        await markAudioGenerationStarted(projectId);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to start audio generation';
+        logger.error(`[AUDIO] ${errorMsg}`);
+        if (stream) {
+          return sendStreamError(errorMsg);
+        }
+        return res.status(500).json({ error: errorMsg });
+      }
     }
 
     // Voice cloning support - now generates 10 separate segments
