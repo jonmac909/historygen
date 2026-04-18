@@ -2120,9 +2120,12 @@ async function adjustAudioSpeed(wavBuffer: Buffer, speed: number): Promise<Buffe
 // Main route handler
 router.post('/', async (req: Request, res: Response) => {
   const { script, voiceSampleUrl, projectId, stream, speed = 1, ttsSettings = {}, segmentationMode } = req.body;
-  // Opt-in to front-weighted progressive segmentation (10s first 30 min, 30s after).
-  // Default stays 'legacy' so existing callers get byte-identical ~19-segment output.
-  const segMode: SegmentationMode = segmentationMode === 'progressive' ? 'progressive' : 'legacy';
+  // Progressive segmentation (10s first 30 min, 30s after) is the default.
+  // Opt back into the old 19-segment layout by explicitly sending
+  // segmentationMode: 'legacy'. The previous opt-in default silently fell
+  // back to legacy whenever the frontend bundle lagged behind a deploy,
+  // burning money on unintended re-generations.
+  const segMode: SegmentationMode = segmentationMode === 'legacy' ? 'legacy' : 'progressive';
 
   // Extract TTS settings with defaults
   const emotionMarker = ttsSettings.emotionMarker ?? '(sincere) (soft tone)';
