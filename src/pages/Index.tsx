@@ -858,40 +858,43 @@ const Index = () => {
       expandWith: savedProject.settings?.expandWith || "",
     }));
 
-    // Restore state from saved project
+    // Restore state from saved project. Every field is set unconditionally so
+    // we never inherit a leftover value from a previously-loaded project (the
+    // prior `if (x) setState(x)` pattern silently kept stale thumbnails /
+    // video URLs / etc. when switching to a project that doesn't have them).
     setProjectId(savedProject.id);
     setSourceUrl(savedProject.sourceUrl);
     setVideoTitle(savedProject.videoTitle);
     // Don't restore settings - use current settings so user can adjust image count, etc.
 
-    if (savedProject.script) {
-      setPendingScript(savedProject.script);
-      setConfirmedScript(savedProject.script);
-    }
-    if (savedProject.audioUrl) setPendingAudioUrl(savedProject.audioUrl);
-    if (savedProject.audioDuration) setPendingAudioDuration(savedProject.audioDuration);
-    if (savedProject.audioSegments) setPendingAudioSegments(savedProject.audioSegments);
-    if (savedProject.srtContent) setPendingSrtContent(savedProject.srtContent);
-    if (savedProject.srtUrl) setPendingSrtUrl(savedProject.srtUrl);
-    if (savedProject.imagePrompts) setImagePrompts(savedProject.imagePrompts);
-    if (savedProject.imageUrls) setPendingImages(savedProject.imageUrls);
-    if (savedProject.clipPrompts) setClipPrompts(savedProject.clipPrompts);
-    if (savedProject.clips) setGeneratedClips(savedProject.clips);
-    if (savedProject.videoUrl) setVideoUrl(savedProject.videoUrl);
-    if (savedProject.videoUrlCaptioned) setVideoUrlCaptioned(savedProject.videoUrlCaptioned);
-    if (savedProject.embersVideoUrl) setEmbersVideoUrl(savedProject.embersVideoUrl);
-    if (savedProject.smokeEmbersVideoUrl) setSmokeEmbersVideoUrl(savedProject.smokeEmbersVideoUrl);
-    if (savedProject.kenBurnsVideoUrl) setKenBurnsVideoUrl(savedProject.kenBurnsVideoUrl);
-    if (savedProject.thumbnails) setGeneratedThumbnails(savedProject.thumbnails);
-    if (savedProject.selectedThumbnailIndex !== undefined) setSelectedThumbnailIndex(savedProject.selectedThumbnailIndex);
-    if (savedProject.favoriteThumbnails) setFavoriteThumbnails(savedProject.favoriteThumbnails);
-    if (savedProject.approvedSteps) setApprovedSteps(savedProject.approvedSteps);
-    // Restore YouTube metadata
-    if (savedProject.youtubeTitle) setYoutubeTitle(savedProject.youtubeTitle);
-    if (savedProject.youtubeDescription) setYoutubeDescription(savedProject.youtubeDescription);
-    if (savedProject.youtubeTags) setYoutubeTags(savedProject.youtubeTags);
-    if (savedProject.youtubeCategoryId) setYoutubeCategoryId(savedProject.youtubeCategoryId);
-    if (savedProject.youtubePlaylistId !== undefined) setYoutubePlaylistId(savedProject.youtubePlaylistId);
+    setPendingScript(savedProject.script ?? "");
+    setConfirmedScript(savedProject.script ?? "");
+    setPendingAudioUrl(savedProject.audioUrl ?? "");
+    setPendingAudioDuration(savedProject.audioDuration ?? 0);
+    setPendingAudioSegments(savedProject.audioSegments ?? []);
+    setSegmentsNeedRecombine(savedProject.segmentsNeedRecombine ?? false);
+    setPendingSrtContent(savedProject.srtContent ?? "");
+    setPendingSrtUrl(savedProject.srtUrl ?? "");
+    setImagePrompts(savedProject.imagePrompts ?? []);
+    setPendingImages(savedProject.imageUrls ?? []);
+    setClipPrompts(savedProject.clipPrompts ?? []);
+    setGeneratedClips(savedProject.clips ?? []);
+    setVideoUrl(savedProject.videoUrl ?? undefined);
+    setVideoUrlCaptioned(savedProject.videoUrlCaptioned ?? undefined);
+    setEmbersVideoUrl(savedProject.embersVideoUrl ?? undefined);
+    setSmokeEmbersVideoUrl(savedProject.smokeEmbersVideoUrl ?? undefined);
+    setKenBurnsVideoUrl(savedProject.kenBurnsVideoUrl ?? undefined);
+    setGeneratedThumbnails(savedProject.thumbnails ?? []);
+    setSelectedThumbnailIndex(savedProject.selectedThumbnailIndex ?? undefined);
+    setFavoriteThumbnails(savedProject.favoriteThumbnails ?? []);
+    setApprovedSteps(savedProject.approvedSteps ?? []);
+    // YouTube metadata — also resets so switching from a project with a YT
+    // title to one without doesn't leave the old title visible.
+    setYoutubeTitle(savedProject.youtubeTitle ?? "");
+    setYoutubeDescription(savedProject.youtubeDescription ?? "");
+    setYoutubeTags(savedProject.youtubeTags ?? "");
+    setYoutubeCategoryId(savedProject.youtubeCategoryId ?? "27");
+    setYoutubePlaylistId(savedProject.youtubePlaylistId ?? null);
 
     // Build generated assets for results view (same logic as handleOpenProject)
     const assets: GeneratedAsset[] = [];
