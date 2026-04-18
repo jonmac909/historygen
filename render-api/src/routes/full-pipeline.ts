@@ -939,31 +939,41 @@ router.delete('/:projectId', async (req: Request, res: Response) => {
   const { projectId } = req.params;
 
   const pipelineState = runningPipelines.get(projectId);
+  const supabase = getSupabaseClient();
 
-  if (!pipelineState) {
-    // Check if project exists in database
-    const supabase = getSupabaseClient();
-    if (supabase) {
-      const { data: project } = await supabase
-        .from('generation_projects')
-        .select('status')
-        .eq('id', projectId)
-        .single();
+  // Always force DB status to 'cancelled' so a page refresh reflects the
+  // user's stop intent. Without this, if the in-memory pipeline state is
+  // missing (Railway redeploy, or the full-pipeline controller finished
+  // while an internal /generate-audio call is still running), the stop
+  // would silently no-op and the DB would keep showing 'running'.
+  if (supabase) {
+    const { data: project } = await supabase
+      .from('generation_projects')
+      .select('id, status')
+      .eq('id', projectId)
+      .single();
 
-      if (project) {
-        return res.json({
-          success: true,
-          message: 'Pipeline is not currently running',
-          projectId,
-          status: project.status,
-        });
-      }
+    if (!project) {
+      return res.status(404).json({ error: 'Project not found' });
     }
-    return res.status(404).json({ error: 'Pipeline not found' });
+
+    await supabase
+      .from('generation_projects')
+      .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+      .eq('id', projectId);
   }
 
-  // Mark for cancellation
-  console.log(`\n🛑 [Pipeline ${projectId}] Stopping at step: ${pipelineState.currentStep}`);
+  if (!pipelineState) {
+    return res.json({
+      success: true,
+      message: 'Pipeline marked cancelled. Any in-flight audio/image step will finish its current batch before stopping.',
+      projectId,
+      status: 'cancelled',
+    });
+  }
+
+  // Mark in-memory pipeline for cancellation at the next step boundary.
+  console.log(`\n[Pipeline ${projectId}] Stopping at step: ${pipelineState.currentStep}`);
   runningPipelines.set(projectId, { ...pipelineState, aborted: true });
 
   res.json({

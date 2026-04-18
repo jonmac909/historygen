@@ -287,13 +287,29 @@ export async function saveCaptionsToProject(
 
 /**
  * Save partial audio progress (call after each segment completes)
- * This enables recovery of completed segments if generation fails mid-way
+ * This enables recovery of completed segments if generation fails mid-way.
+ *
+ * Returns `aborted: true` when the project's DB status is already 'cancelled'.
+ * In that case the call is a no-op — it does NOT overwrite status or
+ * audio_segments, so the user's stop request sticks. Callers should treat
+ * `aborted: true` as a signal to stop scheduling more work.
  */
 export async function saveAudioProgress(
   projectId: string,
   segments: any[],
   status: 'generating' | 'combining' | 'failed'
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; aborted?: boolean }> {
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    const { data: row } = await supabase
+      .from('generation_projects')
+      .select('status')
+      .eq('id', projectId)
+      .single();
+    if (row?.status === 'cancelled') {
+      return { success: true, aborted: true };
+    }
+  }
   return updateProject(projectId, {
     audio_segments: segments,
     current_step: 'audio',

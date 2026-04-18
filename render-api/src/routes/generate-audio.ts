@@ -2561,6 +2561,11 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
     let nextSegmentIndex = 0;
     const activeSegments = new Map<number, Promise<void>>();
 
+    // Flipped to true when saveAudioProgress detects the user cancelled the
+    // run (DB status === 'cancelled'). Once set, no new segments are kicked
+    // off; in-flight ones drain and the handler throws a cancellation error.
+    let userCancelled = false;
+
     // Helper to process a single segment
     const processSegment = async (segIdx: number): Promise<void> => {
       const segmentText = segments[segIdx];
@@ -2732,14 +2737,18 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           progress: 10 + Math.round((completed / actualSegmentCount) * 75)
         });
 
-        // Save progress after each completed segment (fire-and-forget)
+        // Save progress after each completed segment (fire-and-forget). The
+        // return flag `aborted: true` means the user clicked stop — propagate
+        // via the shared userCancelled flag so the rolling loop can drain.
         if (projectId && allSegmentResults.length > 0) {
           saveAudioProgress(projectId, allSegmentResults.map(r => ({
             index: r.index,
             audioUrl: r.audioUrl,
             duration: r.duration,
             text: r.text,
-          })), 'generating').catch(err =>
+          })), 'generating').then(result => {
+            if (result.aborted) userCancelled = true;
+          }).catch(err =>
             console.warn('[Audio] Failed to save progress:', err)
           );
         }
@@ -2775,10 +2784,14 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       // Wait for any segment to complete
       await Promise.race(Array.from(activeSegments.values()));
 
-      // Start next segment if available
-      if (nextSegmentIndex < actualSegmentCount) {
+      // Start next segment only if not cancelled and more remain
+      if (!userCancelled && nextSegmentIndex < actualSegmentCount) {
         await startNextSegment();
       }
+    }
+
+    if (userCancelled) {
+      throw new Error('Audio generation cancelled by user');
     }
 
     // Sort results by segment index
