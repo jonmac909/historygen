@@ -2740,13 +2740,23 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
         // Save progress after each completed segment (fire-and-forget). The
         // return flag `aborted: true` means the user clicked stop — propagate
         // via the shared userCancelled flag so the rolling loop can drain.
+        //
+        // Sort by index before writing: rolling concurrency finishes segments
+        // out of order, and the Preview modal groups by array position
+        // (segments.slice(i, i+10)), so an unsorted array makes Group 1 show
+        // a random mix of early indexes. The final saveAudioToProject also
+        // sorts, but runs that die before the end (Railway redeploy, user
+        // cancel) would otherwise leave the DB in completion order.
         if (projectId && allSegmentResults.length > 0) {
-          saveAudioProgress(projectId, allSegmentResults.map(r => ({
-            index: r.index,
-            audioUrl: r.audioUrl,
-            duration: r.duration,
-            text: r.text,
-          })), 'generating').then(result => {
+          const sortedForDb = [...allSegmentResults]
+            .sort((a, b) => a.index - b.index)
+            .map(r => ({
+              index: r.index,
+              audioUrl: r.audioUrl,
+              duration: r.duration,
+              text: r.text,
+            }));
+          saveAudioProgress(projectId, sortedForDb, 'generating').then(result => {
             if (result.aborted) userCancelled = true;
           }).catch(err =>
             console.warn('[Audio] Failed to save progress:', err)
