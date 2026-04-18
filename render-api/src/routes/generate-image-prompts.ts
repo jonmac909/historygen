@@ -66,6 +66,29 @@ async function processBatchesWithConcurrency<T>(
   return results;
 }
 
+// Truncate text to maxLen chars, but prefer to end at a sentence or word
+// boundary so fallback image prompts read as coherent sentences instead of
+// cutting mid-word. Used only by the last-resort `Historical scene depicting:`
+// fallback when the LLM-generated sceneDescription is missing — when that
+// fires the user sees the raw script, so at minimum don't chop mid-word.
+function smartTruncate(text: string, maxLen: number): string {
+  if (!text) return '';
+  if (text.length <= maxLen) return text;
+  const window = text.slice(0, maxLen);
+  // 1. Prefer the last sentence terminator (. ! ?) followed by space or EOL.
+  const sentenceMatch = window.match(/.*[.!?](?:\s|$)/s);
+  if (sentenceMatch && sentenceMatch[0].length > maxLen * 0.4) {
+    return sentenceMatch[0].trimEnd();
+  }
+  // 2. Fall back to the last whitespace boundary (don't split words).
+  const lastSpace = window.lastIndexOf(' ');
+  if (lastSpace > maxLen * 0.4) {
+    return window.slice(0, lastSpace).trimEnd();
+  }
+  // 3. No good boundary found — return the hard cut as before.
+  return window;
+}
+
 // Robustly extract a JSON array from Claude's response text
 function extractJsonArray(text: string): object[] | null {
   // 1. Try direct regex match for JSON array
@@ -845,7 +868,7 @@ Return ONLY valid JSON array. Each sceneDescription must be UNDER 30 WORDS:
       }).join('\n\n');
 
       // Calculate tokens needed for this batch (use model-specific limit)
-      const batchTokens = Math.min(MAX_TOKENS, batchSize * 150 + 500);
+      const batchTokens = Math.min(MAX_TOKENS, batchSize * 500 + 1000);
 
       // Retry the Claude API call + JSON parsing up to 3 times per batch
       return retryWithBackoff(async () => {
@@ -996,7 +1019,7 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
 
           const response = await anthropic.messages.create({
             model: selectedModel,
-            max_tokens: Math.min(MAX_TOKENS, batchSize * 150 + 500),
+            max_tokens: Math.min(MAX_TOKENS, batchSize * 500 + 1000),
             system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
             messages: [{ role: 'user', content: `Generate prompts for images ${batchStart + 1} to ${batchEnd}:\n\n${batchWindowDescriptions}` }],
           });
@@ -1070,7 +1093,7 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
     if (shouldFilterKeywords) {
       for (let i = 0; i < windows.length; i++) {
         const scene = sceneDescriptions.find(s => s.index === i + 1);
-        const sceneDesc = scene?.sceneDescription || `Historical scene depicting: ${windows[i].text.substring(0, 200)}`;
+        const sceneDesc = scene?.sceneDescription || `Historical scene depicting: ${smartTruncate(windows[i].text, 200)}`;
         const foundKeywords = containsModernKeywords(sceneDesc);
 
         if (foundKeywords.length > 0) {
@@ -1161,7 +1184,7 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
       // Use regenerated description if available, otherwise use original
       const sceneDesc = regeneratedDescriptions.get(i)
         || scene?.sceneDescription
-        || `Historical scene depicting: ${window.text.substring(0, 200)}`;
+        || `Historical scene depicting: ${smartTruncate(window.text, 200)}`;
 
       imagePrompts.push({
         index: i + 1,
@@ -1367,7 +1390,7 @@ Return ONLY a JSON array with ${count} items.`;
 
     const messageStream = await anthropic.messages.stream({
       model: selectedModel,
-      max_tokens: Math.min(MAX_TOKENS, count * 150 + 500),
+      max_tokens: Math.min(MAX_TOKENS, count * 500 + 1000),
       system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
       messages: [{ role: 'user', content: userPrompt }],
     });
@@ -1396,7 +1419,7 @@ Return ONLY a JSON array with ${count} items.`;
     for (let i = 0; i < windows.length; i++) {
       const window = windows[i];
       const scene = sceneDescriptions.find(s => s.index === i + 1);
-      const sceneDesc = scene?.sceneDescription || `Historical scene depicting: ${window.text.substring(0, 200)}`;
+      const sceneDesc = scene?.sceneDescription || `Historical scene depicting: ${smartTruncate(window.text, 200)}`;
 
       newPrompts.push({
         index: i + 1,  // Will be renumbered by frontend
