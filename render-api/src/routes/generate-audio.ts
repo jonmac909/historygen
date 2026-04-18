@@ -2659,8 +2659,18 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           return;
         }
 
-        // Calculate final duration
-        const durationSeconds = totalDurationSeconds;
+        // Calculate final duration. totalDurationSeconds only gets updated
+        // inside the chunk-concatenation branch, which is skipped when a
+        // segment has a single chunk — leaving duration=0. Derive it from
+        // the WAV buffer's PCM length in that case.
+        let durationSeconds = totalDurationSeconds;
+        if (durationSeconds === 0) {
+          const wavInfo = extractWavInfo(segmentAudio);
+          const bytesPerSecond = wavInfo.sampleRate * wavInfo.channels * (wavInfo.bitsPerSample / 8);
+          if (bytesPerSecond > 0) {
+            durationSeconds = wavInfo.pcmData.length / bytesPerSecond;
+          }
+        }
         const durationRounded = Math.round(durationSeconds * 10) / 10;
 
         console.log(`Segment ${segmentNumber} audio: ${segmentAudio.length} bytes, ${durationRounded}s`);
@@ -2754,6 +2764,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
               index: r.index,
               audioUrl: r.audioUrl,
               duration: r.duration,
+              size: r.size,
               text: r.text,
             }));
           saveAudioProgress(projectId, sortedForDb, 'generating').then(result => {
