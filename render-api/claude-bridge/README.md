@@ -102,7 +102,7 @@ All callers immediately revert to the Anthropic SDK against `ANTHROPIC_API_KEY`
 | `BRIDGE_MAX_TURNS` | `50` | Retire session after N turns |
 | `BRIDGE_MAX_CACHE_TOKENS` | `160000` | Retire session at cache-tokens threshold |
 | `BRIDGE_REQUEST_TIMEOUT_MS` | `1200000` | Absolute per-turn cap (20 min). Safety ceiling. |
-| `BRIDGE_IDLE_TIMEOUT_MS` | `180000` | Kill the session if no output from Claude for this long (3 min). Resets on every stdout line. |
+| `BRIDGE_IDLE_TIMEOUT_MS` | `600000` | Kill the session if no output from Claude for this long (10 min). Resets on every stdout line. Tuned for long-form generation where Opus xhigh buffers extended thinking silently. |
 | `BRIDGE_TMP_BUDGET` | `104857600` | Max bytes of temp images at any time |
 
 ## Deleting deprecated Supabase edge functions

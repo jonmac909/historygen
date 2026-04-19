@@ -24,8 +24,14 @@ export const config = {
   // Idle (no-activity) timeout — how long the session can go silent before
   // we treat it as stuck. Any line from Claude's stdout (text delta, system
   // event, rate-limit event) resets this. Separates "slow but streaming"
-  // from "actually hung". Default 3 min.
-  idleTimeoutMs: parseInt(process.env.BRIDGE_IDLE_TIMEOUT_MS ?? '180000', 10),
+  // from "actually hung".
+  //
+  // Default 10 min. Opus at xhigh effort buffers extended-thinking phases
+  // silently on long-form tasks (20k-word script rewrites spent ~3 min
+  // thinking with zero stdout before streaming began), so a tight 3-min
+  // threshold caused false kills. 10 min still catches a truly hung
+  // subprocess well before the 20-min absolute cap.
+  idleTimeoutMs: parseInt(process.env.BRIDGE_IDLE_TIMEOUT_MS ?? '600000', 10),
 
   // tmpfs budget for image payloads (bytes).
   tmpBudget: parseInt(process.env.BRIDGE_TMP_BUDGET ?? `${100 * 1024 * 1024}`, 10),
