@@ -48,8 +48,13 @@ interface PendingTurn {
   reject: (e: Error) => void;
   chunks: string[];
   startedAt: number;
+  lastActivityAt: number;
   streamEmitter?: EventEmitter;
-  timeoutId: NodeJS.Timeout;
+  // Absolute cap — never resets. Catches pathologically long turns.
+  maxTimeoutId: NodeJS.Timeout;
+  // Resets on every stdout line from Claude. Catches real stuck sessions
+  // without killing slow-but-streaming ones.
+  idleTimeoutId: NodeJS.Timeout;
 }
 
 export class ClaudeSession {
@@ -157,29 +162,72 @@ export class ClaudeSession {
     };
 
     return new Promise<SessionTurnResult>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        log.warn('session.turn_timeout', { tag: this.sessionTag, elapsedMs: Date.now() - this.currentTurn!.startedAt });
-        this.kill('turn_timeout');
-        reject(new Error(`session turn timed out after ${config.requestTimeoutMs}ms`));
+      const maxTimeoutId = setTimeout(() => {
+        const turn = this.currentTurn;
+        if (!turn) return;
+        log.warn('session.max_timeout', {
+          tag: this.sessionTag,
+          elapsedMs: Date.now() - turn.startedAt,
+        });
+        this.kill('max_timeout');
+        reject(new Error(`session turn exceeded max duration ${config.requestTimeoutMs}ms`));
       }, config.requestTimeoutMs);
 
+      const idleTimeoutId = setTimeout(() => {
+        const turn = this.currentTurn;
+        if (!turn) return;
+        log.warn('session.idle_timeout', {
+          tag: this.sessionTag,
+          silentMs: Date.now() - turn.lastActivityAt,
+          elapsedMs: Date.now() - turn.startedAt,
+        });
+        this.kill('idle_timeout');
+        reject(new Error(`session idle for ${config.idleTimeoutMs}ms — no output from Claude`));
+      }, config.idleTimeoutMs);
+
+      const now = Date.now();
       this.currentTurn = {
         resolve,
         reject,
         chunks: [],
-        startedAt: Date.now(),
+        startedAt: now,
+        lastActivityAt: now,
         streamEmitter,
-        timeoutId,
+        maxTimeoutId,
+        idleTimeoutId,
       };
 
       try {
         this.proc.stdin.write(JSON.stringify(event) + '\n');
       } catch (err) {
-        clearTimeout(timeoutId);
+        clearTimeout(maxTimeoutId);
+        clearTimeout(idleTimeoutId);
         this.currentTurn = null;
         reject(err instanceof Error ? err : new Error(String(err)));
       }
     });
+  }
+
+  /**
+   * Reset the idle (no-activity) timer. Called on every stdout line from
+   * Claude so that slow-but-streaming turns are not mistaken for stuck ones.
+   * The absolute max timer is NOT reset — it remains the hard ceiling.
+   */
+  private resetIdleTimer(): void {
+    const turn = this.currentTurn;
+    if (!turn) return;
+    clearTimeout(turn.idleTimeoutId);
+    turn.lastActivityAt = Date.now();
+    turn.idleTimeoutId = setTimeout(() => {
+      if (!this.currentTurn) return;
+      log.warn('session.idle_timeout', {
+        tag: this.sessionTag,
+        silentMs: Date.now() - this.currentTurn.lastActivityAt,
+        elapsedMs: Date.now() - this.currentTurn.startedAt,
+      });
+      this.kill('idle_timeout');
+      this.currentTurn.reject(new Error(`session idle for ${config.idleTimeoutMs}ms — no output from Claude`));
+    }, config.idleTimeoutMs);
   }
 
   kill(reason: string): void {
@@ -199,6 +247,10 @@ export class ClaudeSession {
     const rl = createInterface({ input: this.proc.stdout });
     rl.on('line', (line) => {
       if (!line.trim()) return;
+      // Any line from Claude's stdout — parseable or not, text or system
+      // event — counts as activity and resets the idle timer. Treats
+      // "streaming slowly" as distinct from "stuck".
+      this.resetIdleTimer();
       let ev: CliEvent;
       try {
         ev = JSON.parse(line);
@@ -225,7 +277,8 @@ export class ClaudeSession {
       const turn = this.currentTurn;
       this.currentTurn = null;
       if (turn) {
-        clearTimeout(turn.timeoutId);
+        clearTimeout(turn.maxTimeoutId);
+        clearTimeout(turn.idleTimeoutId);
         turn.reject(new SessionDeadError(`exit code=${code ?? 'null'} signal=${signal ?? 'null'}`));
       }
     });
@@ -274,14 +327,16 @@ export class ClaudeSession {
   private handleRateLimit(ev: CliRateLimitEvent) {
     if (ev.rate_limit_info.status === 'allowed') return; // informational
     const turn = this.currentTurn!;
-    clearTimeout(turn.timeoutId);
+    clearTimeout(turn.maxTimeoutId);
+    clearTimeout(turn.idleTimeoutId);
     this.currentTurn = null;
     turn.reject(new RateLimitError(ev.rate_limit_info));
   }
 
   private handleResult(ev: CliResultEvent) {
     const turn = this.currentTurn!;
-    clearTimeout(turn.timeoutId);
+    clearTimeout(turn.maxTimeoutId);
+    clearTimeout(turn.idleTimeoutId);
     this.currentTurn = null;
     this.turnsCompleted += 1;
     this.lastCacheCreationTokens = ev.usage.cache_creation_input_tokens ?? this.lastCacheCreationTokens;

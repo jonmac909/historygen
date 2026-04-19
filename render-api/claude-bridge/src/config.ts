@@ -16,10 +16,16 @@ export const config = {
   // Session lifecycle thresholds.
   maxTurnsPerSession: parseInt(process.env.BRIDGE_MAX_TURNS ?? '50', 10),
   maxCacheTokens: parseInt(process.env.BRIDGE_MAX_CACHE_TOKENS ?? '160000', 10),
-  // Default 20 min. Script-rewrite iterations can stream for many minutes
-  // when targeting 20k+ words at opus/xhigh; 3 min killed sessions mid-reply.
-  // Override per-env via BRIDGE_REQUEST_TIMEOUT_MS.
+  // Absolute max per turn (20 min). Hard ceiling as a safety guard; a
+  // healthy turn almost always finishes well before this. Override per-env
+  // via BRIDGE_REQUEST_TIMEOUT_MS.
   requestTimeoutMs: parseInt(process.env.BRIDGE_REQUEST_TIMEOUT_MS ?? '1200000', 10),
+
+  // Idle (no-activity) timeout — how long the session can go silent before
+  // we treat it as stuck. Any line from Claude's stdout (text delta, system
+  // event, rate-limit event) resets this. Separates "slow but streaming"
+  // from "actually hung". Default 3 min.
+  idleTimeoutMs: parseInt(process.env.BRIDGE_IDLE_TIMEOUT_MS ?? '180000', 10),
 
   // tmpfs budget for image payloads (bytes).
   tmpBudget: parseInt(process.env.BRIDGE_TMP_BUDGET ?? `${100 * 1024 * 1024}`, 10),
