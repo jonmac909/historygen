@@ -16,7 +16,10 @@ export const config = {
   // Session lifecycle thresholds.
   maxTurnsPerSession: parseInt(process.env.BRIDGE_MAX_TURNS ?? '50', 10),
   maxCacheTokens: parseInt(process.env.BRIDGE_MAX_CACHE_TOKENS ?? '160000', 10),
-  requestTimeoutMs: parseInt(process.env.BRIDGE_REQUEST_TIMEOUT_MS ?? '180000', 10),
+  // Default 20 min. Script-rewrite iterations can stream for many minutes
+  // when targeting 20k+ words at opus/xhigh; 3 min killed sessions mid-reply.
+  // Override per-env via BRIDGE_REQUEST_TIMEOUT_MS.
+  requestTimeoutMs: parseInt(process.env.BRIDGE_REQUEST_TIMEOUT_MS ?? '1200000', 10),
 
   // tmpfs budget for image payloads (bytes).
   tmpBudget: parseInt(process.env.BRIDGE_TMP_BUDGET ?? `${100 * 1024 * 1024}`, 10),
