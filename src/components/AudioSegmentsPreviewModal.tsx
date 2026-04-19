@@ -691,9 +691,23 @@ export function AudioSegmentsPreviewModal({
   const calculatedDuration = segments.reduce((sum, seg) => sum + seg.duration, 0);
   const totalDuration = propTotalDuration || calculatedDuration;
 
-  // Group segments into chunks of 10 for easier navigation
+  // Group segments into chunks of 10 for easier navigation.
+  //
+  // Individual segment durations are stored unscaled (raw Fish Speech output),
+  // but the combined WAV is speed-adjusted (atempo=0.9 by default), so the
+  // combined audio is ~11% longer than the sum of segment durations. Without
+  // scaling the group labels, a group reading "5:25–6:46" would actually
+  // correspond to ~6:01–7:31 in the combined audio — making it hard to find
+  // the right group when you hear an issue at a specific playback time.
+  // When propTotalDuration is provided, scale group times to the combined
+  // audio's clock. When it's missing (older projects or direct segment view),
+  // scale = 1 and behavior is identical to before.
   const SEGMENTS_PER_GROUP = 10;
   const segmentGroups = useMemo(() => {
+    const scale = (propTotalDuration && calculatedDuration > 0)
+      ? propTotalDuration / calculatedDuration
+      : 1;
+
     const groups: { groupIndex: number; segments: AudioSegment[]; startTime: number; duration: number }[] = [];
     let accumulatedTime = 0;
 
@@ -703,13 +717,13 @@ export function AudioSegmentsPreviewModal({
       groups.push({
         groupIndex: Math.floor(i / SEGMENTS_PER_GROUP),
         segments: groupSegments,
-        startTime: accumulatedTime,
-        duration: groupDuration,
+        startTime: accumulatedTime * scale,
+        duration: groupDuration * scale,
       });
       accumulatedTime += groupDuration;
     }
     return groups;
-  }, [segments]);
+  }, [segments, propTotalDuration, calculatedDuration]);
 
   // Get QA issues for a specific segment (by 1-based index)
   const getIssuesForSegment = (segmentIndex: number): SegmentIssue[] => {

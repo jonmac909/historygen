@@ -904,6 +904,15 @@ export async function generateAudioStreaming(
         }
       }
     } catch (streamError) {
+      // If the Supabase poll already resolved this run as complete, honor that.
+      // reader.cancel() (called from the poll handler) can reject an in-flight
+      // read(), and without this guard we'd override polling's success with a
+      // generic "Connection interrupted" error — which left the Generating
+      // Audio modal stuck at whatever progress the SSE last reported (e.g. 90%).
+      if (supabaseResolved && result.success) {
+        return result;
+      }
+
       console.error('Stream reading error:', streamError);
 
       // Check if it's an abort error from timeout
