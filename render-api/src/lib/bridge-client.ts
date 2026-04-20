@@ -35,6 +35,8 @@ class BridgeStream implements AsyncIterable<MessageStreamEvent> {
   private stopReason: string | null = null;
   private usage: Anthropic.Usage | null = null;
   private modelId: string;
+  private iteratorPromise: Promise<void> | null = null;
+  private drained = false;
 
   constructor(req: MessageCreateParams) {
     const body = stripCacheControl(req);
@@ -61,7 +63,6 @@ class BridgeStream implements AsyncIterable<MessageStreamEvent> {
       const { value, done } = await reader.read();
       if (done) break;
       buf += decoder.decode(value, { stream: true });
-      // SSE frames are delimited by \n\n
       let idx: number;
       while ((idx = buf.indexOf('\n\n')) !== -1) {
         const frame = buf.slice(0, idx);
@@ -79,7 +80,6 @@ class BridgeStream implements AsyncIterable<MessageStreamEvent> {
           throw new Error(`bridge stream error: ${ev.error?.message ?? 'unknown'}`);
         }
 
-        // Track state for finalMessage().
         if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
           this.finalText += ev.delta.text ?? '';
         } else if (ev.type === 'message_delta') {
@@ -90,12 +90,17 @@ class BridgeStream implements AsyncIterable<MessageStreamEvent> {
         yield ev as MessageStreamEvent;
       }
     }
+    this.drained = true;
   }
 
   async finalMessage(): Promise<Message> {
-    // Drain the stream if the caller never iterated it.
-    for await (const _ of this) {
-      // intentionally empty
+    if (!this.drained) {
+      if (!this.iteratorPromise) {
+        this.iteratorPromise = (async () => {
+          for await (const _ of this) { /* drain */ }
+        })();
+      }
+      await this.iteratorPromise;
     }
     return {
       id: `msg_bridge_${Math.random().toString(36).slice(2)}`,
