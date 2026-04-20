@@ -412,7 +412,7 @@ export async function sanitizeScript(
 ): Promise<{ sanitized: string; changes: string[] }> {
   const ANTHROPIC_API_KEY = apiKey || process.env.ANTHROPIC_API_KEY;
 
-  if (!ANTHROPIC_API_KEY || issues.length === 0) {
+  if ((!ANTHROPIC_API_KEY && process.env.USE_CLAUDE_BRIDGE !== 'true') || issues.length === 0) {
     return { sanitized: script, changes: [] };
   }
 

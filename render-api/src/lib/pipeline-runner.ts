@@ -804,9 +804,9 @@ ${COMPLETE_HISTORIES_TEMPLATE}`;
 
           // Grade the script for topic adherence
           const anthropicKey = process.env.ANTHROPIC_API_KEY;
-          if (anthropicKey) {
+          if (anthropicKey || process.env.USE_CLAUDE_BRIDGE === 'true') {
             reportProgress('script', 24, 'Grading script...');
-            const gradeResult = await gradeScript(script, input.originalTitle, anthropicKey);
+            const gradeResult = await gradeScript(script, input.originalTitle, anthropicKey ?? '');
             scriptGrade = gradeResult.grade;
             scriptFeedback = gradeResult.feedback;
             console.log(`[Pipeline] Script grade: ${scriptGrade} - ${scriptFeedback}`);
