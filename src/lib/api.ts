@@ -913,6 +913,37 @@ export async function generateAudioStreaming(
         return result;
       }
 
+      // Final synchronous poll before surrendering to `interrupted: true`.
+      // The 30s polling tick can miss a stream drop by up to 29.99s; during
+      // that window the backend may already have written audio_url and
+      // advanced current_step. Without this, handleGenerate receives
+      // {interrupted:true}, shows a toast, and returns — leaving the audio
+      // step stuck at the last SSE progress (e.g. 90%) even though the
+      // generation is actually complete.
+      try {
+        const { data: finalPoll } = await supabase
+          .from('generation_projects')
+          .select('audio_url, audio_duration, current_step, audio_segments')
+          .eq('id', projectId)
+          .single();
+        if (finalPoll?.audio_url && finalPoll.current_step !== 'audio') {
+          const segments = Array.isArray(finalPoll.audio_segments)
+            ? (finalPoll.audio_segments as unknown as AudioSegment[])
+            : undefined;
+          onProgress(100, 'Complete!');
+          return {
+            success: true,
+            audioUrl: finalPoll.audio_url,
+            duration: finalPoll.audio_duration ?? segments?.reduce((s, seg) => s + seg.duration, 0),
+            size: segments?.reduce((s, seg) => s + (seg.size ?? 0), 0),
+            segments,
+            totalDuration: finalPoll.audio_duration,
+          };
+        }
+      } catch {
+        // Final-poll itself failed — fall through to the existing error paths.
+      }
+
       console.error('Stream reading error:', streamError);
 
       // Check if it's an abort error from timeout
