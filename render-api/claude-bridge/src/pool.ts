@@ -47,14 +47,15 @@ export class SessionPool {
     }
   }
 
-  /** Run a turn against the session keyed by this system prompt. */
+  /** Run a turn against the session keyed by system prompt + model. */
   async run(
     systemPrompt: string,
     userContent: string | unknown[],
     streamEmitter?: EventEmitter,
+    model?: string,
   ): Promise<SessionTurnResult> {
-    const hash = hashSystemPrompt(systemPrompt);
-    return this.enqueue(hash, () => this.runOn(systemPrompt, hash, userContent, streamEmitter));
+    const hash = hashSystemPrompt(systemPrompt + (model ?? ''));
+    return this.enqueue(hash, () => this.runOn(systemPrompt, hash, userContent, streamEmitter, model));
   }
 
   /**
@@ -85,6 +86,7 @@ export class SessionPool {
     hash: string,
     userContent: string | unknown[],
     streamEmitter?: EventEmitter,
+    model?: string,
   ): Promise<SessionTurnResult> {
     let session = this.cache.get(hash);
     if (session && session.shouldRetire()) {
@@ -92,7 +94,7 @@ export class SessionPool {
       this.cache.delete(hash);
       session = undefined;
     }
-    if (!session) session = this.getOrCreate(systemPrompt, hash);
+    if (!session) session = this.getOrCreate(systemPrompt, hash, model);
     await session.waitReady();
 
     try {
@@ -105,10 +107,10 @@ export class SessionPool {
     }
   }
 
-  private getOrCreate(systemPrompt: string, hash: string): ClaudeSession {
+  private getOrCreate(systemPrompt: string, hash: string, model?: string): ClaudeSession {
     const existing = this.cache.get(hash);
     if (existing && existing.isAlive()) return existing;
-    const session = new ClaudeSession(systemPrompt, hash);
+    const session = new ClaudeSession(systemPrompt, hash, model);
     this.cache.set(hash, session);
     return session;
   }

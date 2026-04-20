@@ -36,16 +36,18 @@ app.post('/messages', async (req: Request, res: Response) => {
   try {
     const systemPrompt = buildSystemPrompt(body);
     const userContent = extractUserContent(body.messages);
+    const model = resolveModel(body.model);
     log.info('req.start', {
       req_id: reqId,
       route: '/messages',
       system_hash: hashPreview(systemPrompt),
       messages: body.messages.length,
       wants_json: wantsJson(body),
+      model,
     });
 
-    const turn = await pool.run(systemPrompt, userContent);
-    const sdkResponse = toSdkResponse(turn, config.forceModel);
+    const turn = await pool.run(systemPrompt, userContent, undefined, model);
+    const sdkResponse = toSdkResponse(turn, model);
     log.info('req.ok', {
       req_id: reqId,
       duration_ms: Date.now() - startedAt,
@@ -78,11 +80,12 @@ app.post('/messages/stream', async (req: Request, res: Response) => {
   try {
     const systemPrompt = buildSystemPrompt(body);
     const userContent = extractUserContent(body.messages);
-    log.info('req.start', { req_id: reqId, route: '/messages/stream' });
+    const model = resolveModel(body.model);
+    log.info('req.start', { req_id: reqId, route: '/messages/stream', model });
 
     const emitter = new EventEmitter();
     const msgId = `msg_bridge_${randomId()}`;
-    sse({ type: 'message_start', message: { id: msgId, role: 'assistant', model: config.forceModel } });
+    sse({ type: 'message_start', message: { id: msgId, role: 'assistant', model } });
     sse({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
 
     emitter.on('event', (ev: { type: 'text_delta' | 'done'; text?: string }) => {
@@ -95,7 +98,7 @@ app.post('/messages/stream', async (req: Request, res: Response) => {
       }
     });
 
-    const turn = await pool.run(systemPrompt, userContent, emitter);
+    const turn = await pool.run(systemPrompt, userContent, emitter, model);
     sse({ type: 'content_block_stop', index: 0 });
     sse({
       type: 'message_delta',
@@ -128,6 +131,14 @@ function handleError(res: Response, err: unknown, reqId: string, startedAt: numb
   const message = err instanceof Error ? err.message : 'unknown error';
   log.error('req.err', { req_id: reqId, duration_ms: duration, err: message });
   res.status(500).json({ error: { type: 'bridge_error', message } });
+}
+
+function resolveModel(requested?: string): string {
+  if (!requested) return config.defaultModel;
+  if (requested.includes('opus')) return 'opus';
+  if (requested.includes('sonnet')) return 'sonnet';
+  if (requested.includes('haiku')) return 'haiku';
+  return config.defaultModel;
 }
 
 function randomId(): string {

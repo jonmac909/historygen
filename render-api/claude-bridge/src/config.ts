@@ -5,9 +5,9 @@ export const config = {
   host: '127.0.0.1', // loopback only — bridge must never be externally reachable
   port: parseInt(process.env.BRIDGE_PORT ?? '9001', 10),
 
-  // Forced model policy per plan §Model policy.
-  forceModel: process.env.FORCE_MODEL ?? 'opus',
-  forceEffort: process.env.FORCE_EFFORT ?? 'xhigh',
+  // Default model when the caller doesn't specify one.
+  defaultModel: process.env.BRIDGE_DEFAULT_MODEL ?? 'opus',
+  defaultEffort: process.env.BRIDGE_DEFAULT_EFFORT ?? 'xhigh',
 
   // Session pool sizing.
   poolSize: parseInt(process.env.BRIDGE_POOL_SIZE ?? '3', 10),

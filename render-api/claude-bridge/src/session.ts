@@ -68,8 +68,11 @@ export class ClaudeSession {
   readonly sessionTag: string;
   private readonly spawnedAt = Date.now();
 
-  constructor(systemPrompt: string, systemPromptHash: string) {
+  readonly model: string;
+
+  constructor(systemPrompt: string, systemPromptHash: string, model?: string) {
     this.systemPromptHash = systemPromptHash;
+    this.model = model || config.defaultModel;
     this.sessionTag = `${systemPromptHash.slice(0, 8)}-${Date.now().toString(36)}`;
 
     const args = [
@@ -77,18 +80,18 @@ export class ClaudeSession {
       '--input-format', 'stream-json',
       '--output-format', 'stream-json',
       '--verbose',
-      '--model', config.forceModel,
-      '--effort', config.forceEffort,
+      '--model', this.model,
+      '--effort', config.defaultEffort,
       '--system-prompt', systemPrompt,
-      '--allowedTools', '',           // disable all tools — text-only + vision via content blocks
-      '--no-session-persistence',     // don't write session files to disk
-      '--disable-slash-commands',     // skip plugin slash-command discovery
-      '--strict-mcp-config',          // ignore all MCP configs on disk
-      '--mcp-config', '{"mcpServers":{}}', // explicit empty MCP
-      '--setting-sources', '',        // no user/project/local settings merging
+      '--allowedTools', '',
+      '--no-session-persistence',
+      '--disable-slash-commands',
+      '--strict-mcp-config',
+      '--mcp-config', '{"mcpServers":{}}',
+      '--setting-sources', '',
     ];
 
-    log.info('session.spawn', { tag: this.sessionTag, model: config.forceModel, effort: config.forceEffort });
+    log.info('session.spawn', { tag: this.sessionTag, model: this.model, effort: config.defaultEffort });
 
     // Strip ANTHROPIC_API_KEY from the child env. Claude Code prefers env API
     // keys over OAuth credentials; leaving it in forces per-token billing.
