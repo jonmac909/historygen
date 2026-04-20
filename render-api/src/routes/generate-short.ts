@@ -339,7 +339,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       return sendError('ANTHROPIC_API_KEY not configured');
     }
 
@@ -357,7 +357,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Step 3: Generate image prompts (30-35%)
     sendProgress('prompts', 32, 'Planning images...');
-    const imagePrompts = await generateImagePrompts(shortScript, apiKey);
+    const imagePrompts = await generateImagePrompts(shortScript, apiKey ?? '');
     sendProgress('prompts', 35, `Planned ${imagePrompts.length} images`);
 
     // Step 4: Source images (35-85%)

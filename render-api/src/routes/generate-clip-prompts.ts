@@ -373,7 +373,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-    if (!anthropicApiKey) {
+    if (!anthropicApiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       const error = { error: 'Anthropic API key not configured' };
       if (stream) {
         sendEvent({ type: 'error', ...error });

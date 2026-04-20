@@ -678,7 +678,7 @@ router.post('/expand-topic', async (req: Request, res: Response) => {
 
     const { createAnthropicClient, formatSystemPrompt } = await import('../lib/anthropic-client');
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
     }
 
@@ -718,7 +718,7 @@ router.post('/suggest-prompts', async (req: Request, res: Response) => {
 
     const { createAnthropicClient, formatSystemPrompt } = await import('../lib/anthropic-client');
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
     }
 

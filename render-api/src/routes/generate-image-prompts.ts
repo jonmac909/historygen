@@ -696,7 +696,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
-    if (!anthropicApiKey) {
+    if (!anthropicApiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       const error = { error: 'Anthropic API key not configured' };
       if (stream) {
         sendEvent({ type: 'error', ...error });
@@ -717,7 +717,6 @@ router.post('/', async (req: Request, res: Response) => {
     // Send initial progress
     sendEvent({ type: 'progress', progress: 5, message: '5%' });
 
-    // Initialize Anthropic client
     const anthropic = createAnthropicClient(anthropicApiKey);
 
     // Track token usage for cost tracking

@@ -106,7 +106,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // Get API key
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       throw new Error('ANTHROPIC_API_KEY not configured');
     }
 

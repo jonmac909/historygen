@@ -333,7 +333,7 @@ export async function moderateScript(
 ): Promise<ScriptModerationResult> {
   const ANTHROPIC_API_KEY = apiKey || process.env.ANTHROPIC_API_KEY;
 
-  if (!ANTHROPIC_API_KEY) {
+  if (!ANTHROPIC_API_KEY && process.env.USE_CLAUDE_BRIDGE !== 'true') {
     console.warn('[content-moderator] No API key, skipping script moderation');
     return { safe: true, issues: [], summary: 'Moderation skipped (no API key)' };
   }

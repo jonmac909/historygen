@@ -141,7 +141,7 @@ router.post('/', async (req: Request, res: Response) => {
     }
 
     const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-    if (!ANTHROPIC_API_KEY) {
+    if (!ANTHROPIC_API_KEY && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       return res.status(500).json({ error: 'Anthropic API key not configured' });
     }
 
@@ -369,7 +369,7 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
 
             // OPTIMIZATION: Use streaming with token callbacks + prompt caching
             result = await generateScriptChunkStreaming({
-              apiKey: ANTHROPIC_API_KEY,
+              apiKey: ANTHROPIC_API_KEY ?? '',
               model: selectedModel,
               systemPrompt,
               messages,
@@ -658,7 +658,7 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
 
         // OPTIMIZATION: Use prompt caching on subsequent iterations
         const result = await generateScriptChunk({
-          apiKey: ANTHROPIC_API_KEY,
+          apiKey: ANTHROPIC_API_KEY ?? '',
           model: selectedModel,
           systemPrompt,
           messages,
@@ -736,7 +736,7 @@ router.post('/rate', async (req: Request, res: Response) => {
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       return res.status(500).json({ error: 'API key not configured' });
     }
 
@@ -948,7 +948,7 @@ router.post('/quick-edit', async (req: Request, res: Response) => {
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       return res.status(500).json({ error: 'API key not configured' });
     }
 
@@ -1080,7 +1080,7 @@ router.post('/generate-expansion-topics', async (req: Request, res: Response) =>
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       return res.status(500).json({ error: 'API key not configured' });
     }
 

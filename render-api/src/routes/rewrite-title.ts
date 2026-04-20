@@ -26,7 +26,7 @@ interface RewriteTitleResponse {
 router.post('/', async (req: Request, res: Response) => {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
+    if (!apiKey && process.env.USE_CLAUDE_BRIDGE !== 'true') {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
     }
 
