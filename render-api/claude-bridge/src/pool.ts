@@ -1,6 +1,5 @@
 import { createHash } from 'crypto';
 import { LRUCache } from 'lru-cache';
-import pLimit, { LimitFunction } from 'p-limit';
 import { EventEmitter } from 'events';
 import { config } from './config';
 import { log } from './log';
@@ -9,9 +8,9 @@ import { ClaudeSession, SessionTurnResult, SessionStreamEvent } from './session'
 // Session pool keyed by sha256(system_prompt). Each unique system prompt gets
 // its own warm Claude session. LRU evicts idle sessions past poolSize.
 //
-// A single session handles turns serially (the CLI is a REPL). Cross-session
-// parallelism is capped by a global p-limit so we don't blow subscription
-// concurrency.
+// Sessions handle turns serially (the CLI is a REPL). When multiple callers
+// target the same system prompt, a per-session queue serializes them so they
+// wait in line instead of failing with "session is busy".
 
 export function hashSystemPrompt(system: string): string {
   return createHash('sha256').update(system).digest('hex');
@@ -19,7 +18,7 @@ export function hashSystemPrompt(system: string): string {
 
 export class SessionPool {
   private cache: LRUCache<string, ClaudeSession>;
-  private concurrency: LimitFunction;
+  private queues = new Map<string, Promise<unknown>>();
 
   constructor() {
     this.cache = new LRUCache<string, ClaudeSession>({
@@ -28,10 +27,10 @@ export class SessionPool {
         if (reason === 'evict' || reason === 'delete') {
           log.info('pool.evict', { hash: key.slice(0, 8), reason, turns: session.turns() });
           session.kill(`evicted:${reason}`);
+          this.queues.delete(key);
         }
       },
     });
-    this.concurrency = pLimit(config.concurrency);
   }
 
   /** Pre-warm one session with an empty-ish system prompt. */
@@ -40,9 +39,8 @@ export class SessionPool {
     const hash = hashSystemPrompt(warmer);
     const session = this.getOrCreate(warmer, hash);
     await session.waitReady();
-    // Fire a tiny ping turn to ensure the full pipeline works.
     try {
-      await this.concurrency(() => session.sendTurn('ping'));
+      await this.enqueue(hash, () => session.sendTurn('ping'));
       log.info('pool.prewarm_ok');
     } catch (err) {
       log.warn('pool.prewarm_failed', { err: err instanceof Error ? err.message : String(err) });
@@ -56,7 +54,30 @@ export class SessionPool {
     streamEmitter?: EventEmitter,
   ): Promise<SessionTurnResult> {
     const hash = hashSystemPrompt(systemPrompt);
-    return this.concurrency(() => this.runOn(systemPrompt, hash, userContent, streamEmitter));
+    return this.enqueue(hash, () => this.runOn(systemPrompt, hash, userContent, streamEmitter));
+  }
+
+  /**
+   * Per-session serial queue. Chains each call onto the previous one so
+   * callers wait in line instead of throwing "session is busy". Different
+   * system-prompt hashes run independently (true parallelism across sessions).
+   */
+  private enqueue<T>(hash: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.queues.get(hash) ?? Promise.resolve();
+    const depth = this.queueDepth(hash);
+    if (depth > 0) {
+      log.info('pool.queued', { hash: hash.slice(0, 8), depth });
+    }
+    const next = prev.catch(() => {}).then(fn);
+    this.queues.set(hash, next);
+    next.finally(() => {
+      if (this.queues.get(hash) === next) this.queues.delete(hash);
+    });
+    return next;
+  }
+
+  private queueDepth(hash: string): number {
+    return this.queues.has(hash) ? 1 : 0;
   }
 
   private async runOn(
@@ -65,11 +86,10 @@ export class SessionPool {
     userContent: string | unknown[],
     streamEmitter?: EventEmitter,
   ): Promise<SessionTurnResult> {
-    // Retire if needed, then get or create a fresh session.
     let session = this.cache.get(hash);
     if (session && session.shouldRetire()) {
       log.info('pool.retire', { hash: hash.slice(0, 8), turns: session.turns() });
-      this.cache.delete(hash); // triggers dispose → kill
+      this.cache.delete(hash);
       session = undefined;
     }
     if (!session) session = this.getOrCreate(systemPrompt, hash);
@@ -78,7 +98,6 @@ export class SessionPool {
     try {
       return await session.sendTurn(userContent, streamEmitter);
     } catch (err) {
-      // If the session died, drop it so the next caller gets a fresh one.
       if (!session.isAlive()) {
         this.cache.delete(hash);
       }
@@ -99,12 +118,12 @@ export class SessionPool {
     const start = Date.now();
     log.info('pool.drain_start', { size: this.cache.size });
     while (this.cache.size > 0 && Date.now() - start < timeoutMs) {
-      // Wait for any busy session to finish before killing.
       const anyBusy = [...this.cache.values()].some((s) => s.isBusy());
       if (!anyBusy) break;
       await new Promise((r) => setTimeout(r, 500));
     }
     for (const key of [...this.cache.keys()]) this.cache.delete(key);
+    this.queues.clear();
     log.info('pool.drain_done', { elapsedMs: Date.now() - start });
   }
 }
