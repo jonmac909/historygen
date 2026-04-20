@@ -8,7 +8,10 @@ const router = Router();
 // Constants
 const MAX_TOKENS = 16384;  // Sonnet max tokens
 const BATCH_SIZE_PARALLEL = 10; // Smaller batches for parallel processing
-const MAX_CONCURRENT_BATCHES = 20; // Limit concurrent API calls to avoid rate limits
+// Cap parallelism to avoid Anthropic rate-limit bursts. With 20 concurrent
+// batches previously, long scripts (200+ images → 20+ batches) would hit 429s
+// on batches 3+ and silently fall back to "Historical scene depicting: …".
+const MAX_CONCURRENT_BATCHES = 5;
 const RETRY_MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 1000; // 1s → 2s → 4s exponential backoff
 
@@ -867,8 +870,12 @@ Return ONLY valid JSON array. Each sceneDescription must be UNDER 30 WORDS:
         }
       }).join('\n\n');
 
-      // Calculate tokens needed for this batch (use model-specific limit)
-      const batchTokens = Math.min(MAX_TOKENS, batchSize * 500 + 1000);
+      // Calculate tokens needed for this batch (use model-specific limit).
+      // Scene descriptions can run 80–120 tokens each with JSON overhead; bump
+      // to 1200 + 2000 so a 10-item batch has ~14000 headroom instead of 6000.
+      // Previous 6000 cap caused max_tokens truncation past image ~20 on long
+      // runs, leaving batches 3+ with partial results that fell back.
+      const batchTokens = Math.min(MAX_TOKENS, batchSize * 1200 + 2000);
 
       // Retry the Claude API call + JSON parsing up to 3 times per batch
       return retryWithBackoff(async () => {
@@ -950,8 +957,17 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
         // Parse the JSON response for this batch (robust extraction)
         const batchDescriptions = extractJsonArray(fullResponse) as { index: number; sceneDescription: string }[] | null;
         if (!batchDescriptions || !Array.isArray(batchDescriptions) || batchDescriptions.length === 0) {
-          console.error(`[Batch ${batchIndex + 1}] Invalid response (${fullResponse.length} chars): ${fullResponse.substring(0, 500)}`);
-          throw new Error(`No valid JSON array found in batch ${batchIndex + 1} response (length=${fullResponse.length})`);
+          console.error(`[Batch ${batchIndex + 1}] Invalid response (${fullResponse.length} chars, stop_reason=${finalMessage?.stop_reason}): ${fullResponse.substring(0, 500)}`);
+          throw new Error(`No valid JSON array found in batch ${batchIndex + 1} response (length=${fullResponse.length}, stop_reason=${finalMessage?.stop_reason})`);
+        }
+        // A partial parse (fewer items than requested) means the response was
+        // truncated mid-array — recovering only the complete objects. Treat as
+        // failure so retry runs with the same (raised) budget; without this,
+        // the missing items silently fall through to the "Historical scene
+        // depicting: …" fallback in the caller.
+        if (batchDescriptions.length < batchSize) {
+          console.error(`[Batch ${batchIndex + 1}] Partial parse: got ${batchDescriptions.length}/${batchSize} (stop_reason=${finalMessage?.stop_reason}). Forcing retry.`);
+          throw new Error(`Partial batch ${batchIndex + 1}: ${batchDescriptions.length}/${batchSize} items (stop_reason=${finalMessage?.stop_reason})`);
         }
 
         // Adjust indices if needed (Claude might start from 1 in each batch)
@@ -1019,7 +1035,7 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
 
           const response = await anthropic.messages.create({
             model: selectedModel,
-            max_tokens: Math.min(MAX_TOKENS, batchSize * 500 + 1000),
+            max_tokens: Math.min(MAX_TOKENS, batchSize * 1200 + 2000),
             system: formatSystemPrompt(systemPrompt) as Anthropic.MessageCreateParams['system'],
             messages: [{ role: 'user', content: `Generate prompts for images ${batchStart + 1} to ${batchEnd}:\n\n${batchWindowDescriptions}` }],
           });
@@ -1028,7 +1044,13 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
           const batchDescriptions = extractJsonArray(text) as { index: number; sceneDescription: string }[] | null;
 
           if (!batchDescriptions || batchDescriptions.length === 0) {
-            throw new Error('Empty or invalid response');
+            throw new Error(`Empty or invalid response (stop_reason=${response.stop_reason})`);
+          }
+          if (batchDescriptions.length < batchSize) {
+            // Partial parse — same rationale as the main path. Throw so the
+            // outer retry loop either gives us another attempt or surfaces
+            // the range as failed rather than silently using fallback text.
+            throw new Error(`Partial retry batch ${batchNum}: ${batchDescriptions.length}/${batchSize} items (stop_reason=${response.stop_reason})`);
           }
 
           return { batchNum, batchStart, descriptions: batchDescriptions };
