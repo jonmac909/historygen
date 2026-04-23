@@ -14,7 +14,7 @@ export const corsAllowedOrigins = splitList(
     'https://autoaigen.com',
     'https://history-gen-ai.pages.dev',
     'https://historygenai.netlify.app',
-    ...(isProduction ? [] : ['http://localhost:8080', 'http://localhost:5173']),
+    ...(isProduction ? [] : ['http://localhost:8080', 'http://localhost:5173', 'http://localhost:5174']),
   ]
 );
 

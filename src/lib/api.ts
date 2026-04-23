@@ -765,7 +765,7 @@ export async function generateAudioStreaming(
 
   // Add timeout for very large audio generations with voice cloning (60 minutes max)
   const controller = new AbortController();
-  const AUDIO_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes (voice cloning takes longer)
+  const AUDIO_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours (VoxCPM2 + large scripts need more timeer)
   const timeoutId = setTimeout(() => controller.abort(), AUDIO_TIMEOUT_MS);
 
   try {

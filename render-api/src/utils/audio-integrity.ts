@@ -70,7 +70,7 @@ export function checkAudioIntegrity(wavBuffer: Buffer, options: {
       }
     }
 
-    const sampleRate = fmtIdx !== -1 ? wavBuffer.readUInt32LE(fmtIdx + 12) : 24000;
+    const sampleRate = fmtIdx !== -1 ? wavBuffer.readUInt32LE(fmtIdx + 12) : 48000;
     const channels = fmtIdx !== -1 ? wavBuffer.readUInt16LE(fmtIdx + 10) : 1;
     const bitsPerSample = fmtIdx !== -1 ? wavBuffer.readUInt16LE(fmtIdx + 22) : 16;
     const bytesPerSample = bitsPerSample / 8;
@@ -256,7 +256,7 @@ function buildRmsEnvelope(
   for (let i = 0; i <= wavBuffer.length - 4; i++) {
     if (wavBuffer.slice(i, i + 4).equals(dataMarker)) { dataIdx = i; break; }
   }
-  if (dataIdx === -1) return { envelope: [], sampleRate: 24000 };
+  if (dataIdx === -1) return { envelope: [], sampleRate: 48000 };
 
   const fmtMarker = Buffer.from('fmt ', 'ascii');
   let fmtIdx = -1;

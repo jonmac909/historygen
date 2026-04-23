@@ -14,6 +14,7 @@ import * as os from 'os';
 import { getPronunciationFixesRecord } from './pronunciation';
 import { saveCost } from '../lib/cost-tracker';
 import { saveAudioToProject, saveAudioProgress, getProjectData, markAudioGenerationStarted } from '../lib/supabase-project';
+import { uploadToR2, downloadFromR2, deleteProjectSegments, getSignedDownloadUrl } from '../lib/r2-storage';
 
 // Set FFmpeg and FFprobe paths
 if (ffmpegStatic) {
@@ -34,7 +35,7 @@ const logger = {
 };
 
 // TTS Configuration Constants
-const MAX_TTS_CHUNK_LENGTH = 250; // Reduced from 500 to prevent repetition buildup within chunks
+const MAX_TTS_CHUNK_LENGTH = 500; // VoxCPM2 supports up to 500 chars per chunk
 const MIN_TEXT_LENGTH = 5;
 const MAX_TEXT_LENGTH = 500; // Match chunk length
 const MAX_VOICE_SAMPLE_SIZE = 10 * 1024 * 1024;
@@ -57,6 +58,8 @@ const PAUSE_DURATIONS = {
 
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID || "7gv5y0snx5xiwk";
 const RUNPOD_API_URL = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}`;
+const RUNPOD_VOXCPM2_ENDPOINT_ID = process.env.RUNPOD_VOXCPM2_ENDPOINT_ID || "";
+const RUNPOD_VOXCPM2_API_URL = `https://api.runpod.ai/v2/${RUNPOD_VOXCPM2_ENDPOINT_ID}`;
 
 // Helper function to safely get Supabase credentials
 function getSupabaseCredentials(): { url: string; key: string } | null {
@@ -381,7 +384,7 @@ function createWavFromPcm(pcmData: Buffer, sampleRate: number, channels: number,
 }
 
 // Generate silence WAV buffer of specified duration
-function generateSilence(durationSeconds: number, sampleRate: number = 24000, channels: number = 1, bitsPerSample: number = 16): Buffer {
+function generateSilence(durationSeconds: number, sampleRate: number = 48000, channels: number = 1, bitsPerSample: number = 16): Buffer {
   const bytesPerSample = bitsPerSample / 8;
   const numSamples = Math.floor(sampleRate * durationSeconds * channels);
   const pcmData = Buffer.alloc(numSamples * bytesPerSample); // All zeros = silence
@@ -1669,6 +1672,58 @@ async function downloadVoiceSample(url: string): Promise<string> {
   }
 }
 
+// Per-URL transcript cache for VoxCPM2 ultimate cloning mode (avoids re-transcribing the same voice sample)
+const voiceSampleTranscriptCache = new Map<string, string>();
+
+/**
+ * Transcribe a voice sample WAV buffer via Groq Whisper (plain text, no timestamps).
+ * Returns empty string if Groq key is unavailable — VoxCPM2 worker falls back to
+ * its own internal Whisper pass when reference_transcript is omitted.
+ */
+async function getVoiceSampleTranscript(url: string, audioBase64: string): Promise<string> {
+  const cached = voiceSampleTranscriptCache.get(url);
+  if (cached !== undefined) {
+    logger.debug(`[voice-transcript] cache hit for ${url}`);
+    return cached;
+  }
+
+  const groqApiKey = process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY;
+  if (!groqApiKey) {
+    logger.warn('[voice-transcript] No Groq/OpenAI API key — skipping voice sample transcription');
+    return '';
+  }
+
+  try {
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
+    const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: 'audio/wav' });
+    const formData = new FormData();
+    formData.append('file', audioBlob, 'voice_sample.wav');
+    formData.append('model', 'whisper-large-v3-turbo');
+    formData.append('response_format', 'text');
+    formData.append('language', 'en');
+
+    const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${groqApiKey}` },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.warn(`[voice-transcript] Whisper API error ${response.status}: ${errorText}`);
+      return '';
+    }
+
+    const transcript = (await response.text()).trim();
+    voiceSampleTranscriptCache.set(url, transcript);
+    logger.info(`[voice-transcript] Transcribed voice sample (${transcript.length} chars): "${transcript.substring(0, 80)}..."`);
+    return transcript;
+  } catch (err) {
+    logger.warn('[voice-transcript] Transcription failed, continuing without transcript:', err);
+    return '';
+  }
+}
+
 // TTS settings interface
 interface TTSJobSettings {
   emotionMarker?: string;
@@ -1683,7 +1738,8 @@ async function startTTSJob(
   text: string,
   apiKey: string,
   referenceAudioBase64?: string,
-  ttsSettings?: TTSJobSettings
+  ttsSettings?: TTSJobSettings,
+  referenceTranscript?: string
 ): Promise<string> {
   const payloadSizeKB = referenceAudioBase64
     ? ((referenceAudioBase64.length * 0.75) / 1024).toFixed(2)
@@ -1699,11 +1755,19 @@ async function startTTSJob(
     inputPayload.reference_audio_base64 = referenceAudioBase64;
   }
 
+  // Pass reference transcript for VoxCPM2 ultimate cloning mode
+  if (referenceTranscript) {
+    inputPayload.reference_transcript = referenceTranscript;
+  }
+
   // Pass TTS settings to RunPod worker
   if (ttsSettings) {
     if (ttsSettings.emotionMarker !== undefined) {
-      // Convert "none" (used for Radix Select compatibility) to empty string
-      inputPayload.emotion_marker = ttsSettings.emotionMarker === "none" ? "" : ttsSettings.emotionMarker;
+      // VoxCPM2 does not support Fish-style text emotion markers like "(sincere)"
+      // Sending them causes the model to speak the markers as literal text
+      // Only pass emotion_marker for backward compatibility, leave emotion empty
+      const emotionValue = ttsSettings.emotionMarker === "none" ? "" : ttsSettings.emotionMarker;
+      inputPayload.emotion_marker = emotionValue;
     }
     if (ttsSettings.temperature !== undefined) {
       inputPayload.temperature = ttsSettings.temperature;
@@ -1737,7 +1801,7 @@ async function startTTSJob(
 
     let response: Awaited<ReturnType<typeof fetch>>;
     try {
-      response = await fetch(`${RUNPOD_API_URL}/run`, {
+      response = await fetch(`${RUNPOD_VOXCPM2_API_URL}/run`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1784,7 +1848,7 @@ async function pollJobStatus(jobId: string, apiKey: string): Promise<{ audio_bas
   logger.debug(`Polling job ${jobId}`);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const response = await fetch(`${RUNPOD_API_URL}/status/${jobId}`, {
+    const response = await fetch(`${RUNPOD_VOXCPM2_API_URL}/status/${jobId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -1839,7 +1903,8 @@ async function generateTTSChunkWithRetry(
   referenceAudioBase64: string | undefined,
   chunkIndex: number,
   totalChunks: number,
-  ttsSettings?: TTSJobSettings
+  ttsSettings?: TTSJobSettings,
+  referenceTranscript?: string
 ): Promise<Buffer> {
   let lastError: Error | null = null;
 
@@ -1858,7 +1923,7 @@ async function generateTTSChunkWithRetry(
       }
 
       logger.debug(`Starting TTS job for chunk ${chunkIndex + 1}/${totalChunks} (attempt ${attempt + 1}/${RETRY_MAX_ATTEMPTS})`);
-      const jobId = await startTTSJob(ttsText, apiKey, referenceAudioBase64, ttsSettings);
+      const jobId = await startTTSJob(ttsText, apiKey, referenceAudioBase64, ttsSettings, referenceTranscript);
       const output = await pollJobStatus(jobId, apiKey);
       const audioData = base64ToBuffer(output.audio_base64);
 
@@ -2128,7 +2193,7 @@ router.post('/', async (req: Request, res: Response) => {
   const segMode: SegmentationMode = segmentationMode === 'legacy' ? 'legacy' : 'progressive';
 
   // Extract TTS settings with defaults
-  const emotionMarker = ttsSettings.emotionMarker ?? '(sincere) (soft tone)';
+  const emotionMarker = ttsSettings.emotionMarker ?? '';
   const ttsTemperature = ttsSettings.temperature ?? 0.9;
   const ttsTopP = ttsSettings.topP ?? 0.85;
   const ttsRepetitionPenalty = ttsSettings.repetitionPenalty ?? 1.1;
@@ -2416,43 +2481,27 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
     sendEvent({ type: 'progress', progress: 90, message: 'Uploading audio file...' });
 
-    const credentials = getSupabaseCredentials();
-    if (!credentials) {
-      sendEvent({ type: 'error', error: 'Supabase credentials not configured' });
-      res.end();
-      return;
-    }
-
-    const supabase = createClient(credentials.url, credentials.key);
     const fileName = `${projectId || crypto.randomUUID()}/voiceover.wav`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('generated-assets')
-      .upload(fileName, finalAudio, {
-        contentType: 'audio/wav',
-        upsert: true,
-      });
-
-    if (uploadError) {
-      console.error('Upload error:', uploadError);
-      const errorMsg = `Failed to upload audio: ${uploadError.message || JSON.stringify(uploadError)}`;
+    let audioPublicUrl: string;
+    try {
+      audioPublicUrl = await uploadToR2(fileName, finalAudio, 'audio/wav');
+    } catch (uploadErr) {
+      console.error('Upload error:', uploadErr);
+      const errorMsg = `Failed to upload audio: ${uploadErr instanceof Error ? uploadErr.message : JSON.stringify(uploadErr)}`;
       sendEvent({ type: 'error', error: errorMsg });
       res.end();
       return;
     }
 
-    const { data: urlData } = supabase.storage
-      .from('generated-assets')
-      .getPublicUrl(fileName);
-
-    console.log('Audio uploaded:', urlData.publicUrl);
+    console.log('Audio uploaded:', audioPublicUrl);
 
     // Get audio issues for response
     const audioIssues = integrityResult.issues.filter(i => i.type === 'skip' || i.type === 'discontinuity');
 
     sendEvent({
       type: 'complete',
-      audioUrl: urlData.publicUrl,
+      audioUrl: audioPublicUrl,
       duration: durationRounded,
       size: finalAudio.length,
       audioIntegrity: {
@@ -2531,6 +2580,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
     const referenceAudioBase64 = await downloadVoiceSample(voiceSampleUrl);
     console.log(`Voice sample ready: ${referenceAudioBase64.length} chars base64`);
+    const voiceSampleTranscript = await getVoiceSampleTranscript(voiceSampleUrl, referenceAudioBase64);
 
     const credentials = getSupabaseCredentials();
     if (!credentials) {
@@ -2624,7 +2674,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           });
 
           try {
-            const audioData = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, ttsJobSettings);
+            const audioData = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, ttsJobSettings, voiceSampleTranscript);
             console.log(`  Segment ${segmentNumber} - Chunk ${chunkIdx + 1}/${chunks.length}: ${audioData.length} bytes`);
 
             // Incrementally concatenate instead of accumulating in array
@@ -2709,27 +2759,20 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
         // Upload this segment
         const fileName = `${actualProjectId}/voiceover-segment-${segmentNumber}.wav`;
 
-        const { error: uploadError } = await supabase.storage
-          .from('generated-assets')
-          .upload(fileName, segmentAudio, {
-            contentType: 'audio/wav',
-            upsert: true,
-          });
-
-        if (uploadError) {
-          logger.error(`Failed to upload segment ${segmentNumber}: ${uploadError.message}`);
-          throw new Error(`Failed to upload segment ${segmentNumber}: ${uploadError.message}`);
+        let segmentPublicUrl: string;
+        try {
+          segmentPublicUrl = await uploadToR2(fileName, segmentAudio, 'audio/wav');
+        } catch (uploadErr) {
+          const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+          logger.error(`Failed to upload segment ${segmentNumber}: ${msg}`);
+          throw new Error(`Failed to upload segment ${segmentNumber}: ${msg}`);
         }
 
-        const { data: urlData } = supabase.storage
-          .from('generated-assets')
-          .getPublicUrl(fileName);
-
-        console.log(`Segment ${segmentNumber} COMPLETED: ${urlData.publicUrl}`);
+        console.log(`Segment ${segmentNumber} COMPLETED: ${segmentPublicUrl}`);
 
         // Store result (WITHOUT buffer to save memory - we'll re-download later)
         // Add cache buster to prevent browser/CDN serving old cached audio after regeneration
-        const cacheBustedSegmentUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+        const cacheBustedSegmentUrl = `${segmentPublicUrl}?t=${Date.now()}`;
         allSegmentResults.push({
           index: segmentNumber,
           audioUrl: cacheBustedSegmentUrl,
@@ -2875,29 +2918,14 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       logger.info(`Files in ${actualProjectId}:`, listData?.map(f => f.name).join(', '));
     }
 
-    const { data: firstData, error: firstError } = await supabase.storage
-      .from('generated-assets')
-      .download(firstFileName);
-
-    if (firstError || !firstData) {
-      // Log all possible error properties
+    let firstBuffer: Buffer;
+    try {
+      firstBuffer = await downloadFromR2(firstFileName);
+    } catch (firstError) {
       logger.error(`Download failed for ${firstFileName}`);
-      logger.error(`  Error object type: ${typeof firstError}`);
-      logger.error(`  Error constructor: ${firstError?.constructor?.name}`);
-      logger.error(`  Error message: ${firstError?.message}`);
-      logger.error(`  Error name: ${(firstError as any)?.name}`);
-      logger.error(`  Error statusCode: ${(firstError as any)?.statusCode}`);
-      logger.error(`  Error error: ${(firstError as any)?.error}`);
-      logger.error(`  Full error: ${JSON.stringify(firstError)}`);
-      logger.error(`  Error keys: ${firstError ? Object.keys(firstError).join(', ') : 'none'}`);
-      logger.error(`  Error getOwnPropertyNames: ${firstError ? Object.getOwnPropertyNames(firstError).join(', ') : 'none'}`);
-      logger.error(`  Data exists: ${!!firstData}, Error exists: ${!!firstError}`);
-
-      const errorMsg = firstError?.message || (firstError as any)?.error || JSON.stringify(firstError) || 'Unknown error';
-      throw new Error(`Failed to download first segment (${firstFileName}): ${errorMsg}`);
+      logger.error(`  Error: ${firstError instanceof Error ? firstError.message : JSON.stringify(firstError)}`);
+      throw new Error(`Failed to download first segment (${firstFileName}): ${firstError instanceof Error ? firstError.message : String(firstError)}`);
     }
-
-    const firstBuffer = Buffer.from(await firstData.arrayBuffer());
     const firstExtracted = extractWavData(firstBuffer);
 
     // Calculate total PCM size (first segment + estimate for remaining based on file sizes)
@@ -2940,17 +2968,14 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
       console.log(`Streaming segment ${i + 1}/${segmentResults.length}: ${fileName}...`);
 
-      const { data, error } = await supabase.storage
-        .from('generated-assets')
-        .download(fileName);
-
-      if (error || !data) {
-        const errorDetails = error ? JSON.stringify(error, null, 2) : 'No error details';
+      let buffer: Buffer;
+      try {
+        buffer = await downloadFromR2(fileName);
+      } catch (dlError) {
+        const errorDetails = dlError instanceof Error ? dlError.message : JSON.stringify(dlError);
         logger.error(`Download failed for segment ${result.index} (${fileName}):`, errorDetails);
-        throw new Error(`Failed to download segment ${result.index} (${fileName}): ${error?.message || errorDetails}`);
+        throw new Error(`Failed to download segment ${result.index} (${fileName}): ${errorDetails}`);
       }
-
-      const buffer = Buffer.from(await data.arrayBuffer());
       const extracted = extractWavData(buffer);
 
       // Copy just the PCM data
@@ -3037,30 +3062,51 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       console.log(`Speed-adjusted audio: ${finalAudio.length} bytes, ${Math.round(combinedDuration)}s`);
     }
 
-    const combinedFileName = `${actualProjectId}/voiceover.wav`;
     sendEvent({ type: 'progress', progress: 95 });
 
-    console.log(`\n=== Uploading combined audio ===`);
-    console.log(`Final audio: ${finalAudio.length} bytes, ${Math.round(combinedDuration)}s`);
+    // Compress to MP3 if WAV exceeds 200MB (48kHz output for long scripts)
+    let uploadBuffer = finalAudio;
+    let uploadContentType = 'audio/wav';
+    let combinedFileName = `${actualProjectId}/voiceover.wav`;
 
-    const { error: combinedUploadError } = await supabase.storage
-      .from('generated-assets')
-      .upload(combinedFileName, finalAudio, {
-        contentType: 'audio/wav',
-        upsert: true,
-      });
-
-    if (combinedUploadError) {
-      logger.error(`Failed to upload combined audio: ${combinedUploadError.message}`);
-      throw new Error(`Failed to upload combined audio: ${combinedUploadError.message}`);
+    if (finalAudio.length > 200 * 1024 * 1024) {
+      console.log(`\n=== Compressing ${Math.round(finalAudio.length / 1024 / 1024)}MB WAV to MP3 ===`);
+      const tmpWav = `/tmp/combined-${actualProjectId}.wav`;
+      const tmpMp3 = `/tmp/combined-${actualProjectId}.mp3`;
+      const fs = await import('fs/promises');
+      await fs.writeFile(tmpWav, finalAudio);
+      const { execSync } = await import('child_process');
+      try {
+        execSync(`ffmpeg -y -i "${tmpWav}" -codec:a libmp3lame -b:a 64k "${tmpMp3}"`, { timeout: 300000 });
+        uploadBuffer = await fs.readFile(tmpMp3);
+        uploadContentType = 'audio/mpeg';
+        combinedFileName = `${actualProjectId}/voiceover.mp3`;
+        console.log(`Compressed: ${Math.round(finalAudio.length / 1024 / 1024)}MB WAV → ${Math.round(uploadBuffer.length / 1024 / 1024)}MB MP3`);
+      } catch (compressErr) {
+        console.log(`MP3 compression failed, uploading WAV: ${compressErr}`);
+      } finally {
+        await fs.unlink(tmpWav).catch(() => {});
+        await fs.unlink(tmpMp3).catch(() => {});
+      }
     }
 
-    const { data: combinedUrlData } = supabase.storage
-      .from('generated-assets')
-      .getPublicUrl(combinedFileName);
+    console.log(`\n=== Uploading combined audio ===`);
+    console.log(`Final audio: ${uploadBuffer.length} bytes, ${Math.round(combinedDuration)}s`);
+
+    let combinedPublicUrl: string;
+    try {
+      combinedPublicUrl = await uploadToR2(combinedFileName, uploadBuffer, uploadContentType);
+    } catch (combinedUploadErr) {
+      const msg = combinedUploadErr instanceof Error ? combinedUploadErr.message : String(combinedUploadErr);
+      logger.error(`Failed to upload combined audio: ${msg}`);
+      throw new Error(`Failed to upload combined audio: ${msg}`);
+    }
+
+    // Keep segment WAVs for now — user may need to regenerate or recombine
+    // Cleanup runs via 30-day retention policy instead of immediate deletion
 
     // Add cache-busting timestamp to prevent browser showing stale audio after regeneration
-    const cacheBustedAudioUrl = `${combinedUrlData.publicUrl}?t=${Date.now()}`;
+    const cacheBustedAudioUrl = `${combinedPublicUrl}?t=${Date.now()}`;
 
     sendEvent({ type: 'progress', progress: 98 });
 
@@ -3075,7 +3121,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
         projectId,
         source: 'manual',
         step: 'audio',
-        service: 'fish_speech',
+        service: 'voxcpm2',
         units: durationMinutes,
         unitType: 'minutes',
       }).catch(err => console.error('[cost-tracker] Failed to save audio cost:', err));
@@ -3139,10 +3185,12 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 // Handle non-streaming (with or without voice cloning) - SEQUENTIAL - Memory optimized
 async function handleNonStreaming(req: Request, res: Response, chunks: string[], projectId: string, wordCount: number, apiKey: string, voiceSampleUrl?: string, speed: number = 1, ttsJobSettings?: TTSJobSettings) {
   let referenceAudioBase64: string | undefined;
+  let voiceSampleTranscript: string | undefined;
   if (voiceSampleUrl) {
     console.log('Downloading voice sample for cloning...');
     referenceAudioBase64 = await downloadVoiceSample(voiceSampleUrl);
     console.log(`Voice sample ready: ${referenceAudioBase64.length} chars base64`);
+    voiceSampleTranscript = await getVoiceSampleTranscript(voiceSampleUrl, referenceAudioBase64) || undefined;
   }
 
   console.log(`\n=== Processing ${chunks.length} chunks sequentially ===`);
@@ -3157,7 +3205,7 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
     try {
       // Start the TTS job with reference_audio_base64 for cloning (if provided)
-      const jobId = await startTTSJob(chunkText, apiKey, referenceAudioBase64, ttsJobSettings);
+      const jobId = await startTTSJob(chunkText, apiKey, referenceAudioBase64, ttsJobSettings, voiceSampleTranscript);
       console.log(`TTS job started with ID: ${jobId}`);
 
       // Poll for completion
@@ -3204,38 +3252,24 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
   const durationRounded = Math.round(durationSeconds);
   console.log(`Final audio: ${finalAudio.length} bytes, ${durationRounded}s`);
 
-  const credentials = getSupabaseCredentials();
-  if (!credentials) {
-    return res.status(500).json({ error: 'Supabase credentials not configured' });
-  }
-
-  const supabase = createClient(credentials.url, credentials.key);
   const fileName = `${projectId || crypto.randomUUID()}/voiceover.wav`;
 
-  const { error: uploadError } = await supabase.storage
-    .from('generated-assets')
-    .upload(fileName, finalAudio, {
-      contentType: 'audio/wav',
-      upsert: true,
-    });
-
-  if (uploadError) {
-    console.error('Upload error:', uploadError);
-    throw new Error(`Failed to upload audio: ${uploadError.message || JSON.stringify(uploadError)}`);
+  let nonStreamingPublicUrl: string;
+  try {
+    nonStreamingPublicUrl = await uploadToR2(fileName, finalAudio, 'audio/wav');
+  } catch (uploadErr) {
+    console.error('Upload error:', uploadErr);
+    throw new Error(`Failed to upload audio: ${uploadErr instanceof Error ? uploadErr.message : JSON.stringify(uploadErr)}`);
   }
 
-  const { data: urlData } = supabase.storage
-    .from('generated-assets')
-    .getPublicUrl(fileName);
-
-  // Save cost to Supabase (Fish Speech: $0.004/minute of audio output)
+  // Save cost to Supabase (VoxCPM2: $0.006/minute of audio output)
   if (projectId) {
     const durationMinutes = durationSeconds / 60;
     saveCost({
       projectId,
       source: 'manual',
       step: 'audio',
-      service: 'fish_speech',
+      service: 'voxcpm2',
       units: durationMinutes,
       unitType: 'minutes',
     }).catch(err => console.error('[cost-tracker] Failed to save audio cost:', err));
@@ -3243,7 +3277,7 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
   return res.json({
     success: true,
-    audioUrl: urlData.publicUrl,
+    audioUrl: nonStreamingPublicUrl,
     duration: durationRounded,
     wordCount,
     size: finalAudio.length
@@ -3285,6 +3319,7 @@ router.post('/segment', async (req: Request, res: Response) => {
     // Download voice sample
     const referenceAudioBase64 = await downloadVoiceSample(voiceSampleUrl);
     console.log(`Voice sample ready: ${referenceAudioBase64.length} chars base64`);
+    const voiceSampleTranscript = await getVoiceSampleTranscript(voiceSampleUrl, referenceAudioBase64) || undefined;
 
     // Clean segment text - remove markdown and metadata (same as main endpoint)
     const cleanSegmentText = segmentText
@@ -3374,7 +3409,7 @@ router.post('/segment', async (req: Request, res: Response) => {
             repetitionPenalty: ttsSettings.repetitionPenalty,
           } : undefined;
 
-          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, ttsJobSettings);
+          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, ttsJobSettings, voiceSampleTranscript);
           const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
           const audioData = base64ToBuffer(output.audio_base64);
 
@@ -3412,28 +3447,20 @@ router.post('/segment', async (req: Request, res: Response) => {
 
     console.log(`Segment ${segmentIndex} audio: ${segmentAudio.length} bytes, ${durationRounded}s`);
 
-    // Upload to Supabase
-    const supabase = createClient(credentials.url, credentials.key);
+    // Upload to R2
     const fileName = `${projectId}/voiceover-segment-${segmentIndex}.wav`;
 
-    const { error: uploadError } = await supabase.storage
-      .from('generated-assets')
-      .upload(fileName, segmentAudio, {
-        contentType: 'audio/wav',
-        upsert: true,
-      });
-
-    if (uploadError) {
-      logger.error(`Failed to upload segment: ${uploadError.message}`);
-      return res.status(500).json({ error: `Upload failed: ${uploadError.message}` });
+    let segmentUrl: string;
+    try {
+      segmentUrl = await uploadToR2(fileName, segmentAudio, 'audio/wav');
+    } catch (uploadErr) {
+      const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+      logger.error(`Failed to upload segment: ${msg}`);
+      return res.status(500).json({ error: `Upload failed: ${msg}` });
     }
 
-    const { data: urlData } = supabase.storage
-      .from('generated-assets')
-      .getPublicUrl(fileName);
-
     // Add cache-busting timestamp to URL to force browser to reload
-    const cacheBustedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+    const cacheBustedUrl = `${segmentUrl}?t=${Date.now()}`;
 
     console.log(`Segment ${segmentIndex} regenerated: ${cacheBustedUrl}`);
 
@@ -3491,6 +3518,7 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
     logger.info(`[regenerate-segment] project=${projectId} segment=${segmentNumber} (text from DB: ${target.text.length} chars)`);
 
     const referenceAudioBase64 = await downloadVoiceSample(voiceSampleUrl);
+    const voiceSampleTranscript = await getVoiceSampleTranscript(voiceSampleUrl, referenceAudioBase64) || undefined;
 
     const cleanText = normalizeText(
       target.text
@@ -3530,7 +3558,7 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
         const chunkIndex = batch + i;
         try {
           const ttsText = applyPronunciationFixes(chunkText);
-          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, jobSettings);
+          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, jobSettings, voiceSampleTranscript);
           const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
           const audioData = base64ToBuffer(output.audio_base64);
           return { index: chunkIndex, audio: audioData, text: chunkText };
@@ -3553,17 +3581,16 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
     const { wav: segmentAudio, durationSeconds } = concatenateWavFilesWithPauses(audioChunks, textChunks);
     const durationRounded = Math.round(durationSeconds * 10) / 10;
 
-    const supabase = createClient(credentials.url, credentials.key);
     const fileName = `${projectId}/voiceover-segment-${segmentNumber}.wav`;
-    const { error: uploadError } = await supabase.storage
-      .from('generated-assets')
-      .upload(fileName, segmentAudio, { contentType: 'audio/wav', upsert: true });
-    if (uploadError) {
-      return res.status(500).json({ error: `Upload failed: ${uploadError.message}` });
+    let regenSegmentUrl: string;
+    try {
+      regenSegmentUrl = await uploadToR2(fileName, segmentAudio, 'audio/wav');
+    } catch (uploadErr) {
+      const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+      return res.status(500).json({ error: `Upload failed: ${msg}` });
     }
 
-    const { data: urlData } = supabase.storage.from('generated-assets').getPublicUrl(fileName);
-    const cacheBustedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+    const cacheBustedUrl = `${regenSegmentUrl}?t=${Date.now()}`;
 
     logger.info(`[regenerate-segment] segment ${segmentNumber} uploaded: ${cacheBustedUrl}`);
 
@@ -3721,12 +3748,18 @@ router.post('/word', async (req: Request, res: Response) => {
     // RunPod works better with base64 than URLs
     const referenceAudioBase64 = await downloadVoiceSample(voiceSampleUrl);
     console.log(`[Word Preview] Voice sample ready: ${referenceAudioBase64.length} chars base64`);
+    const wordPreviewTranscript = await getVoiceSampleTranscript(voiceSampleUrl, referenceAudioBase64);
 
     // Build input payload with same TTS settings as original audio generation
     const inputPayload: Record<string, unknown> = {
       text: textToSpeak,
       reference_audio_base64: referenceAudioBase64,
     };
+
+    // Add reference transcript for VoxCPM2 ultimate cloning mode
+    if (wordPreviewTranscript) {
+      inputPayload.reference_transcript = wordPreviewTranscript;
+    }
 
     // Apply TTS settings to match original voice characteristics
     if (ttsSettings) {
@@ -3742,7 +3775,7 @@ router.post('/word', async (req: Request, res: Response) => {
     }
 
     // Start TTS job
-    const startResponse = await fetch(`${RUNPOD_API_URL}/run`, {
+    const startResponse = await fetch(`${RUNPOD_VOXCPM2_API_URL}/run`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${RUNPOD_API_KEY}`,
@@ -3771,7 +3804,7 @@ router.post('/word', async (req: Request, res: Response) => {
     while (Date.now() - startTime < timeout) {
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const statusResponse = await fetch(`${RUNPOD_API_URL}/status/${jobId}`, {
+      const statusResponse = await fetch(`${RUNPOD_VOXCPM2_API_URL}/status/${jobId}`, {
         headers: { 'Authorization': `Bearer ${RUNPOD_API_KEY}` },
       });
 
@@ -3820,12 +3853,6 @@ router.post('/recombine', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'projectId is required' });
   }
 
-  const credentials = getSupabaseCredentials();
-  if (!credentials) {
-    return res.status(500).json({ error: 'Supabase credentials not configured' });
-  }
-
-  const supabase = createClient(credentials.url, credentials.key);
   const numSegments = segmentCount || 10;
 
   try {
@@ -3837,18 +3864,17 @@ router.post('/recombine', async (req: Request, res: Response) => {
     for (let i = 1; i <= numSegments; i++) {
       const segmentPath = `${projectId}/voiceover-segment-${i}.wav`;
 
-      const { data, error } = await supabase.storage
-        .from('generated-assets')
-        .download(segmentPath);
-
-      if (error || !data) {
-        console.error(`Failed to download segment ${i}: ${error?.message}`);
+      let segBuf: Buffer;
+      try {
+        segBuf = await downloadFromR2(segmentPath);
+      } catch (dlErr) {
+        const msg = dlErr instanceof Error ? dlErr.message : String(dlErr);
+        console.error(`Failed to download segment ${i}: ${msg}`);
         return res.status(404).json({ error: `Segment ${i} not found` });
       }
 
-      const arrayBuffer = await data.arrayBuffer();
-      segmentBuffers.push(Buffer.from(arrayBuffer));
-      console.log(`Downloaded segment ${i}: ${segmentBuffers[i-1].length} bytes`);
+      segmentBuffers.push(segBuf);
+      console.log(`Downloaded segment ${i}: ${segBuf.length} bytes`);
     }
 
     // Concatenate all segments
@@ -3858,26 +3884,46 @@ router.post('/recombine', async (req: Request, res: Response) => {
     // NOTE: Smoothing skipped - segments already smoothed before upload
     // Segment-to-segment boundaries are natural (no chunk glitches)
 
-    // Upload combined audio
-    const combinedFileName = `${projectId}/voiceover.wav`;
-    const { error: uploadError } = await supabase.storage
-      .from('generated-assets')
-      .upload(combinedFileName, combinedAudio, {
-        contentType: 'audio/wav',
-        upsert: true
-      });
+    // Compress to MP3 if WAV exceeds 200MB
+    let uploadBuffer = combinedAudio;
+    let uploadContentType = 'audio/wav';
+    let combinedFileName = `${projectId}/voiceover.wav`;
 
-    if (uploadError) {
-      logger.error(`Failed to upload combined audio: ${uploadError.message}`);
-      return res.status(500).json({ error: `Upload failed: ${uploadError.message}` });
+    if (combinedAudio.length > 200 * 1024 * 1024) {
+      console.log(`Compressing ${Math.round(combinedAudio.length / 1024 / 1024)}MB WAV to MP3...`);
+      const tmpWav = `/tmp/recombine-${projectId}.wav`;
+      const tmpMp3 = `/tmp/recombine-${projectId}.mp3`;
+      const fs = await import('fs/promises');
+      await fs.writeFile(tmpWav, combinedAudio);
+      const { execSync } = await import('child_process');
+      try {
+        execSync(`ffmpeg -y -i "${tmpWav}" -codec:a libmp3lame -b:a 64k "${tmpMp3}"`, { timeout: 300000 });
+        uploadBuffer = await fs.readFile(tmpMp3);
+        uploadContentType = 'audio/mpeg';
+        combinedFileName = `${projectId}/voiceover.mp3`;
+        console.log(`Compressed: ${Math.round(combinedAudio.length / 1024 / 1024)}MB → ${Math.round(uploadBuffer.length / 1024 / 1024)}MB MP3`);
+      } catch (compressErr) {
+        console.log(`MP3 compression failed: ${compressErr}`);
+      } finally {
+        await fs.unlink(tmpWav).catch(() => {});
+        await fs.unlink(tmpMp3).catch(() => {});
+      }
     }
 
-    const { data: urlData } = supabase.storage
-      .from('generated-assets')
-      .getPublicUrl(combinedFileName);
+    let recombinePublicUrl: string;
+    try {
+      recombinePublicUrl = await uploadToR2(combinedFileName, uploadBuffer, uploadContentType);
+    } catch (uploadErr) {
+      const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
+      logger.error(`Failed to upload combined audio: ${msg}`);
+      return res.status(500).json({ error: `Upload failed: ${msg}` });
+    }
+
+    // Keep segment WAVs — user may need to regenerate or recombine again
+    // Cleanup runs via 30-day retention policy instead
 
     // Add cache-busting timestamp
-    const cacheBustedUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+    const cacheBustedUrl = `${recombinePublicUrl}?t=${Date.now()}`;
 
     console.log(`Recombined audio uploaded: ${cacheBustedUrl}`);
 

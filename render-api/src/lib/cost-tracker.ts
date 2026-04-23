@@ -16,7 +16,8 @@ export const PRICING = {
   claude_input: 3 / 1_000_000,      // $3 per 1M input tokens
   claude_output: 15 / 1_000_000,    // $15 per 1M output tokens
   claude_vision: 0.004,             // per image scanned with Claude Vision
-  fish_speech: 0.008,               // $0.008/minute audio output
+  fish_speech: 0.008,               // $0.008/minute audio output (legacy, kept as dead code)
+  voxcpm2: 0.006,                   // $0.006/minute (8GB GPU at ~$0.36/hr)
   z_image: 0.0084,                  // $0.0084/image
   seedance: 0.08,                   // per clip (flat rate via Kie.ai)
   whisper: 0.006,                   // $0.006/minute
@@ -75,6 +76,9 @@ export async function saveCost(params: CostRecord): Promise<number> {
       break;
     case 'fish_speech':
       unitCost = PRICING.fish_speech;
+      break;
+    case 'voxcpm2':
+      unitCost = PRICING.voxcpm2;
       break;
     case 'z_image':
       unitCost = PRICING.z_image;

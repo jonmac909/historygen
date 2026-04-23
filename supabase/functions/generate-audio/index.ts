@@ -10,7 +10,7 @@ const RUNPOD_ENDPOINT_ID = Deno.env.get('RUNPOD_ENDPOINT_ID') || "7gv5y0snx5xiwk
 const RUNPOD_API_URL = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}`;
 
 // TTS Configuration Constants
-const MAX_TTS_CHUNK_LENGTH = 250; // Fish Speech supports up to 2000 chars, using 250 to match Railway API
+const MAX_TTS_CHUNK_LENGTH = 500; // VoxCPM2 supports up to 500 chars per chunk
 const MIN_TEXT_LENGTH = 5; // Minimum characters required for valid TTS input
 const MAX_TEXT_LENGTH = 400; // Maximum total text length to process
 const MAX_VOICE_SAMPLE_SIZE = 10 * 1024 * 1024; // 10MB max voice sample file size
