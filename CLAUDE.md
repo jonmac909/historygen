@@ -66,7 +66,7 @@ File: `render-api/src/lib/cost-tracker.ts`
 **Supabase Edge Functions:**
 ```bash
 cd /Users/jacquelineyeung/AutoAiGen/history-gen-ai
-SUPABASE_ACCESS_TOKEN="REDACTED_SUPABASE_TOKEN" npx supabase functions deploy <function-name> --project-ref udqfdeoullsxttqguupz
+SUPABASE_ACCESS_TOKEN="$SUPABASE_ACCESS_TOKEN" npx supabase functions deploy <function-name> --project-ref udqfdeoullsxttqguupz
 ```
 
 **Project IDs:**
