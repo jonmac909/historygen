@@ -1,0 +1,76 @@
+name: Auto Poster - Daily Video Generation
+
+on:
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'YouTube URL to clone (leave empty for auto-selection)'
+        required: false
+        default: ''
+      force:
+        description: 'Force run even if already ran today'
+        required: false
+        default: 'true'
+        type: boolean
+
+  # Scheduled run at 6:00 AM PST (14:00 UTC) daily
+  schedule:
+    - cron: '0 14 * * *'  # 6am PST = 2pm UTC (PST is UTC-8)
+
+jobs:
+  run-auto-poster:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Auto Poster
+        run: |
+          echo "🚀 Starting Auto Poster..."
+          echo "Time: $(date)"
+
+          # Build JSON payload
+          if [ -n "${{ github.event.inputs.video_url }}" ]; then
+            PAYLOAD=$(jq -n \
+              --arg url "${{ github.event.inputs.video_url }}" \
+              --argjson force ${{ github.event.inputs.force || 'true' }} \
+              '{videoUrl: $url, force: $force}')
+            echo "📹 Running specific video: ${{ github.event.inputs.video_url }}"
+          else
+            PAYLOAD='{"force": true}'
+            echo "🎲 Auto-selecting best outlier video"
+          fi
+
+          echo "Payload: $PAYLOAD"
+
+          # Call Railway endpoint
+          RESPONSE=$(curl -X POST "https://marvelous-blessing-staging.up.railway.app/auto-clone" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            -w "\n%{http_code}" -s)
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | head -n-1)
+
+          echo "HTTP Status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+            echo "✅ Auto Poster triggered successfully!"
+          else
+            echo "❌ Auto Poster failed with status $HTTP_CODE"
+            exit 1
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Auto Poster Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Time**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          if [ -n "${{ github.event.inputs.video_url }}" ]; then
+            echo "- **Video**: ${{ github.event.inputs.video_url }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Video**: Auto-selected outlier" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check Railway logs for pipeline progress." >> $GITHUB_STEP_SUMMARY

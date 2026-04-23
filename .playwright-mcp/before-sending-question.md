@@ -1,0 +1,229 @@
+### Page state
+- Page URL: https://autoaigen.com/video-analysis
+- Page Title: HistoryGen AI - AI-Powered Historical Narrative Generator
+- Page Snapshot:
+```yaml
+- generic:
+  - generic:
+    - list
+    - region "Notifications alt+T"
+    - generic:
+      - generic:
+        - generic:
+          - button:
+            - img
+          - generic:
+            - heading [level=1]: Video Analysis
+          - button:
+            - img
+            - text: Refresh
+      - generic:
+        - generic:
+          - generic:
+            - heading [level=3]:
+              - img
+              - text: Analyze New Video
+            - paragraph: Enter a YouTube URL to extract visual style patterns, pacing, and color analysis
+          - generic:
+            - generic:
+              - textbox:
+                - /placeholder: https://youtube.com/watch?v=... or video ID
+              - button [disabled]:
+                - img
+                - text: Analyze
+        - generic:
+          - generic:
+            - heading [level=3]:
+              - img
+              - text: Analyzed Videos
+            - paragraph: Click a video to view detailed analysis and ask questions
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+                  - generic:
+                    - paragraph: dQw4w9WgXcQ
+                    - generic:
+                      - generic: 3:33
+                      - generic: • 3.2s scenes
+                      - generic: • 18.6 cuts/min
+                - generic:
+                  - button:
+                    - img
+                  - button:
+                    - img
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+                  - generic:
+                    - paragraph: medTest_1768327986
+                    - generic:
+                      - generic: 4:12
+                      - generic: • 2.4s scenes
+                      - generic: • 24.5 cuts/min
+                - generic:
+                  - button:
+                    - img
+                  - button:
+                    - img
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+                  - generic:
+                    - paragraph: shortTest1
+                    - generic:
+                      - generic: 3:33
+                      - generic: • 3.2s scenes
+                      - generic: • 18.6 cuts/min
+                - generic:
+                  - button:
+                    - img
+                  - button:
+                    - img
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+                  - generic:
+                    - paragraph: fresh_1768290613
+                    - generic:
+                      - generic: 86:20
+                      - generic: • 5179.7s scenes
+                      - generic: • 0.0 cuts/min
+                - generic:
+                  - button:
+                    - img
+                  - button:
+                    - img
+  - dialog "dQw4w9WgXcQ" [ref=e101]:
+    - generic [ref=e102]:
+      - heading "dQw4w9WgXcQ" [level=2] [ref=e103]:
+        - img [ref=e104]
+        - text: dQw4w9WgXcQ
+      - paragraph [ref=e107]: Video analysis details and scene breakdown
+    - generic [ref=e108]:
+      - iframe [ref=e110]:
+        - generic "YouTube Video Player" [ref=f1e3]:
+          - generic [ref=f1e5]:
+            - link "Photo image of Rick Astley" [ref=f1e8] [cursor=pointer]:
+              - /url: https://www.youtube.com/channel/UCuAXFkgsw1L7xaCfnd5JJOw?embeds_referring_euri=https%3A%2F%2Fautoaigen.com%2F
+            - link "Rick Astley - Never Gonna Give You Up (Official Video) (4K Remaster)" [ref=f1e11] [cursor=pointer]:
+              - /url: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+            - button "Share" [ref=f1e13] [cursor=pointer]:
+              - generic [ref=f1e14]:
+                - img
+              - generic [ref=f1e15]: Share
+          - button "Play" [ref=f1e18] [cursor=pointer]:
+            - img
+          - link "Watch on YouTube" [ref=f1e19] [cursor=pointer]:
+            - /url: https://www.youtube.com/watch?v=dQw4w9WgXcQ&embeds_referring_euri=https%3A%2F%2Fautoaigen.com%2F
+            - generic [ref=f1e20]: Watch on
+            - generic [ref=f1e21]:
+              - img
+      - generic [ref=e111]:
+        - generic [ref=e112]:
+          - paragraph [ref=e113]: 3:33
+          - paragraph [ref=e114]: Duration
+        - generic [ref=e115]:
+          - paragraph [ref=e116]: "66"
+          - paragraph [ref=e117]: Scenes
+        - generic [ref=e118]:
+          - paragraph [ref=e119]: 3.2s
+          - paragraph [ref=e120]: Avg Scene
+        - generic [ref=e121]:
+          - paragraph [ref=e122]: "18.6"
+          - paragraph [ref=e123]: Cuts/Min
+      - generic [ref=e124]:
+        - heading "Dominant Colors" [level=4] [ref=e125]
+        - generic [ref=e126]:
+          - generic [ref=e129]: "#382008"
+          - generic [ref=e132]: "#a0a8c8"
+          - generic [ref=e135]: "#705030"
+          - generic [ref=e138]: "#182830"
+          - generic [ref=e141]: "#787080"
+      - generic [ref=e142]:
+        - heading "Scene Color Timeline" [level=4] [ref=e143]
+        - generic [ref=e144]:
+          - 'generic "Scene 1: 0.0s - 2.0s" [ref=e145] [cursor=pointer]'
+          - 'generic "Scene 2: 2.0s - 7.4s" [ref=e146] [cursor=pointer]'
+          - 'generic "Scene 3: 7.4s - 9.4s" [ref=e147] [cursor=pointer]'
+          - 'generic "Scene 4: 9.4s - 11.2s" [ref=e148] [cursor=pointer]'
+          - 'generic "Scene 5: 11.2s - 18.2s" [ref=e149] [cursor=pointer]'
+          - 'generic "Scene 6: 18.2s - 22.9s" [ref=e150] [cursor=pointer]'
+          - 'generic "Scene 7: 22.9s - 28.9s" [ref=e151] [cursor=pointer]'
+          - 'generic "Scene 8: 28.9s - 31.0s" [ref=e152] [cursor=pointer]'
+          - 'generic "Scene 9: 31.0s - 33.2s" [ref=e153] [cursor=pointer]'
+          - 'generic "Scene 10: 33.2s - 37.7s" [ref=e154] [cursor=pointer]'
+          - 'generic "Scene 11: 37.7s - 39.6s" [ref=e155] [cursor=pointer]'
+          - 'generic "Scene 12: 39.6s - 42.3s" [ref=e156] [cursor=pointer]'
+          - 'generic "Scene 13: 42.3s - 43.6s" [ref=e157] [cursor=pointer]'
+          - 'generic "Scene 14: 43.6s - 44.3s" [ref=e158] [cursor=pointer]'
+          - 'generic "Scene 15: 44.3s - 48.0s" [ref=e159] [cursor=pointer]'
+          - 'generic "Scene 16: 48.0s - 51.1s" [ref=e160] [cursor=pointer]'
+          - 'generic "Scene 17: 51.1s - 53.6s" [ref=e161] [cursor=pointer]'
+          - 'generic "Scene 18: 53.6s - 55.5s" [ref=e162] [cursor=pointer]'
+          - 'generic "Scene 19: 55.5s - 57.0s" [ref=e163] [cursor=pointer]'
+          - 'generic "Scene 20: 57.0s - 60.7s" [ref=e164] [cursor=pointer]'
+          - 'generic "Scene 21: 60.7s - 72.6s" [ref=e165] [cursor=pointer]'
+          - 'generic "Scene 22: 72.6s - 76.2s" [ref=e166] [cursor=pointer]'
+          - 'generic "Scene 23: 76.2s - 77.2s" [ref=e167] [cursor=pointer]'
+          - 'generic "Scene 24: 77.2s - 78.3s" [ref=e168] [cursor=pointer]'
+          - 'generic "Scene 25: 78.3s - 79.7s" [ref=e169] [cursor=pointer]'
+          - 'generic "Scene 26: 79.7s - 80.2s" [ref=e170] [cursor=pointer]'
+          - 'generic "Scene 27: 80.2s - 82.4s" [ref=e171] [cursor=pointer]'
+          - 'generic "Scene 28: 82.4s - 89.4s" [ref=e172] [cursor=pointer]'
+          - 'generic "Scene 29: 89.4s - 90.0s" [ref=e173] [cursor=pointer]'
+          - 'generic "Scene 30: 90.0s - 91.4s" [ref=e174] [cursor=pointer]'
+          - 'generic "Scene 31: 91.4s - 93.0s" [ref=e175] [cursor=pointer]'
+          - 'generic "Scene 32: 93.0s - 93.9s" [ref=e176] [cursor=pointer]'
+          - 'generic "Scene 33: 93.9s - 95.7s" [ref=e177] [cursor=pointer]'
+          - 'generic "Scene 34: 95.7s - 96.5s" [ref=e178] [cursor=pointer]'
+          - 'generic "Scene 35: 96.5s - 98.0s" [ref=e179] [cursor=pointer]'
+          - 'generic "Scene 36: 98.0s - 100.0s" [ref=e180] [cursor=pointer]'
+          - 'generic "Scene 37: 100.0s - 101.4s" [ref=e181] [cursor=pointer]'
+          - 'generic "Scene 38: 101.4s - 102.6s" [ref=e182] [cursor=pointer]'
+          - 'generic "Scene 39: 102.6s - 106.4s" [ref=e183] [cursor=pointer]'
+          - 'generic "Scene 40: 106.4s - 108.3s" [ref=e184] [cursor=pointer]'
+          - 'generic "Scene 41: 108.3s - 110.1s" [ref=e185] [cursor=pointer]'
+          - 'generic "Scene 42: 110.1s - 110.7s" [ref=e186] [cursor=pointer]'
+          - 'generic "Scene 43: 110.7s - 114.7s" [ref=e187] [cursor=pointer]'
+          - 'generic "Scene 44: 114.7s - 119.8s" [ref=e188] [cursor=pointer]'
+          - 'generic "Scene 45: 119.8s - 123.0s" [ref=e189] [cursor=pointer]'
+          - 'generic "Scene 46: 123.0s - 130.2s" [ref=e190] [cursor=pointer]'
+          - 'generic "Scene 47: 130.2s - 134.2s" [ref=e191] [cursor=pointer]'
+          - 'generic "Scene 48: 134.2s - 135.3s" [ref=e192] [cursor=pointer]'
+          - 'generic "Scene 49: 135.3s - 138.1s" [ref=e193] [cursor=pointer]'
+          - 'generic "Scene 50: 138.1s - 140.2s" [ref=e194] [cursor=pointer]'
+          - 'generic "Scene 51: 140.2s - 141.1s" [ref=e195] [cursor=pointer]'
+          - 'generic "Scene 52: 141.1s - 144.0s" [ref=e196] [cursor=pointer]'
+          - 'generic "Scene 53: 144.0s - 144.8s" [ref=e197] [cursor=pointer]'
+          - 'generic "Scene 54: 144.8s - 179.0s" [ref=e198] [cursor=pointer]'
+          - 'generic "Scene 55: 179.0s - 180.6s" [ref=e199] [cursor=pointer]'
+          - 'generic "Scene 56: 180.6s - 183.9s" [ref=e200] [cursor=pointer]'
+          - 'generic "Scene 57: 183.9s - 186.6s" [ref=e201] [cursor=pointer]'
+          - 'generic "Scene 58: 186.6s - 189.5s" [ref=e202] [cursor=pointer]'
+          - 'generic "Scene 59: 189.5s - 190.7s" [ref=e203] [cursor=pointer]'
+          - 'generic "Scene 60: 190.7s - 193.0s" [ref=e204] [cursor=pointer]'
+          - 'generic "Scene 61: 193.0s - 195.2s" [ref=e205] [cursor=pointer]'
+          - 'generic "Scene 62: 195.2s - 197.1s" [ref=e206] [cursor=pointer]'
+          - 'generic "Scene 63: 197.1s - 199.2s" [ref=e207] [cursor=pointer]'
+          - 'generic "Scene 64: 199.2s - 200.8s" [ref=e208] [cursor=pointer]'
+          - 'generic "Scene 65: 200.8s - 203.2s" [ref=e209] [cursor=pointer]'
+          - 'generic "Scene 66: 203.2s - 213.1s" [ref=e210] [cursor=pointer]'
+        - paragraph [ref=e211]: Each segment represents a scene - width proportional to duration
+      - generic [ref=e212]:
+        - heading "Ask About This Video" [level=4] [ref=e213]:
+          - img [ref=e214]
+          - text: Ask About This Video
+        - generic [ref=e217]:
+          - textbox "What visual techniques are used? What's the pacing like?" [active] [ref=e218]: What are the main colors used in this video?
+          - button [ref=e224] [cursor=pointer]:
+            - img
+    - button "Close" [ref=e219] [cursor=pointer]:
+      - img [ref=e220]
+      - generic [ref=e223]: Close
+```

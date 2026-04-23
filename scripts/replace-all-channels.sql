@@ -1,0 +1,68 @@
+-- Replace all saved channels with new verified handles
+-- Run this in Supabase SQL Editor
+
+-- First, delete all existing channels
+DELETE FROM saved_channels;
+
+-- Insert new channels (input field is the @ handle)
+INSERT INTO saved_channels (input, title, subscriber_count) VALUES
+('@SleepyTimeHistoryYT', 'Sleepy Time History', 0),
+('@ForgottenWorldsforSleep', 'Forgotten Worlds for Sleep', 0),
+('@HistorianSleepy', 'Historian Sleepy', 0),
+('@Mysteryhistoryforsleep', 'Mystery History for Sleep', 0),
+('@SleepyHistory-n9k', 'Sleepy History', 0),
+('@SleepTheories', 'Sleep Theories', 0),
+('@Sleep.and.History', 'Sleep and History', 0),
+('@WokeupHistory', 'Woke up History', 0),
+('@snoozetorian', 'The Snoozetorian', 0),
+('@SmarterWhileYouSleep', 'Smarter While You Sleep', 0),
+('@Boringhistorysleeper', 'Boring History Sleeper', 0),
+('@SleepingHistory-2025', 'Sleeping History', 0),
+('@ComfyHistory101', 'Comfy History', 0),
+('@SleepNomad', 'SleepNomad', 0),
+('@TheSleepRoomA', 'The Sleep Room', 0),
+('@TheLongShadoww', 'The Long Shadow', 0),
+('@BrianCoxSleepyZone', 'Brian Cox Sleepy Zone', 0),
+('@iRedditforSleeping-u1m', 'iReddit for Sleeping', 0),
+('@DozingDragonASMR', 'Dozing Dragon ASMR', 0),
+('@TheSleepingStoryVault', 'The Sleeping Story Vault', 0),
+('@WiseSleep', 'WiseSleep', 0),
+('@DivineSleepPrayers', 'Divine Sleep Prayers', 0),
+('@GodsAndMortalsYT', 'Gods And Mortals', 0),
+('@SleepyScienceReal', 'Sleepy Science Real', 0),
+('@Boringsleepvlogs', 'Boring Sleep Vlogs', 0),
+('@LazyChillHistory', 'Lazy Chill History', 0),
+('@DeepSleepingMusic68', 'Deep Sleeping Music', 0),
+('@iTales-y7o', 'iTales', 0),
+('@vaticanmysteries', 'Vatican Mysteries', 0),
+('@DeepSleepKeys19', 'Deep Sleep Keys', 0),
+('@SleepBibleApp', 'Sleep Bible App', 0),
+('@SleepySabASMR', 'Sleepy Sab ASMR', 0),
+('@DustandGloryYT', 'Dust and Glory', 0),
+('@TheLucidMysticsSleepMusic', 'The Lucid Mystics Sleep Music', 0),
+('@dreamflixrelax', 'Dreamflix Relax', 0),
+('@mr.nightscared', 'Mr Night Scared', 0),
+('@shanesleepsgood', 'Shane Sleeps Good', 0),
+('@AGoodMemory01', 'A Good Memory', 0),
+('@SleepingASMRsong', 'Sleeping ASMR Song', 0),
+('@hollertales', 'Holler Tales', 0),
+('@DeepHealingTransformation', 'Deep Healing Transformation', 0),
+('@HappySleepMusic8386', 'Happy Sleep Music', 0),
+('@HypnoticDreamsASMR777', 'Hypnotic Dreams ASMR', 0),
+('@HazyMoodFM', 'Hazy Mood FM', 0),
+('@DrNoSleepPodcast', 'Dr No Sleep Podcast', 0),
+('@SleeplessHomo', 'Sleepless Homo', 0),
+('@NightPsalms-h5v', 'Night Psalms', 0),
+('@vembozzz', 'Vembozzz', 0),
+('@History-Camp', 'History Camp', 0),
+('@TheHistoryTripOfficial', 'The History Trip', 0),
+('@AgedenPro', 'Ageden Pro', 0),
+('@HistoryOrigins01', 'History Origins', 0),
+('@ForgottenLives', 'Forgotten Lives', 0),
+('@Mr.Nightscares', 'Mr Nightscares', 0),
+('@VanishedHistoryYT', 'Vanished History', 0),
+('@unknownexplainedYT', 'Unknown Explained', 0),
+('@MysteryArchives', 'Mystery Archives', 0);
+
+-- Verify
+SELECT input, title FROM saved_channels ORDER BY title;

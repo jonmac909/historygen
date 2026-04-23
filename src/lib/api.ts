@@ -1,0 +1,3769 @@
+import { supabase } from "@/integrations/supabase/client";
+
+const renderApiKey = import.meta.env.VITE_INTERNAL_API_KEY;
+const renderAuthHeader = renderApiKey ? { 'X-Internal-Api-Key': renderApiKey } : {};
+const withRenderAuth = (headers: Record<string, string> = {}) => ({
+  ...headers,
+  ...renderAuthHeader,
+});
+
+/**
+ * Calculate dynamic timeout based on target word count
+ * Formula: min(1800000, (targetWords / 150) * 60000)
+ * Assumes ~150 words/minute generation rate (conservative estimate)
+ * Caps at 30 minutes max to support very long script generation
+ *
+ * @param targetWords - The target word count for script generation
+ * @returns Timeout in milliseconds, capped at 1800000 (30 minutes)
+ */
+export function calculateDynamicTimeout(targetWords: number): number {
+  // Ensure minimum timeout of 2 minutes for any request
+  const MIN_TIMEOUT_MS = 120000;
+  // Cap at 30 minutes to support very long script generation
+  const MAX_TIMEOUT_MS = 1800000;
+
+  // Estimate generation time: ~150 words per minute
+  const estimatedMinutes = Math.ceil(targetWords / 150);
+  const timeoutMs = estimatedMinutes * 60000;
+
+  return Math.max(MIN_TIMEOUT_MS, Math.min(MAX_TIMEOUT_MS, timeoutMs));
+}
+
+export interface TranscriptResult {
+  success: boolean;
+  videoId?: string;
+  title?: string;
+  transcript?: string | null;
+  message?: string;
+  error?: string;
+}
+
+export interface ScriptResult {
+  success: boolean;
+  script?: string;
+  wordCount?: number;
+  error?: string;
+}
+
+export interface HealRange {
+  startSec: number;
+  endSec: number;
+  text: string;
+}
+
+export interface HealInfo {
+  ranges: HealRange[];
+  totalRemovedSec: number;
+}
+
+export interface ReviewIssue {
+  type: 'missing' | 'garbled' | 'extra' | 'mismatch' | string;
+  severity: 'warning' | 'error' | string;
+  originalText?: string;
+  transcribedText?: string;
+  similarity?: number;
+}
+
+export interface AudioSegment {
+  index: number;
+  audioUrl: string;
+  duration: number;
+  size: number;
+  text: string;
+  // Present when loop detection removed one or more phrases from this
+  // segment's audio. Caller can surface these for manual review.
+  heal?: HealInfo;
+  // Present when script-match QA flagged this segment as needing a
+  // manual relisten (garbled audio, missing sentences, etc).
+  // Populated by Captions-page "Scan Script Match" action.
+  needsReview?: { issues: ReviewIssue[] };
+}
+
+export interface AudioResult {
+  success: boolean;
+  audioUrl?: string;
+  audioBase64?: string;
+  duration?: number;
+  size?: number;
+  segments?: AudioSegment[];
+  totalDuration?: number;
+  error?: string;
+}
+
+export interface ScriptQAIssue {
+  type: 'missing' | 'garbled' | 'extra' | 'mismatch';
+  originalText: string;
+  transcribedText: string;
+  similarity?: number;
+  severity: 'warning' | 'error';
+}
+
+export interface ScriptQAResult {
+  score: number;
+  totalScriptSentences: number;
+  matchedSentences: number;
+  issues: ScriptQAIssue[];
+  needsReview: boolean;
+}
+
+export interface CaptionsResult {
+  success: boolean;
+  captionsUrl?: string;
+  srtContent?: string;
+  segmentCount?: number;
+  estimatedDuration?: number;
+  error?: string;
+  scriptQa?: ScriptQAResult;
+}
+
+export interface ImageGenerationResult {
+  success: boolean;
+  images?: string[];
+  error?: string;
+}
+
+export interface ImagePromptWithTiming {
+  index: number;
+  startTime: string;
+  endTime: string;
+  startSeconds: number;
+  endSeconds: number;
+  prompt: string;
+  sceneDescription: string;
+}
+
+export interface ImagePromptsResult {
+  success: boolean;
+  prompts?: ImagePromptWithTiming[];
+  totalDuration?: number;
+  error?: string;
+}
+
+// ============================================================================
+// Video Clip Types (LTX-2)
+// ============================================================================
+
+export interface ClipPrompt {
+  index: number;
+  startSeconds: number;
+  endSeconds: number;
+  prompt: string;
+  sceneDescription: string;
+  imageUrl?: string;  // Source image for I2V video generation
+}
+
+export interface ClipPromptsResult {
+  success: boolean;
+  prompts?: ClipPrompt[];
+  totalDuration?: number;
+  clipCount?: number;
+  clipDuration?: number;
+  error?: string;
+}
+
+export interface GeneratedClip {
+  index: number;
+  videoUrl: string;
+  filename?: string;
+  startSeconds: number;
+  endSeconds: number;
+}
+
+export interface VideoClipsResult {
+  success: boolean;
+  clips?: GeneratedClip[];
+  total?: number;
+  failed?: number;
+  clipDuration?: number;
+  totalDuration?: number;
+  error?: string;
+}
+
+export interface GeneratedAssets {
+  projectId: string;
+  script: string;
+  scriptUrl?: string;
+  audioUrl?: string;
+  captionsUrl?: string;
+  audioDuration?: number;
+}
+
+export async function getYouTubeTranscript(url: string): Promise<TranscriptResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/get-youtube-transcript`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ url })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Transcript error:', response.status, errorText);
+      return { success: false, error: `Failed to fetch transcript: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Transcript error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch transcript' };
+  }
+}
+
+export async function rewriteScript(transcript: string, template: string, title: string): Promise<ScriptResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env' };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/rewrite-script`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ transcript, template, title, stream: false }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Script error:', response.status, errorText);
+      return { success: false, error: `Failed to rewrite script: ${response.status}` };
+    }
+
+    return (await response.json()) as ScriptResult;
+  } catch (error) {
+    console.error('Script error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to rewrite script' };
+  }
+}
+
+export async function rewriteScriptStreaming(
+  transcript: string,
+  template: string,
+  title: string,
+  aiModel: string,
+  wordCount: number,
+  onProgress: (progress: number, wordCount: number) => void,
+  onToken?: (token: string) => void, // Real-time token streaming callback
+  topic?: string, // Specific topic focus to prevent drift (e.g., "Viking Winters")
+  expandWith?: string // Optional expansion topics for short source videos
+): Promise<ScriptResult> {
+  const CHUNK_SIZE = 30000; // Render has no timeout limit - can generate full scripts in one call!
+
+  // For large scripts, split into chunks to avoid Supabase 5-minute timeout
+  if (wordCount > CHUNK_SIZE) {
+    if (import.meta.env.DEV) {
+      console.log(`[Script Generation] Chunking ${wordCount} words into ${Math.ceil(wordCount / CHUNK_SIZE)} chunks of ${CHUNK_SIZE} words`);
+    }
+
+    const numChunks = Math.ceil(wordCount / CHUNK_SIZE);
+    let fullScript = '';
+    let totalWordsGenerated = 0;
+
+    for (let i = 0; i < numChunks; i++) {
+      const chunkWordCount = Math.min(CHUNK_SIZE, wordCount - totalWordsGenerated);
+      const chunkStartProgress = (i / numChunks) * 100;
+      const chunkEndProgress = ((i + 1) / numChunks) * 100;
+
+      if (import.meta.env.DEV) {
+        console.log(`[Script Generation] Generating chunk ${i + 1}/${numChunks}: ${chunkWordCount} words (${chunkStartProgress.toFixed(0)}% - ${chunkEndProgress.toFixed(0)}%)`);
+      }
+
+      // Modify template for continuation chunks
+      let chunkTemplate = template;
+      if (fullScript) {
+        chunkTemplate = `${template}
+
+CRITICAL: You are continuing an existing script. Here is what has been written so far:
+
+${fullScript}
+
+Continue the narrative seamlessly from where this left off. DO NOT repeat any content. DO NOT add headers, titles, or scene markers. Write as if this is a natural continuation of the existing script.`;
+      }
+
+      // Generate this chunk with progress mapping
+      const chunkResult = await generateSingleChunk(
+        transcript,
+        chunkTemplate,
+        title,
+        aiModel,
+        chunkWordCount,
+        (chunkProgress, chunkWords) => {
+          // Map chunk progress to overall progress
+          const overallProgress = chunkStartProgress + (chunkProgress / 100) * (chunkEndProgress - chunkStartProgress);
+          const overallWords = totalWordsGenerated + chunkWords;
+          onProgress(Math.round(overallProgress), overallWords);
+        },
+        onToken, // Pass through token callback
+        topic, // Pass topic for drift prevention
+        expandWith // Pass expansion topics
+      );
+
+      if (!chunkResult.success) {
+        // If chunk failed but we have partial script, return what we have
+        if (fullScript && totalWordsGenerated > 500) {
+          return {
+            success: true,
+            script: fullScript,
+            wordCount: totalWordsGenerated
+          };
+        }
+        return chunkResult;
+      }
+
+      fullScript += (fullScript ? '\n\n' : '') + chunkResult.script;
+      totalWordsGenerated += chunkResult.wordCount || 0;
+
+      if (import.meta.env.DEV) {
+        console.log(`[Script Generation] Chunk ${i + 1}/${numChunks} complete: ${chunkResult.wordCount} words generated (total: ${totalWordsGenerated})`);
+      }
+    }
+
+    return {
+      success: true,
+      script: fullScript,
+      wordCount: totalWordsGenerated
+    };
+  }
+
+  // For scripts <= 5000 words, use single-chunk generation
+  return generateSingleChunk(transcript, template, title, aiModel, wordCount, onProgress, onToken, topic, expandWith);
+}
+
+/**
+ * Internal function to generate a single chunk of script
+ * Handles the actual API call and streaming logic
+ */
+async function generateSingleChunk(
+  transcript: string,
+  template: string,
+  title: string,
+  aiModel: string,
+  wordCount: number,
+  onProgress: (progress: number, wordCount: number) => void,
+  onToken?: (token: string) => void, // Real-time token streaming
+  topic?: string, // Specific topic focus to prevent drift
+  expandWith?: string // Optional expansion topics for short sources
+): Promise<ScriptResult> {
+  // Use Render API for script generation (no timeout limits!)
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  // Add timeout and retry logic for long-running generations
+  const controller = new AbortController();
+  const timeoutMs = calculateDynamicTimeout(wordCount);
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  // Log timeout configuration for development debugging
+  if (import.meta.env.DEV) {
+    console.log('[Script Generation] Using Render API (unlimited timeout):', {
+      targetWordCount: wordCount,
+      renderUrl,
+      overallTimeoutMs: timeoutMs,
+      overallTimeoutMinutes: (timeoutMs / 60000).toFixed(1),
+    });
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/rewrite-script`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ transcript, template, title, topic, expandWith, model: aiModel, wordCount, stream: true }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Script streaming error:', response.status, errorText);
+      return { success: false, error: `Failed to rewrite script: ${response.status}` };
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { success: false, error: 'No response body' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: ScriptResult = { success: false, error: 'No response received from AI' };
+    let lastWordCount = 0;
+    let lastScript = '';
+    let lastEventTime = Date.now();
+    const eventTimeout = 600000; // 10 minute timeout between events (for very long API calls)
+
+    try {
+      while (true) {
+        // Check if we've been waiting too long for an event
+        if (Date.now() - lastEventTime > eventTimeout) {
+          if (import.meta.env.DEV) {
+            console.warn('[Script Generation] Event timeout triggered - no data received for 10 minutes', {
+              lastEventTime: new Date(lastEventTime).toISOString(),
+              elapsedMs: Date.now() - lastEventTime,
+              lastWordCount,
+            });
+          } else {
+            console.warn('Event timeout - no data received for 10 minutes');
+          }
+          break;
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        lastEventTime = Date.now();
+        buffer += decoder.decode(value, { stream: true });
+        
+        // Process complete SSE events
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const event of events) {
+          if (!event.trim()) continue;
+          
+          const dataMatch = event.match(/^data: (.+)$/m);
+          if (dataMatch) {
+            try {
+              const parsed = JSON.parse(dataMatch[1]);
+              
+              if (parsed.type === 'progress') {
+                lastWordCount = parsed.wordCount;
+                onProgress(parsed.progress, parsed.wordCount);
+              } else if (parsed.type === 'token') {
+                // NEW: Stream tokens in real-time for better UX
+                if (onToken && parsed.text) {
+                  onToken(parsed.text);
+                }
+              } else if (parsed.type === 'complete') {
+                lastScript = parsed.script;
+                lastWordCount = parsed.wordCount;
+                result = {
+                  success: parsed.success,
+                  script: parsed.script,
+                  wordCount: parsed.wordCount
+                };
+                onProgress(100, parsed.wordCount);
+              } else if (parsed.type === 'error' || parsed.error) {
+                result = {
+                  success: false,
+                  error: parsed.error || parsed.message || 'AI generation failed'
+                };
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } catch (streamError) {
+      console.error('Stream reading error:', streamError);
+      
+      // If we have partial content, return it
+      if (lastScript && lastWordCount > 500) {
+        console.log(`Returning partial script with ${lastWordCount} words after stream error`);
+        return {
+          success: true,
+          script: lastScript,
+          wordCount: lastWordCount
+        };
+      }
+      
+      // Check if it's an abort error
+      if (streamError instanceof Error && streamError.name === 'AbortError') {
+        if (import.meta.env.DEV) {
+          console.error('[Script Generation] Request aborted due to timeout', {
+            targetWordCount: wordCount,
+            timeoutMs,
+            lastWordCount,
+            hasPartialScript: !!lastScript,
+          });
+        }
+        return {
+          success: false,
+          error: 'Request timed out. Scripts up to 30,000 words are supported (up to 30 minutes generation time). For very long content, ensure stable internet connection.'
+        };
+      }
+      
+      return { 
+        success: false, 
+        error: streamError instanceof Error ? streamError.message : 'Stream reading failed' 
+      };
+    }
+
+    // If we got progress but no complete event, something went wrong
+    if (!result.success && lastWordCount > 0) {
+      // If we have a partial script, return it as success
+      if (lastScript && lastWordCount > 500) {
+        if (import.meta.env.DEV) {
+          console.log('[Script Generation] Returning partial script after incomplete stream', {
+            wordCount: lastWordCount,
+            scriptLength: lastScript.length,
+          });
+        }
+        return {
+          success: true,
+          script: lastScript,
+          wordCount: lastWordCount
+        };
+      }
+      result.error = 'Script generation was interrupted before completing. The connection may have been lost. Please try again.';
+    }
+
+    // Log successful completion in development mode
+    if (import.meta.env.DEV && result.success) {
+      console.log('[Script Generation] Stream completed successfully', {
+        targetWordCount: wordCount,
+        actualWordCount: result.wordCount,
+        scriptLength: result.script?.length,
+      });
+    }
+
+    return result;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// Script issue with severity
+export interface ScriptIssue {
+  text: string;
+  severity: 'major' | 'minor';
+}
+
+// Topic analysis for detecting topic drift
+export interface TopicAnalysis {
+  expectedTopic: string;
+  topicsFound: string[];
+  offTopicSections: string[];
+  hasDrift: boolean;
+}
+
+// YouTube policy issue
+export interface YouTubePolicyIssue {
+  category: 'sexual' | 'violence' | 'hate' | 'harassment' | 'dangerous' | 'misleading';
+  severity: 'low' | 'medium' | 'high';
+  excerpt: string;
+  suggestion: string;
+}
+
+// YouTube policy check result
+export interface YouTubePolicyResult {
+  safe: boolean;
+  issues: YouTubePolicyIssue[];
+  summary: string;
+}
+
+// Script rating result interface
+export interface ScriptRatingResult {
+  success: boolean;
+  grade?: 'A' | 'B' | 'C';
+  summary?: string;
+  issues?: ScriptIssue[];
+  fixPrompt?: string;
+  topicAnalysis?: TopicAnalysis;
+  youtubePolicy?: YouTubePolicyResult;
+  error?: string;
+}
+
+// Rate a script and get feedback
+export async function rateScript(
+  script: string,
+  template?: string,
+  title?: string,
+  topic?: string // Specific topic focus for drift detection
+): Promise<ScriptRatingResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/rewrite-script/rate`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ script, template, title, topic })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Script rating error:', response.status, errorText);
+      return { success: false, error: `Failed to rate script: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      return { success: false, error: data.error || 'Rating failed' };
+    }
+
+    return {
+      success: true,
+      grade: data.grade,
+      summary: data.summary,
+      issues: data.issues,
+      fixPrompt: data.fixPrompt
+    };
+  } catch (error) {
+    console.error('Script rating error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to rate script'
+    };
+  }
+}
+
+// Quick edit a script (targeted fixes, much faster than full regeneration)
+export async function quickEditScript(
+  script: string,
+  fixPrompt: string
+): Promise<{ success: boolean; script?: string; wordCount?: number; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/rewrite-script/quick-edit`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ script, fixPrompt })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Quick edit error:', response.status, errorText);
+      return { success: false, error: `Failed to edit script: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (!data.success) {
+      return { success: false, error: data.error || 'Edit failed' };
+    }
+
+    return {
+      success: true,
+      script: data.script,
+      wordCount: data.wordCount
+    };
+  } catch (error) {
+    console.error('Quick edit error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to edit script'
+    };
+  }
+}
+
+export async function generateAudio(script: string, voiceSampleUrl: string, projectId: string): Promise<AudioResult> {
+  console.log('Generating audio with voice cloning...');
+  console.log('Voice sample URL:', voiceSampleUrl);
+  console.log('Script length:', script.length, 'chars');
+
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-audio`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ script, voiceSampleUrl, projectId })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Audio generation error:', response.status, errorText);
+      return { success: false, error: `Failed to generate audio: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (data?.error) {
+      console.error('Audio generation returned error:', data.error);
+
+      // Provide more helpful error messages
+      let errorMessage = data.error;
+      if (errorMessage.includes('Voice sample not accessible')) {
+        errorMessage = 'Cannot access your voice sample. Please try re-uploading it in Settings.';
+      } else if (errorMessage.includes('TTS job failed')) {
+        errorMessage = 'Voice cloning failed. This may be due to an issue with the voice sample or the TTS service. Try a different voice sample or contact support.';
+      } else if (errorMessage.includes('timed out')) {
+        errorMessage = 'Audio generation timed out. The script might be too long, or the service is experiencing delays. Try again in a moment.';
+      }
+
+      return { success: false, error: errorMessage };
+    }
+
+    console.log('Audio generated successfully:', data);
+    return data;
+  } catch (error) {
+    console.error('Audio generation error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate audio' };
+  }
+}
+
+export interface TTSSettings {
+  emotionMarker?: string;
+  temperature?: number;
+  topP?: number;
+  repetitionPenalty?: number;
+}
+
+export async function generateAudioStreaming(
+  script: string,
+  voiceSampleUrl: string,
+  projectId: string,
+  onProgress: (progress: number, message?: string) => void,
+  speed: number = 1,
+  ttsSettings?: TTSSettings
+): Promise<AudioResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  // Add timeout for very large audio generations with voice cloning (60 minutes max)
+  const controller = new AbortController();
+  const AUDIO_TIMEOUT_MS = 4 * 60 * 60 * 1000; // 4 hours (VoxCPM2 + large scripts need more timeer)
+  const timeoutId = setTimeout(() => controller.abort(), AUDIO_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-audio`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        script,
+        voiceSampleUrl,
+        projectId,
+        speed,
+        stream: true,
+        ttsSettings: ttsSettings || {},
+        // Front-weighted split: first 30 min of audio → 10s segments,
+        // remaining time → 30s segments. Gives fine-grained regen on the
+        // retention-critical opening and chunkier segments for the tail.
+        segmentationMode: 'progressive',
+      }),
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Audio streaming error:', response.status, errorText);
+      return { success: false, error: `Failed to generate audio: ${response.status}` };
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { success: false, error: 'No response body' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: AudioResult = { success: false, error: 'No response received' };
+    let lastEventTime = Date.now();
+    let supabaseResolved = false;
+    const EVENT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes between events (voice cloning takes longer)
+
+    // Supabase fallback poll. Railway's fastly edge can buffer/drop SSE on long
+    // quiet stretches (RunPod 32GB GPUs make chunks take longer). Poll the
+    // project row every 30s; if the backend advanced past the audio step and
+    // saved audio_url, treat as complete and abandon the SSE reader.
+    const POLL_INTERVAL_MS = 30_000;
+    const pollTimer = setInterval(async () => {
+      try {
+        const { data } = await supabase
+          .from('generation_projects')
+          .select('audio_url, audio_duration, current_step, audio_segments')
+          .eq('id', projectId)
+          .single();
+        if (!data?.audio_url || data.current_step === 'audio') return;
+        const segments = Array.isArray(data.audio_segments)
+          ? (data.audio_segments as unknown as AudioSegment[])
+          : undefined;
+        result = {
+          success: true,
+          audioUrl: data.audio_url,
+          duration: data.audio_duration ?? segments?.reduce((s, seg) => s + seg.duration, 0),
+          size: segments?.reduce((s, seg) => s + (seg.size ?? 0), 0),
+          segments,
+          totalDuration: data.audio_duration,
+        };
+        supabaseResolved = true;
+        onProgress(100, 'Complete!');
+        clearInterval(pollTimer);
+        reader.cancel().catch(() => {});
+      } catch {
+        // Ignore — SSE may still deliver the complete event first
+      }
+    }, POLL_INTERVAL_MS);
+
+    try {
+      while (true) {
+        // Polling already resolved us — stop reading SSE
+        if (supabaseResolved) break;
+
+        // Check if we've been waiting too long for an event
+        if (Date.now() - lastEventTime > EVENT_TIMEOUT_MS) {
+          console.error('[Audio Generation] Event timeout - no data received for 10 minutes');
+          result.error = 'Audio generation timed out - no progress received for 10 minutes. Please try again.';
+          break;
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        lastEventTime = Date.now(); // Reset timeout on each chunk
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process complete SSE events
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || '';
+
+        for (const event of events) {
+          if (!event.trim()) continue;
+
+          // Skip keepalive comments
+          if (event.startsWith(':')) continue;
+
+          const dataMatch = event.match(/^data: (.+)$/m);
+          if (dataMatch) {
+            try {
+              const parsed = JSON.parse(dataMatch[1]);
+
+              if (parsed.type === 'progress') {
+                onProgress(parsed.progress, parsed.message);
+              } else if (parsed.type === 'complete') {
+                // Parse segments if present
+                const segments = parsed.segments && Array.isArray(parsed.segments)
+                  ? parsed.segments as AudioSegment[]
+                  : undefined;
+
+                result = {
+                  success: true,
+                  // Prefer combined audioUrl, fallback to first segment URL
+                  audioUrl: parsed.audioUrl || segments?.[0]?.audioUrl,
+                  duration: parsed.duration ?? parsed.totalDuration ?? (segments?.reduce((sum, seg) => sum + seg.duration, 0)),
+                  size: parsed.size ?? (segments?.reduce((sum, seg) => sum + seg.size, 0)),
+                  segments: segments,
+                  totalDuration: parsed.totalDuration,
+                };
+                onProgress(100, 'Complete!');
+              } else if (parsed.type === 'error' || parsed.error) {
+                result = {
+                  success: false,
+                  error: parsed.error || 'Audio generation failed'
+                };
+              }
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+      }
+    } catch (streamError) {
+      // If the Supabase poll already resolved this run as complete, honor that.
+      // reader.cancel() (called from the poll handler) can reject an in-flight
+      // read(), and without this guard we'd override polling's success with a
+      // generic "Connection interrupted" error — which left the Generating
+      // Audio modal stuck at whatever progress the SSE last reported (e.g. 90%).
+      if (supabaseResolved && result.success) {
+        return result;
+      }
+
+      // Final synchronous poll before surrendering to `interrupted: true`.
+      // The 30s polling tick can miss a stream drop by up to 29.99s; during
+      // that window the backend may already have written audio_url and
+      // advanced current_step. Without this, handleGenerate receives
+      // {interrupted:true}, shows a toast, and returns — leaving the audio
+      // step stuck at the last SSE progress (e.g. 90%) even though the
+      // generation is actually complete.
+      try {
+        const { data: finalPoll } = await supabase
+          .from('generation_projects')
+          .select('audio_url, audio_duration, current_step, audio_segments')
+          .eq('id', projectId)
+          .single();
+        if (finalPoll?.audio_url && finalPoll.current_step !== 'audio') {
+          const segments = Array.isArray(finalPoll.audio_segments)
+            ? (finalPoll.audio_segments as unknown as AudioSegment[])
+            : undefined;
+          onProgress(100, 'Complete!');
+          return {
+            success: true,
+            audioUrl: finalPoll.audio_url,
+            duration: finalPoll.audio_duration ?? segments?.reduce((s, seg) => s + seg.duration, 0),
+            size: segments?.reduce((s, seg) => s + (seg.size ?? 0), 0),
+            segments,
+            totalDuration: finalPoll.audio_duration,
+          };
+        }
+      } catch {
+        // Final-poll itself failed — fall through to the existing error paths.
+      }
+
+      console.error('Stream reading error:', streamError);
+
+      // Check if it's an abort error from timeout
+      if (streamError instanceof Error && streamError.name === 'AbortError') {
+        return {
+          success: false,
+          error: 'Audio generation timed out after 60 minutes. This may happen with very long scripts or large voice samples. Please try again with a shorter script or smaller voice sample.'
+        };
+      }
+
+      // Check for network errors (connection reset, etc.)
+      // Backend may still be running - don't scare the user
+      const errorMsg = streamError instanceof Error ? streamError.message : 'Stream reading failed';
+      if (errorMsg.includes('network') || errorMsg.includes('fetch') || errorMsg.includes('connection')) {
+        return {
+          success: false,
+          error: 'Connection interrupted. Audio generation may still be running on the server. Check your project in a few minutes - completed segments are being saved automatically.',
+          interrupted: true
+        };
+      }
+
+      return {
+        success: false,
+        error: errorMsg
+      };
+    } finally {
+      // Always clear the timeout + polling to prevent memory leaks
+      clearTimeout(timeoutId);
+      clearInterval(pollTimer);
+    }
+
+    return result;
+  } catch (error) {
+    // Outer catch for fetch errors
+    clearTimeout(timeoutId);
+
+    if (error instanceof Error && error.name === 'AbortError') {
+      return {
+        success: false,
+        error: 'Audio generation timed out after 60 minutes. This may happen with very long scripts. Please try again or contact support.'
+      };
+    }
+
+    console.error('Audio generation fetch error:', error);
+
+    // Check for network/connection errors - backend may still be running
+    const errorMsg = error instanceof Error ? error.message : 'Failed to start audio generation';
+    if (errorMsg.includes('network') || errorMsg.includes('fetch') || errorMsg.includes('Failed to fetch')) {
+      return {
+        success: false,
+        error: 'Connection interrupted. Audio generation may still be running on the server. Check your project in a few minutes - completed segments are being saved automatically.',
+        interrupted: true
+      };
+    }
+
+    return {
+      success: false,
+      error: errorMsg
+    };
+  }
+}
+
+// Regenerate a single audio segment (with optional pronunciation fix)
+export async function regenerateAudioSegment(
+  segmentText: string,
+  segmentIndex: number,
+  voiceSampleUrl: string,
+  projectId: string,
+  pronunciationFix?: { word: string; phonetic: string },
+  ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number }  // Same TTS settings as original audio
+): Promise<{ success: boolean; segment?: AudioSegment; error?: string }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/segment`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        segmentText,
+        segmentIndex,
+        voiceSampleUrl,
+        projectId,
+        pronunciationFix,
+        ttsSettings
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Segment regeneration error:', response.status, errorText);
+      return { success: false, error: `Failed to regenerate segment: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      return { success: false, error: data.error };
+    }
+
+    return {
+      success: true,
+      segment: data.segment
+    };
+  } catch (error) {
+    console.error('Segment regeneration error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Segment regeneration failed'
+    };
+  }
+}
+
+// Regenerate a segment using text stored in the project's audio_segments DB row.
+// Simpler than regenerateAudioSegment — caller doesn't need to pass segmentText,
+// which avoids UI state/DB drift. Skips pronunciation fixes (use regenerateAudioSegment for those).
+export async function regenerateSegmentFromDB(
+  projectId: string,
+  segmentNumber: number,
+  voiceSampleUrl: string,
+  ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number; seed?: number; emotionMarker?: string }
+): Promise<{ success: boolean; segment?: AudioSegment; error?: string }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/regenerate-segment`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ projectId, segmentNumber, voiceSampleUrl, ttsSettings }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Segment regeneration error:', response.status, errorText);
+      return { success: false, error: `Failed to regenerate segment: ${response.status}` };
+    }
+
+    const data = await response.json();
+    if (data.error) return { success: false, error: data.error };
+    return { success: true, segment: data.segment };
+  } catch (error) {
+    console.error('Segment regeneration error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Segment regeneration failed' };
+  }
+}
+
+// Lookup phonetic spelling for a word (auto-fill for pronunciation fixes)
+export async function lookupPhonetic(word: string): Promise<{ word: string; phonetic: string; found: boolean }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/phonetic/${encodeURIComponent(word)}`, {
+      method: 'GET',
+      headers: withRenderAuth({})
+    });
+
+    if (!response.ok) {
+      return { word, phonetic: word, found: false };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Phonetic lookup error:', error);
+    return { word, phonetic: word, found: false };
+  }
+}
+
+// Preview pronunciation of a single word (for hearing before regenerating segment)
+export async function previewWordPronunciation(
+  word: string,
+  phonetic: string,
+  voiceSampleUrl: string,
+  sentenceContext?: string,  // The full sentence containing the word
+  ttsSettings?: { temperature?: number; topP?: number; repetitionPenalty?: number }  // Same TTS settings as original audio
+): Promise<{ success: boolean; audioUrl?: string; error?: string }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/word`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        word,
+        phonetic,
+        voiceSampleUrl,
+        sentenceContext,
+        ttsSettings
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Word preview error:', response.status, errorText);
+      return { success: false, error: `Failed to preview: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      audioUrl: data.audioUrl
+    };
+  } catch (error) {
+    console.error('Word preview error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Word preview failed'
+    };
+  }
+}
+
+export async function recombineAudioSegments(
+  projectId: string,
+  segmentCount: number = 10
+): Promise<{ success: boolean; audioUrl?: string; duration?: number; size?: number; error?: string }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/recombine`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        projectId,
+        segmentCount
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Recombine error:', response.status, errorText);
+      return { success: false, error: `Failed to recombine: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (data.error) {
+      return { success: false, error: data.error };
+    }
+
+    return {
+      success: true,
+      audioUrl: data.audioUrl,
+      duration: data.duration,
+      size: data.size
+    };
+  } catch (error) {
+    console.error('Recombine error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Recombine failed'
+    };
+  }
+}
+
+export async function generateImagePrompts(
+  script: string,
+  srtContent: string,
+  imageCount: number,
+  stylePrompt: string,
+  modernKeywordFilter: boolean,
+  audioDuration?: number,
+  topic?: string,
+  subjectFocus?: string,
+  onProgress?: (progress: number, message: string) => void,
+  clipCount: number = 12,
+  clipDuration: number = 5
+): Promise<ImagePromptsResult> {
+  console.log('Generating AI-powered image prompts from script and captions...');
+  console.log(`Script length: ${script.length}, SRT length: ${srtContent.length}, imageCount: ${imageCount}`);
+  console.log(`Clip-aware timing: first ${clipCount} images = ${clipDuration}s clips, rest = static images`);
+  if (topic) {
+    console.log(`Topic/Era anchor: ${topic}`);
+  }
+  if (subjectFocus) {
+    console.log(`Subject focus: ${subjectFocus}`);
+  }
+  if (audioDuration) {
+    console.log(`Audio duration: ${audioDuration.toFixed(2)}s`);
+  }
+
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  // Use Railway API with streaming for progress
+  if (renderUrl && onProgress) {
+    try {
+      const response = await fetch(`${renderUrl}/generate-image-prompts`, {
+        method: 'POST',
+        headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, clipCount, clipDuration, stream: true })
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
+
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let result: ImagePromptsResult = { success: false, error: 'No response received' };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'progress') {
+                onProgress(data.progress, data.message || `${data.progress}%`);
+              } else if (data.type === 'complete') {
+                result = {
+                  success: true,
+                  prompts: data.prompts,
+                  totalDuration: data.totalDuration
+                };
+              } else if (data.type === 'error') {
+                result = { success: false, error: data.error };
+              }
+            } catch (e) {
+              // Ignore parse errors for keepalive comments
+            }
+          }
+        }
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Streaming image prompts error:', error);
+      // Fall back to Supabase function
+    }
+  }
+
+  // Fallback: non-streaming render-api call (e.g. when onProgress is not provided
+  // or the streaming path above threw). Uses the same backend route so Claude
+  // calls still flow through the CLI bridge when enabled.
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env' };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-image-prompts`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ script, srtContent, imageCount, stylePrompt, modernKeywordFilter, audioDuration, topic, subjectFocus, clipCount, clipDuration, stream: false }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Image prompt generation error:', response.status, errorText);
+      return { success: false, error: `Failed to generate image prompts: ${response.status}` };
+    }
+
+    return (await response.json()) as ImagePromptsResult;
+  } catch (error) {
+    console.error('Image prompt generation error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate image prompts' };
+  }
+}
+
+// Extend existing image prompts by adding N more at the end
+export async function extendImagePrompts(
+  script: string,
+  srtContent: string,
+  count: number,
+  startFromSeconds: number,
+  audioDuration: number,
+  stylePrompt: string,
+  topic?: string,
+  subjectFocus?: string,
+  projectId?: string
+): Promise<ImagePromptsResult> {
+  console.log(`[extendImagePrompts] Adding ${count} prompts from ${startFromSeconds.toFixed(2)}s to ${audioDuration.toFixed(2)}s`);
+
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-image-prompts/extend`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({
+        script,
+        srtContent,
+        count,
+        startFromSeconds,
+        audioDuration,
+        stylePrompt,
+        topic,
+        subjectFocus,
+        projectId
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[extendImagePrompts] Error:', response.status, errorText);
+      return { success: false, error: `Failed to extend prompts: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('[extendImagePrompts] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to extend prompts'
+    };
+  }
+}
+
+// ============================================================================
+// Video Clip Prompts (LTX-2)
+// ============================================================================
+
+export async function generateClipPrompts(
+  script: string,
+  srtContent: string,
+  stylePrompt: string,
+  onProgress?: (progress: number, message: string) => void
+): Promise<ClipPromptsResult> {
+  console.log('Generating AI-powered video clip prompts from script...');
+
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-clip-prompts`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ script, srtContent, stylePrompt, stream: !!onProgress })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Clip prompts error:', response.status, errorText);
+      return { success: false, error: `Failed to generate clip prompts: ${response.status}` };
+    }
+
+    // Handle streaming response
+    if (onProgress) {
+      const reader = response.body?.getReader();
+      if (!reader) {
+        return { success: false, error: 'No response body' };
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let result: ClipPromptsResult = { success: false, error: 'No response received' };
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'progress') {
+                onProgress(data.progress, data.message || `${data.progress}%`);
+              } else if (data.type === 'complete') {
+                result = {
+                  success: true,
+                  prompts: data.prompts,
+                  totalDuration: data.totalDuration,
+                  clipCount: data.clipCount,
+                  clipDuration: data.clipDuration
+                };
+              } else if (data.type === 'error') {
+                result = { success: false, error: data.error };
+              }
+            } catch (e) {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+
+      return result;
+    }
+
+    // Non-streaming response
+    const data = await response.json();
+    return data;
+
+  } catch (error) {
+    console.error('Clip prompts error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate clip prompts' };
+  }
+}
+
+// ============================================================================
+// Video Clip Generation (LTX-2)
+// ============================================================================
+
+export async function generateVideoClipsStreaming(
+  projectId: string,
+  clips: ClipPrompt[],
+  onProgress: (completed: number, total: number, message: string, latestClip?: GeneratedClip) => void
+): Promise<VideoClipsResult> {
+  console.log(`Generating ${clips.length} video clips with LTX-2...`);
+
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-video-clips`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ projectId, clips, stream: true })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Video clips error:', response.status, errorText);
+      return { success: false, error: `Failed to generate video clips: ${response.status}` };
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { success: false, error: 'No response body' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: VideoClipsResult = { success: false, error: 'No response received' };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        if (!event.trim()) continue;
+
+        // Skip keepalive comments
+        if (event.startsWith(':')) continue;
+
+        const dataMatch = event.match(/^data: (.+)$/m);
+        if (dataMatch) {
+          try {
+            const parsed = JSON.parse(dataMatch[1]);
+
+            if (parsed.type === 'progress') {
+              const latestClip = parsed.latestClip ? {
+                index: parsed.latestClip.index,
+                videoUrl: parsed.latestClip.videoUrl,
+                filename: parsed.latestClip.filename
+              } : undefined;
+
+              onProgress(parsed.completed, parsed.total, parsed.message, latestClip);
+            } else if (parsed.type === 'complete') {
+              result = {
+                success: parsed.success,
+                clips: parsed.clips,
+                total: parsed.total,
+                failed: parsed.failed,
+                clipDuration: parsed.clipDuration,
+                totalDuration: parsed.totalDuration
+              };
+              onProgress(parsed.total, parsed.total, `${parsed.total} clips generated`);
+            } else if (parsed.type === 'error' || parsed.error) {
+              result = {
+                success: false,
+                error: parsed.error || 'Video clip generation failed'
+              };
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error('Video clips error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate video clips' };
+  }
+}
+
+export async function generateImages(
+  prompts: string[] | ImagePromptWithTiming[],
+  quality: string,
+  aspectRatio: string = "16:9",
+  projectId?: string
+  // topic and subjectFocus removed - prompts control everything, no backend overrides
+): Promise<ImageGenerationResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-images`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ prompts, quality, aspectRatio, projectId })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Image generation error:', response.status, errorText);
+      return { success: false, error: `Failed to generate images: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Image generation error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate images' };
+  }
+}
+
+export async function generateImagesStreaming(
+  prompts: string[] | ImagePromptWithTiming[],
+  quality: string,
+  aspectRatio: string = "16:9",
+  onProgress: (completed: number, total: number, message: string) => void,
+  projectId?: string
+  // topic and subjectFocus removed - prompts contain all era/subject info, no backend overrides
+): Promise<ImageGenerationResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  const response = await fetch(`${renderUrl}/generate-images`, {
+    method: 'POST',
+    headers: withRenderAuth({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({ prompts, quality, aspectRatio, stream: true, projectId })
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('Image streaming error:', response.status, errorText);
+    return { success: false, error: `Failed to generate images: ${response.status}` };
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) {
+    return { success: false, error: 'No response body' };
+  }
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let result: ImageGenerationResult = { success: false, error: 'No response received' };
+  let lastProgress = { completed: 0, total: prompts.length };
+
+  // Timeout for detecting stalled connections (45s = 3x heartbeat interval)
+  const STREAM_TIMEOUT_MS = 45000;
+
+  // Helper to read with timeout
+  const readWithTimeout = async (): Promise<ReadableStreamReadResult<Uint8Array>> => {
+    return new Promise((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Connection timeout - no data received for ${STREAM_TIMEOUT_MS / 1000}s. Images may still be generating on the server.`));
+      }, STREAM_TIMEOUT_MS);
+
+      reader.read().then((result) => {
+        clearTimeout(timeoutId);
+        resolve(result);
+      }).catch((err) => {
+        clearTimeout(timeoutId);
+        reject(err);
+      });
+    });
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await readWithTimeout();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        if (!event.trim()) continue;
+
+        const dataMatch = event.match(/^data: (.+)$/m);
+        if (dataMatch) {
+          try {
+            const parsed = JSON.parse(dataMatch[1]);
+
+            if (parsed.type === 'progress') {
+              lastProgress = { completed: parsed.completed, total: parsed.total };
+              onProgress(parsed.completed, parsed.total, parsed.message);
+            } else if (parsed.type === 'complete') {
+              result = {
+                success: parsed.success,
+                images: parsed.images
+              };
+              onProgress(parsed.total, parsed.total, `${parsed.total}/${parsed.total} done`);
+            } else if (parsed.type === 'error' || parsed.error) {
+              result = {
+                success: false,
+                error: parsed.error || 'Image generation failed'
+              };
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+  } catch (streamError) {
+    console.error('Stream reading error:', streamError);
+    // Include progress info in error message so user knows where it stopped
+    const progressInfo = lastProgress.completed > 0
+      ? ` (stopped at ${lastProgress.completed}/${lastProgress.total} images)`
+      : '';
+    return {
+      success: false,
+      error: (streamError instanceof Error ? streamError.message : 'Stream reading failed') + progressInfo
+    };
+  }
+
+  return result;
+}
+
+export async function generateCaptions(
+  audioUrl: string,
+  projectId: string,
+  onProgress?: (progress: number, message?: string) => void
+): Promise<CaptionsResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  // Use streaming if onProgress callback is provided
+  if (onProgress) {
+    return generateCaptionsStreaming(audioUrl, projectId, onProgress);
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-captions`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ audioUrl, projectId })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Captions error:', response.status, errorText);
+      return { success: false, error: `Failed to generate captions: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Captions error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate captions' };
+  }
+}
+
+async function generateCaptionsStreaming(
+  audioUrl: string,
+  projectId: string,
+  onProgress: (progress: number, message?: string) => void
+): Promise<CaptionsResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-captions`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        audioUrl,
+        projectId,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Captions streaming error:', response.status, errorText);
+      return { success: false, error: `Failed to generate captions: ${response.status}` };
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { success: false, error: 'No response body' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: CaptionsResult = { success: false, error: 'No response received' };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        if (!event.trim()) continue;
+
+        const dataMatch = event.match(/^data: (.+)$/m);
+        if (dataMatch) {
+          try {
+            const parsed = JSON.parse(dataMatch[1]);
+
+            if (parsed.type === 'progress') {
+              onProgress(parsed.progress, parsed.message);
+            } else if (parsed.type === 'complete') {
+              result = {
+                success: true,
+                captionsUrl: parsed.captionsUrl,
+                srtContent: parsed.srtContent,
+                segmentCount: parsed.segmentCount,
+                audioDuration: parsed.audioDuration
+              };
+              onProgress(100);
+            } else if (parsed.type === 'error' || parsed.error) {
+              result = {
+                success: false,
+                error: parsed.error || 'Caption generation failed'
+              };
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Captions streaming error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to generate captions' };
+  }
+}
+
+/**
+ * Scan the project's SRT for repeated sentences (TTS loop hallucinations).
+ * Returns detected loops with timestamps in the full audio. Text-only, no
+ * API calls — fast and free.
+ */
+export interface DetectedLoop {
+  start: number;           // seconds in full audio
+  end: number;
+  text: string;
+  durationSec: number;
+  segmentNumber?: number;  // which audio segment the loop falls in
+}
+
+export async function scanAudioLoops(
+  projectId: string,
+  srtContent: string
+): Promise<{ success: boolean; loops?: DetectedLoop[]; error?: string }> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-audio/scan-loops`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ projectId, srtContent }),
+    });
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `Scan failed: ${response.status} - ${errorText.slice(0, 200)}` };
+    }
+    const data = await response.json();
+    return { success: true, loops: data.loops || [] };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Scan failed' };
+  }
+}
+
+/**
+ * Run quality check on existing captions
+ * Compares script to transcription to detect garbled audio
+ */
+export async function runCaptionQualityCheck(
+  projectId: string,
+  srtContent: string
+): Promise<{
+  success: boolean;
+  error?: string;
+  scriptText?: string;
+  transcriptText?: string;
+  scriptQa?: {
+    score: number;
+    totalScriptSentences: number;
+    matchedSentences: number;
+    issues: Array<{ type: string; originalText: string; transcribedText: string; severity: string }>;
+    wordIssues: Array<{ type: string; scriptWord: string; transcribedWord: string; context: string; severity: string }>;
+    needsReview: boolean;
+  };
+}> {
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL || 'https://marvelous-blessing-staging.up.railway.app';
+
+  try {
+    const response = await fetch(`${renderApiUrl}/generate-captions/quality-check`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ projectId, srtContent }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Quality check error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to run quality check' };
+  }
+}
+
+export interface VideoResult {
+  success: boolean;
+  error?: string;
+  edlUrl?: string;
+  edlContent?: string;
+  csvUrl?: string;
+  csvContent?: string;
+  totalDuration?: number;
+  totalDurationFormatted?: string;
+  segments?: {
+    imageUrl: string;
+    index: number;
+    startTime: number;
+    endTime: number;
+    duration: number;
+    startTimeFormatted: string;
+    endTimeFormatted: string;
+    durationFormatted: string;
+  }[];
+}
+
+export async function generateVideoTimeline(imageUrls: string[], srtContent: string, projectId: string): Promise<VideoResult> {
+  const { data, error } = await supabase.functions.invoke('generate-video', {
+    body: { imageUrls, srtContent, projectId }
+  });
+
+  if (error) {
+    console.error('Video timeline error:', error);
+    return { success: false, error: error.message };
+  }
+
+  return data;
+}
+
+export async function saveScriptToStorage(script: string, projectId: string): Promise<string | null> {
+  const fileName = `${projectId}/script.md`;
+  
+  const { data, error } = await supabase.storage
+    .from('generated-assets')
+    .upload(fileName, new Blob([script], { type: 'text/markdown' }), {
+      contentType: 'text/markdown',
+      upsert: true
+    });
+
+  if (error) {
+    console.error('Script upload error:', error);
+    return null;
+  }
+
+  const { data: urlData } = supabase.storage
+    .from('generated-assets')
+    .getPublicUrl(fileName);
+
+  return urlData.publicUrl;
+}
+
+export function downloadFile(url: string, filename: string) {
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.target = '_blank';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+export function downloadText(content: string, filename: string, mimeType: string = 'text/plain') {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  downloadFile(url, filename);
+  URL.revokeObjectURL(url);
+}
+
+export interface RenderVideoResult {
+  success: boolean;
+  videoUrl?: string;
+  videoUrlCaptioned?: string;
+  size?: number;
+  sizeCaptioned?: number;
+  error?: string;
+}
+
+export interface RenderVideoProgress {
+  stage: 'downloading' | 'preparing' | 'rendering' | 'muxing' | 'uploading';
+  percent: number;
+  message: string;
+  frames?: number;
+}
+
+export interface RenderVideoCallbacks {
+  onProgress: (progress: RenderVideoProgress) => void;
+  onVideoReady?: (videoUrl: string) => void;
+  onCaptionError?: (error: string) => void;
+}
+
+export interface VideoEffects {
+  embers?: boolean;
+  smoke_embers?: boolean;
+  ken_burns?: boolean;
+}
+
+// Render job status from Supabase
+interface RenderJobStatus {
+  id: string;
+  project_id: string;
+  status: 'queued' | 'downloading' | 'rendering' | 'muxing' | 'uploading' | 'complete' | 'failed';
+  progress: number;
+  message: string | null;
+  video_url: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// Helper to wait
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+/**
+ * Render video using background job with polling
+ * This replaces the SSE streaming approach for better reliability
+ */
+export async function renderVideoStreaming(
+  projectId: string,
+  audioUrl: string,
+  imageUrls: string[],
+  imageTimings: { startSeconds: number; endSeconds: number }[],
+  srtContent: string,
+  projectTitle: string,
+  callbacks: RenderVideoCallbacks | ((progress: RenderVideoProgress) => void),
+  effects?: VideoEffects,
+  useGpu?: boolean,  // Use RunPod GPU rendering (faster)
+  introClips?: { index: number; url: string; startSeconds: number; endSeconds: number }[]  // Intro video clips (60s)
+): Promise<RenderVideoResult> {
+  // Support both old callback style and new object style
+  const { onProgress } = typeof callbacks === 'function'
+    ? { onProgress: callbacks, onVideoReady: undefined, onCaptionError: undefined }
+    : callbacks;
+
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    // Step 1: Start the render job
+    onProgress({
+      stage: 'preparing',
+      percent: 0,
+      message: 'Starting render job...'
+    });
+
+    const startResponse = await fetch(`${renderUrl}/render-video`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        projectId,
+        audioUrl,
+        imageUrls,
+        imageTimings,
+        srtContent,
+        projectTitle,
+        effects,
+        useGpu,
+        introClips
+      })
+    });
+
+    if (!startResponse.ok) {
+      const errorText = await startResponse.text();
+      console.error('Failed to start render job:', startResponse.status, errorText);
+      const serverError = (() => { try { return JSON.parse(errorText)?.error; } catch { return errorText; } })();
+      return { success: false, error: serverError || `Failed to start render: ${startResponse.status}` };
+    }
+
+    const startResult = await startResponse.json();
+    const jobId = startResult.jobId;
+
+    if (!jobId) {
+      return { success: false, error: 'No job ID returned from server' };
+    }
+
+    console.log(`[Render Video] Job started: ${jobId}`);
+
+    // Step 2: Poll for progress
+    const POLL_INTERVAL_MS = 3000; // Poll every 3 seconds
+    const MAX_POLL_TIME_MS = 60 * 60 * 1000; // 1 hour max
+    const startTime = Date.now();
+
+    while (true) {
+      // Check timeout
+      if (Date.now() - startTime > MAX_POLL_TIME_MS) {
+        return {
+          success: false,
+          error: 'Video rendering timed out after 1 hour. The job may still be processing - check back later.'
+        };
+      }
+
+      // Poll for status
+      const statusResponse = await fetch(`${renderUrl}/render-video/status/${jobId}`, {
+        headers: withRenderAuth(),
+      });
+
+      if (!statusResponse.ok) {
+        console.error('Failed to poll job status:', statusResponse.status);
+        await sleep(POLL_INTERVAL_MS);
+        continue;
+      }
+
+      const job: RenderJobStatus = await statusResponse.json();
+
+      // Update progress
+      const stage = job.status === 'queued' ? 'preparing' : job.status;
+      onProgress({
+        stage: stage as RenderVideoProgress['stage'],
+        percent: job.progress,
+        message: job.message || `${job.status}...`
+      });
+
+      // Check for completion
+      if (job.status === 'complete') {
+        console.log(`[Render Video] Job complete: ${job.video_url}`);
+        onProgress({
+          stage: 'uploading',
+          percent: 100,
+          message: 'Complete!'
+        });
+        return {
+          success: true,
+          videoUrl: job.video_url || undefined
+        };
+      }
+
+      // Check for failure
+      if (job.status === 'failed') {
+        console.error(`[Render Video] Job failed: ${job.error}`);
+        return {
+          success: false,
+          error: job.error || 'Video rendering failed'
+        };
+      }
+
+      // Wait before next poll
+      await sleep(POLL_INTERVAL_MS);
+    }
+
+  } catch (error) {
+    console.error('Render video error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to render video'
+    };
+  }
+}
+
+// ============================================================================
+// Thumbnail Generation
+// ============================================================================
+
+export interface ThumbnailGenerationProgress {
+  stage: 'analyzing' | 'generating';
+  percent: number;
+  message: string;
+}
+
+export interface ThumbnailGenerationResult {
+  success: boolean;
+  thumbnails?: string[];
+  error?: string;
+}
+
+export interface ThumbnailContentSuggestionResult {
+  success: boolean;
+  contentPrompt?: string;
+  error?: string;
+}
+
+// Suggest thumbnail content based on script
+export async function suggestThumbnailContent(
+  script: string,
+  title?: string
+): Promise<ThumbnailContentSuggestionResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-thumbnails/suggest-content`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ script, title })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Thumbnail content suggestion error:', response.status, errorText);
+      return { success: false, error: `Failed to suggest content: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return {
+      success: data.success,
+      contentPrompt: data.contentPrompt,
+      error: data.error
+    };
+  } catch (error) {
+    console.error('Thumbnail content suggestion error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to suggest thumbnail content'
+    };
+  }
+}
+
+// Expand a topic into a detailed character/subject description
+export async function expandTopicToDescription(
+  topic: string
+): Promise<{ success: boolean; description?: string; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured' };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-thumbnails/expand-topic`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ topic })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `Failed: ${response.status} ${errorText}` };
+    }
+
+    const data = await response.json();
+    return { success: data.success, description: data.description, error: data.error };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to expand topic'
+    };
+  }
+}
+
+// Suggest thumbnail prompts from a simple topic name
+export async function suggestThumbnailPrompts(
+  topic: string
+): Promise<{ success: boolean; prompts?: string[]; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured' };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-thumbnails/suggest-prompts`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ topic })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `Failed: ${response.status} ${errorText}` };
+    }
+
+    const data = await response.json();
+    return { success: data.success, prompts: data.prompts, error: data.error };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to suggest prompts'
+    };
+  }
+}
+
+export async function generateThumbnailsStreaming(
+  exampleImageBase64: string,
+  prompt: string,
+  thumbnailCount: number,
+  projectId: string,
+  onProgress: (progress: ThumbnailGenerationProgress) => void
+): Promise<ThumbnailGenerationResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-thumbnails`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        exampleImageBase64,
+        prompt,
+        thumbnailCount,
+        projectId,
+        stream: true
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Thumbnail generation error:', response.status, errorText);
+      return { success: false, error: `Failed to generate thumbnails: ${response.status}` };
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { success: false, error: 'No response body' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: ThumbnailGenerationResult = { success: false, error: 'No response received' };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        if (!event.trim()) continue;
+
+        const dataMatch = event.match(/^data: (.+)$/m);
+        if (dataMatch) {
+          try {
+            const parsed = JSON.parse(dataMatch[1]);
+
+            if (parsed.type === 'progress') {
+              onProgress({
+                stage: parsed.stage,
+                percent: parsed.percent,
+                message: parsed.message
+              });
+            } else if (parsed.type === 'complete') {
+              result = {
+                success: parsed.success,
+                thumbnails: parsed.thumbnails
+              };
+              onProgress({
+                stage: 'generating',
+                percent: 100,
+                message: `${parsed.total} thumbnails generated`
+              });
+            } else if (parsed.type === 'error' || parsed.error) {
+              result = {
+                success: false,
+                error: parsed.error || 'Thumbnail generation failed'
+              };
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error('Thumbnail generation error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate thumbnails'
+    };
+  }
+}
+
+// ============================================================================
+// YouTube Upload
+// ============================================================================
+
+export interface YouTubeUploadProgress {
+  stage: 'downloading' | 'initializing' | 'uploading' | 'complete';
+  percent: number;
+  message: string;
+}
+
+export interface YouTubeUploadParams {
+  videoUrl: string;
+  accessToken: string;
+  title: string;
+  description: string;
+  tags: string[];
+  categoryId: string;
+  privacyStatus: 'private' | 'unlisted' | 'public';
+  publishAt?: string; // ISO 8601 date for scheduled publish
+  thumbnailUrl?: string; // URL of custom thumbnail to set
+  isAlteredContent?: boolean; // AI-generated/altered content declaration
+  playlistId?: string; // Optional playlist to add video to after upload
+}
+
+export interface YouTubeUploadResult {
+  success: boolean;
+  videoId?: string;
+  youtubeUrl?: string;
+  studioUrl?: string;
+  error?: string;
+}
+
+export async function uploadToYouTube(
+  params: YouTubeUploadParams,
+  onProgress: (progress: YouTubeUploadProgress) => void
+): Promise<YouTubeUploadResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/youtube-upload`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(params)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('YouTube upload error:', response.status, errorText);
+      return { success: false, error: `Failed to upload to YouTube: ${response.status}` };
+    }
+
+    // Handle SSE streaming response
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { success: false, error: 'No response body' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: YouTubeUploadResult = { success: false, error: 'No response received' };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        if (!event.trim()) continue;
+
+        // Skip keepalive comments
+        if (event.startsWith(':')) continue;
+
+        const dataMatch = event.match(/^data: (.+)$/m);
+        if (dataMatch) {
+          try {
+            const parsed = JSON.parse(dataMatch[1]);
+
+            if (parsed.type === 'progress') {
+              onProgress({
+                stage: parsed.stage,
+                percent: parsed.percent,
+                message: parsed.message
+              });
+            } else if (parsed.type === 'complete') {
+              result = {
+                success: parsed.success,
+                videoId: parsed.videoId,
+                youtubeUrl: parsed.youtubeUrl,
+                studioUrl: parsed.studioUrl
+              };
+              onProgress({
+                stage: 'complete',
+                percent: 100,
+                message: 'Upload complete!'
+              });
+            } else if (parsed.type === 'error' || parsed.error) {
+              result = {
+                success: false,
+                error: parsed.error || 'YouTube upload failed'
+              };
+            }
+          } catch (e) {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error('YouTube upload error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to upload to YouTube'
+    };
+  }
+}
+
+// YouTube Metadata Generation Types
+export interface YouTubeMetadataResult {
+  success: boolean;
+  titles?: string[];
+  description?: string;
+  tags?: string[];
+  error?: string;
+}
+
+export async function generateYouTubeMetadata(
+  title: string,
+  script: string
+): Promise<YouTubeMetadataResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-youtube-metadata`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ title, script })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('YouTube metadata generation error:', response.status, errorText);
+      return { success: false, error: `Failed to generate metadata: ${response.status}` };
+    }
+
+    const result = await response.json();
+    return result;
+
+  } catch (error) {
+    console.error('YouTube metadata generation error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate metadata'
+    };
+  }
+}
+
+// ==================== YouTube Channel Stats / Outlier Finder ====================
+
+export interface OutlierVideo {
+  videoId: string;
+  title: string;
+  thumbnailUrl: string;
+  publishedAt: string;
+  duration: string;
+  durationFormatted: string;
+  durationSeconds: number;
+  viewCount: number;
+  likeCount: number;
+  commentCount: number;
+  outlierMultiplier: number;
+  viewsPerSubscriber: number;
+  zScore: number;
+  isPositiveOutlier: boolean;
+  isNegativeOutlier: boolean;
+  // TubeLab-specific fields
+  monetization?: {
+    rpmEstimationFrom?: number;
+    rpmEstimationTo?: number;
+    revenueEstimationFrom?: number;
+    revenueEstimationTo?: number;
+  };
+  classification?: {
+    isFaceless?: boolean;
+    quality?: 'negative' | 'neutral' | 'positive';
+  };
+}
+
+export interface ChannelStats {
+  id: string;
+  title: string;
+  handle?: string;
+  subscriberCount: number;
+  subscriberCountFormatted: string;
+  thumbnailUrl: string;
+  averageViews: number;
+  averageViewsFormatted: string;
+  standardDeviation: number;
+  standardDeviationFormatted: string;
+  positiveOutliersCount: number;
+  negativeOutliersCount: number;
+  totalVideosInDatabase?: number;
+}
+
+export interface ChannelStatsResult {
+  success: boolean;
+  channel?: ChannelStats;
+  videos?: OutlierVideo[];
+  error?: string;
+}
+
+export async function getChannelOutliers(
+  channelInput: string,
+  maxResults: number = 50,
+  sortBy: 'outlier' | 'views' | 'uploaded' = 'outlier',
+  forceRefresh: boolean = false
+): Promise<ChannelStatsResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/youtube-channel-stats`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ channelInput, maxResults, sortBy, forceRefresh })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Channel stats error:', response.status, errorData);
+      return {
+        success: false,
+        error: errorData.error || `Failed to analyze channel: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    return result;
+
+  } catch (error) {
+    console.error('Channel stats error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to analyze channel'
+    };
+  }
+}
+
+// ==================== Niche Analyzer ====================
+
+export interface NicheChannel {
+  id: string;
+  title: string;
+  handle?: string;
+  thumbnailUrl: string;
+  subscriberCount: number;
+  subscriberCountFormatted: string;
+  viewCount: number;
+  videoCount: number;
+  viewsToSubsRatio: number;
+  isBreakout: boolean;
+  createdAt?: string;
+  // TubeLab-specific fields
+  avgViews?: number;
+  avgViewsFormatted?: string;
+  monetization?: {
+    adsense: boolean;
+    rpmEstimationFrom?: number;
+    rpmEstimationTo?: number;
+  };
+}
+
+export interface NicheMetrics {
+  channelCount: number;
+  avgSubscribers: number;
+  avgViewsPerVideo: number;
+  avgViewsToSubsRatio: number;
+  saturationLevel: 'low' | 'medium' | 'high';
+  saturationScore: number;
+}
+
+export interface NicheAnalysisResult {
+  success: boolean;
+  topic?: string;
+  metrics?: NicheMetrics;
+  channels?: NicheChannel[];
+  totalInDatabase?: number;
+  error?: string;
+}
+
+export async function analyzeNiche(
+  topic: string,
+  subscriberMin?: number,
+  subscriberMax?: number
+): Promise<NicheAnalysisResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/niche-analyze`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ topic, subscriberMin, subscriberMax })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Niche analyze error:', response.status, errorData);
+      return {
+        success: false,
+        error: errorData.error || `Failed to analyze niche: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    return result;
+
+  } catch (error) {
+    console.error('Niche analyze error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to analyze niche'
+    };
+  }
+}
+
+// ==================== Apify Channel Scraper (for View All) ====================
+
+/**
+ * Scrape channel outliers using Apify YouTube Scraper
+ * Used for View All feature - works with ANY YouTube channel, no rate limits
+ * TubeLab is still used for Niche Analysis (pre-computed breakout channels)
+ */
+export async function getChannelOutliersApify(
+  channelInput: string,
+  maxResults: number = 50,
+  sortBy: 'outlier' | 'views' | 'uploaded' = 'outlier',
+  forceRefresh: boolean = false
+): Promise<ChannelStatsResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/youtube-channel-apify`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ channelInput, maxResults, sortBy, forceRefresh })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Apify channel stats error:', response.status, errorData);
+      return {
+        success: false,
+        error: errorData.error || `Failed to analyze channel: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    return result;
+
+  } catch (error) {
+    console.error('Apify channel stats error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to analyze channel'
+    };
+  }
+}
+
+// ==================== Invidious Channel Scraper (for View All) ====================
+
+/**
+ * Scrape channel outliers using Invidious API (free YouTube frontend)
+ * Used for View All feature - faster than Apify, no rate limits
+ */
+export async function getChannelOutliersInvidious(
+  channelInput: string,
+  maxResults: number = 50,
+  sortBy: 'outlier' | 'views' | 'uploaded' = 'outlier',
+  forceRefresh: boolean = false
+): Promise<ChannelStatsResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/youtube-channel-invidious`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ channelInput, maxResults, sortBy, forceRefresh })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Invidious channel stats error:', response.status, errorData);
+      return {
+        success: false,
+        error: errorData.error || `Failed to analyze channel: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    return result;
+
+  } catch (error) {
+    console.error('Invidious channel stats error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to analyze channel'
+    };
+  }
+}
+
+/**
+ * Scrape channel outliers using yt-dlp (local binary)
+ * Most reliable method - uses yt-dlp to scrape YouTube directly
+ */
+export async function getChannelOutliersYtdlp(
+  channelInput: string,
+  maxResults: number = 50,
+  sortBy: 'outlier' | 'views' | 'uploaded' = 'outlier',
+  forceRefresh: boolean = false
+): Promise<ChannelStatsResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/youtube-channel-ytdlp`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ channelInput, maxResults, sortBy, forceRefresh })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('yt-dlp channel stats error:', response.status, errorData);
+      return {
+        success: false,
+        error: errorData.error || `Failed to analyze channel: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    return result;
+
+  } catch (error) {
+    console.error('yt-dlp channel stats error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to analyze channel'
+    };
+  }
+}
+
+// ============================================================================
+// Project Costs
+// ============================================================================
+
+export interface ProjectCostStep {
+  step: string;
+  totalCost: number;
+  breakdown: Array<{
+    service: string;
+    units: number;
+    unitType: string;
+    cost: number;
+  }>;
+}
+
+export interface ProjectCostsResult {
+  success: boolean;
+  costs?: {
+    steps: ProjectCostStep[];
+    totalCost: number;
+  };
+  error?: string;
+}
+
+/**
+ * Fetch costs for a project from the database
+ */
+export async function fetchProjectCosts(projectId: string): Promise<ProjectCostsResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured. Please set VITE_RENDER_API_URL in .env'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/costs/${projectId}?byStep=true`, {
+      headers: withRenderAuth(),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('Fetch costs error:', response.status, errorData);
+      return {
+        success: false,
+        error: errorData.error || `Failed to fetch costs: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    return {
+      success: true,
+      costs: {
+        steps: result.steps || [],
+        totalCost: result.totalCost || 0
+      }
+    };
+
+  } catch (error) {
+    console.error('Fetch costs error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to fetch costs'
+    };
+  }
+}
+
+/**
+ * Delete all images from Supabase storage for a project
+ * This permanently removes files, not just database references
+ */
+export async function deleteProjectImages(projectId: string): Promise<{ success: boolean; deleted?: number; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return { success: false, error: 'Render API URL not configured' };
+  }
+
+  try {
+    console.log(`[deleteProjectImages] Deleting all images for project ${projectId}`);
+
+    const response = await fetch(`${renderUrl}/delete-project-images/${projectId}`, {
+      method: 'DELETE',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[deleteProjectImages] Error:', response.status, errorText);
+      return { success: false, error: `Failed to delete images: ${response.status}` };
+    }
+
+    const result = await response.json();
+    console.log(`[deleteProjectImages] Deleted ${result.deleted} images`);
+    return result;
+
+  } catch (error) {
+    console.error('[deleteProjectImages] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to delete images'
+    };
+  }
+}
+
+/**
+ * Reconnect orphaned images from Supabase storage
+ * Scans storage for images matching projectId and saves URLs to project
+ */
+export async function reconnectOrphanedImages(projectId: string): Promise<{ success: boolean; imageUrls?: string[]; error?: string }> {
+  try {
+    console.log(`[reconnectOrphanedImages] Scanning storage for project ${projectId}`);
+    
+    // List all files in the project's images folder
+    const { data: files, error: listError } = await supabase.storage
+      .from('generated-assets')
+      .list(`${projectId}/images`, {
+        limit: 500,
+        sortBy: { column: 'name', order: 'asc' }
+      });
+
+    if (listError) {
+      console.error('[reconnectOrphanedImages] List error:', listError);
+      return { success: false, error: listError.message };
+    }
+
+    if (!files || files.length === 0) {
+      console.log('[reconnectOrphanedImages] No images found in storage');
+      return { success: false, error: 'No images found in storage for this project' };
+    }
+
+    // Get public URLs for all image files
+    const imageUrls = files
+      .filter(file => file.name.endsWith('.png') || file.name.endsWith('.jpg') || file.name.endsWith('.jpeg'))
+      .map(file => {
+        const { data } = supabase.storage
+          .from('generated-assets')
+          .getPublicUrl(`${projectId}/images/${file.name}`);
+        return data.publicUrl;
+      });
+
+    console.log(`[reconnectOrphanedImages] Found ${imageUrls.length} images in storage`);
+
+    // Return the image URLs - the caller will handle updating state
+    // (Database update will happen via autoSave when user navigates)
+    console.log(`[reconnectOrphanedImages] Successfully retrieved ${imageUrls.length} images from storage`);
+    return { success: true, imageUrls };
+
+  } catch (error) {
+    console.error('[reconnectOrphanedImages] Error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to reconnect images'
+    };
+  }
+}
+
+// ============================================================================
+// Full Pipeline (Server-Side Automation)
+// ============================================================================
+
+export interface FullPipelineConfig {
+  projectId: string;
+  youtubeUrl?: string;  // Optional - either youtubeUrl or script must be provided
+  script?: string;      // Direct script input - skips transcript extraction and rewriting
+  title?: string;
+  topic?: string;
+  template?: string;
+  wordCount?: number;
+  imageCount?: number;
+  generateClips?: boolean;
+  clipCount?: number;
+  clipDuration?: number;
+  effects?: {
+    embers?: boolean;
+    smoke_embers?: boolean;
+  };
+}
+
+export interface FullPipelineResult {
+  success: boolean;
+  message?: string;
+  projectId?: string;
+  error?: string;
+}
+
+export interface PipelineStatusResult {
+  projectId: string;
+  currentStep: string;
+  status: string;
+  videoUrl?: string;
+  smokeEmbersVideoUrl?: string;
+}
+
+/**
+ * Start a full pipeline run on the server.
+ * Returns immediately - pipeline runs in background.
+ * User can close browser and come back to finished project.
+ */
+export async function startFullPipeline(config: FullPipelineConfig): Promise<FullPipelineResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/full-pipeline`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify(config)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Full pipeline error:', response.status, errorText);
+      return { success: false, error: `Failed to start pipeline: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Full pipeline error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to start pipeline'
+    };
+  }
+}
+
+/**
+ * Check the status of a running pipeline.
+ */
+export async function getPipelineStatus(projectId: string): Promise<PipelineStatusResult | null> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return null;
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/full-pipeline/status/${projectId}`, {
+      method: 'GET',
+      headers: withRenderAuth({}),
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Pipeline status error:', error);
+    return null;
+  }
+}
+
+export interface StopPipelineResult {
+  success: boolean;
+  message?: string;
+  projectId?: string;
+  currentStep?: string;
+  error?: string;
+}
+
+/**
+ * Stop a running pipeline.
+ * The pipeline will stop at the next step boundary.
+ */
+export async function stopPipeline(projectId: string): Promise<StopPipelineResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/full-pipeline/${projectId}`, {
+      method: 'DELETE',
+      headers: withRenderAuth({}),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Stop pipeline error:', response.status, errorText);
+      return { success: false, error: `Failed to stop pipeline: ${response.status}` };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Stop pipeline error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to stop pipeline'
+    };
+  }
+}
+
+export interface RunningPipeline {
+  projectId: string;
+  currentStep: string;
+}
+
+export interface RunningPipelinesResult {
+  count: number;
+  pipelines: RunningPipeline[];
+}
+
+/**
+ * Get the list of currently running pipelines from the server.
+ * This is the authoritative source for what's actually running.
+ */
+export async function getRunningPipelines(): Promise<RunningPipelinesResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return { count: 0, pipelines: [] };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/full-pipeline/running`, {
+      method: 'GET',
+      headers: withRenderAuth({}),
+    });
+
+    if (!response.ok) {
+      console.error('Get running pipelines error:', response.status);
+      return { count: 0, pipelines: [] };
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error('Get running pipelines error:', error);
+    return { count: 0, pipelines: [] };
+  }
+}
+
+// ============================================================================
+// Image Scanner (Content Moderation)
+// ============================================================================
+
+export interface ScanResult {
+  index: number;
+  imageUrl: string;
+  safe: boolean;
+  violations: string[];
+  confidence: number;
+  details: string;
+}
+
+export interface ScanProgressEvent {
+  type: 'scanning';
+  index: number;
+  total: number;
+}
+
+export interface ScanResultEvent {
+  type: 'result';
+  index: number;
+  imageUrl: string;
+  safe: boolean;
+  violations: string[];
+  confidence: number;
+  details: string;
+}
+
+export interface ScanCompleteEvent {
+  type: 'complete';
+  totalScanned: number;
+  flaggedCount: number;
+  results: ScanResult[];
+}
+
+export interface ScanErrorEvent {
+  type: 'error';
+  error: string;
+}
+
+export type ScanEvent = ScanProgressEvent | ScanResultEvent | ScanCompleteEvent | ScanErrorEvent;
+
+/**
+ * Scan images for content violations and historical inaccuracies.
+ * Returns an SSE stream with progress updates.
+ */
+export async function scanImagesStreaming(
+  images: Array<{ index: number; imageUrl: string }>,
+  eraTopic: string,
+  projectId: string,
+  onProgress: (event: ScanEvent) => void
+): Promise<void> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    throw new Error('Render API URL not configured');
+  }
+
+  const response = await fetch(`${renderUrl}/scan-images`, {
+    method: 'POST',
+    headers: withRenderAuth({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify({ images, eraTopic, projectId })
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to scan images: ${response.status}`);
+  }
+
+  if (!response.body) {
+    throw new Error('No response body');
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
+
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const data = JSON.parse(line.slice(6));
+          onProgress(data);
+        } catch (e) {
+          console.error('Failed to parse SSE data:', e);
+        }
+      }
+    }
+  }
+}
+
+export interface RewritePromptResult {
+  success: boolean;
+  newPrompt?: string;
+  error?: string;
+}
+
+/**
+ * Rewrite a prompt to fix content violations.
+ */
+export async function rewritePrompt(
+  originalPrompt: string,
+  scriptContext: string,
+  violations: string[],
+  eraTopic: string
+): Promise<RewritePromptResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/scan-images/rewrite`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ originalPrompt, scriptContext, violations, eraTopic })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errorData.error || `Failed to rewrite prompt: ${response.status}`
+      };
+    }
+
+    const result = await response.json();
+    return {
+      success: true,
+      newPrompt: result.newPrompt
+    };
+  } catch (error) {
+    console.error('Rewrite prompt error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to rewrite prompt'
+    };
+  }
+}
+
+// ============================================================================
+// YouTube Shorts Generation
+// ============================================================================
+
+export interface HookOption {
+  style: 'story' | 'didyouknow' | 'question' | 'contrast';
+  label: string;
+  preview: string;
+  fullScript: string;
+}
+
+export interface ShortHooksResult {
+  success: boolean;
+  hooks?: HookOption[];
+  error?: string;
+}
+
+export interface ShortGenerationProgress {
+  step: string;
+  progress: number;
+  message: string;
+}
+
+export interface ShortGenerationResult {
+  success: boolean;
+  shortUrl?: string;
+  audioUrl?: string;
+  srtContent?: string;
+  imageUrls?: string[];
+  duration?: number;
+  error?: string;
+}
+
+export interface ShortUploadResult {
+  success: boolean;
+  youtubeUrl?: string;
+  videoId?: string;
+  error?: string;
+}
+
+/**
+ * Generate 4 hook options for a YouTube Short from a full script
+ */
+export async function generateShortHooks(
+  projectId: string,
+  fullScript: string
+): Promise<ShortHooksResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-short-hooks`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({ projectId, fullScript })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Short hooks error:', response.status, errorText);
+      return { success: false, error: `Failed to generate hooks: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Short hooks error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate hooks'
+    };
+  }
+}
+
+/**
+ * Generate a YouTube Short with streaming progress updates
+ */
+export async function generateShortStreaming(
+  projectId: string,
+  hookStyle: string,
+  shortScript: string,
+  voiceSampleUrl: string,
+  settings?: {
+    ttsEmotionMarker?: string;
+    ttsTemperature?: number;
+    ttsTopP?: number;
+    ttsRepetitionPenalty?: number;
+  },
+  onProgress?: (progress: ShortGenerationProgress) => void
+): Promise<ShortGenerationResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/generate-short`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        projectId,
+        hookStyle,
+        shortScript,
+        voiceSampleUrl,
+        settings
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Generate short error:', response.status, errorText);
+      return { success: false, error: `Failed to generate short: ${response.status}` };
+    }
+
+    // Handle SSE streaming
+    const reader = response.body?.getReader();
+    if (!reader) {
+      return { success: false, error: 'No response body' };
+    }
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let result: ShortGenerationResult = { success: false, error: 'No response received' };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        if (!event.trim()) continue;
+
+        // Parse event type and data
+        const lines = event.split('\n');
+        let eventType = '';
+        let eventData = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            eventData = line.slice(6);
+          }
+        }
+
+        if (!eventData) continue;
+
+        try {
+          const parsed = JSON.parse(eventData);
+
+          if (eventType === 'progress' && onProgress) {
+            onProgress({
+              step: parsed.step,
+              progress: parsed.progress,
+              message: parsed.message
+            });
+          } else if (eventType === 'complete') {
+            result = {
+              success: parsed.success,
+              shortUrl: parsed.shortUrl,
+              audioUrl: parsed.audioUrl,
+              srtContent: parsed.srtContent,
+              imageUrls: parsed.imageUrls,
+              duration: parsed.duration
+            };
+          } else if (eventType === 'error') {
+            result = {
+              success: false,
+              error: parsed.error
+            };
+          }
+        } catch (e) {
+          // Skip invalid JSON
+        }
+      }
+    }
+
+    return result;
+  } catch (error) {
+    console.error('Generate short error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate short'
+    };
+  }
+}
+
+/**
+ * Upload a generated Short to YouTube Shorts
+ */
+export async function uploadShortToYouTube(
+  projectId: string,
+  accessToken: string,
+  onProgress?: (progress: number) => void
+): Promise<ShortUploadResult> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    // First, get the short URL from the project
+    const { data: project, error: fetchError } = await supabase
+      .from('generation_projects')
+      .select('short_url, video_title, short_hook_style')
+      .eq('id', projectId)
+      .single();
+
+    if (fetchError || !project?.short_url) {
+      return {
+        success: false,
+        error: 'Short video not found for this project'
+      };
+    }
+
+    if (onProgress) onProgress(10);
+
+    // Upload to YouTube using the existing youtube-upload endpoint with #Shorts tag
+    const response = await fetch(`${renderUrl}/youtube-upload`, {
+      method: 'POST',
+      headers: withRenderAuth({
+        'Content-Type': 'application/json',
+      }),
+      body: JSON.stringify({
+        videoUrl: project.short_url,
+        accessToken,
+        title: `${project.video_title || 'History'} #Shorts`,
+        description: `Subscribe for more history! #Shorts #History #HistoryFacts`,
+        tags: ['shorts', 'history', 'historical', 'facts', 'education'],
+        categoryId: '27', // Education
+        privacyStatus: 'public',
+        isShort: true
+      })
+    });
+
+    if (onProgress) onProgress(50);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Short upload error:', response.status, errorText);
+      return { success: false, error: `Failed to upload short: ${response.status}` };
+    }
+
+    const data = await response.json();
+
+    if (onProgress) onProgress(100);
+
+    if (data.success && data.videoId) {
+      return {
+        success: true,
+        videoId: data.videoId,
+        youtubeUrl: `https://youtube.com/shorts/${data.videoId}`
+      };
+    }
+
+    return {
+      success: false,
+      error: data.error || 'Upload failed'
+    };
+  } catch (error) {
+    console.error('Short upload error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to upload short'
+    };
+  }
+}
+
+/**
+ * Generate expansion topics for a given topic/title using AI
+ */
+export async function generateExpansionTopics(
+  topic: string,
+  title?: string,
+  focus?: string
+): Promise<{ success: boolean; topics?: string[]; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+
+  if (!renderUrl) {
+    return {
+      success: false,
+      error: 'Render API URL not configured'
+    };
+  }
+
+  try {
+    const response = await fetch(`${renderUrl}/rewrite-script/generate-expansion-topics`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ topic, title, focus })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Generate expansion topics error:', response.status, errorText);
+      return { success: false, error: `Failed to generate topics: ${response.status}` };
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error('Generate expansion topics error:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to generate expansion topics'
+    };
+  }
+}
