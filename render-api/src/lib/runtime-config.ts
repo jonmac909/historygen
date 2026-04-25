@@ -31,6 +31,19 @@ export const imageGenerationConfig = {
   maxRetries: Number(process.env.ZIMAGE_MAX_RETRIES ?? 4),  // Increased from 2 to 4 (5 total attempts)
 };
 
+export const localInferenceConfig = {
+  enabled: process.env.LOCAL_INFERENCE === 'true',
+  voxcpm2Url: process.env.LOCAL_VOXCPM2_URL ?? 'http://localhost:7861',
+  zimageUrl: process.env.LOCAL_ZIMAGE_URL ?? 'http://localhost:7862',
+  ltx2Url: process.env.LOCAL_LTX2_URL ?? 'http://localhost:7863',
+  assetsDir: process.env.LOCAL_ASSETS_DIR ?? 'D:\\historygen\\local-assets',
+  assetsBaseUrl: process.env.LOCAL_ASSETS_BASE_URL ?? 'http://localhost:3000/assets',
+  ffmpegPath: process.env.FFMPEG_PATH ?? '',
+  voxcpm2TimeoutMs: Number(process.env.VOXCPM2_TIMEOUT_MS ?? 60_000),
+  zimageTimeoutMs: Number(process.env.ZIMAGE_TIMEOUT_MS ?? 5 * 60_000),
+  ltx2TimeoutMs: Number(process.env.LTX2_TIMEOUT_MS ?? 15 * 60_000),
+};
+
 export const allowedAssetHosts = splitList(
   process.env.ALLOWED_ASSET_HOSTS,
   [
