@@ -74,6 +74,17 @@ function assertAllowedAssetUrl(rawUrl: string, context: string): void {
     throw new Error(`Invalid URL for ${context}`);
   }
 
+  // Phase 2.9 follow-up: in local-inference mode, asset URLs come from the
+  // render-api's own /assets static serve at http://localhost:<PORT>/assets/...
+  // Allow http: + localhost-family hostnames so end-to-end runs work.
+  const isLocalhost =
+    parsed.hostname === 'localhost' ||
+    parsed.hostname === '127.0.0.1' ||
+    parsed.hostname === '::1';
+  if (localInferenceConfig.enabled && parsed.protocol === 'http:' && isLocalhost) {
+    return;
+  }
+
   if (parsed.protocol !== 'https:') {
     throw new Error(`Disallowed protocol for ${context}`);
   }
