@@ -1,3 +1,4 @@
+import { localInferenceConfig } from '../lib/runtime-config';
 
 const RUNPOD_REST_API = 'https://rest.runpod.io/v1';
 
@@ -46,6 +47,10 @@ export async function updateEndpointWorkers(
  * Call this before audio generation starts
  */
 export async function allocateWorkersForAudio(apiKey: string): Promise<void> {
+  // Phase 2.10: in local-inference mode, RunPod endpoints are not used at all
+  // — no remote workers to allocate. Early-return is a no-op.
+  if (localInferenceConfig.enabled) return;
+
   const audioEndpointId = process.env.RUNPOD_ENDPOINT_ID; // Fish Speech TTS
   const imageEndpointId = process.env.RUNPOD_ZIMAGE_ENDPOINT_ID; // Z-Image
 
@@ -70,6 +75,10 @@ export async function allocateWorkersForAudio(apiKey: string): Promise<void> {
  * Call this before image generation starts
  */
 export async function allocateWorkersForImages(apiKey: string): Promise<void> {
+  // Phase 2.10: in local-inference mode, RunPod endpoints are not used at all
+  // — no remote workers to allocate. Early-return is a no-op.
+  if (localInferenceConfig.enabled) return;
+
   const audioEndpointId = process.env.RUNPOD_ENDPOINT_ID; // Fish Speech TTS
   const imageEndpointId = process.env.RUNPOD_ZIMAGE_ENDPOINT_ID; // Z-Image
 
