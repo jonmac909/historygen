@@ -21,7 +21,8 @@ VALID_ERROR_CODES = {"VALIDATION_ERROR", "NOT_FOUND", "RATE_LIMITED", "INTERNAL_
 
 
 def patch_safetensors_to_cuda(target_device: str = "cuda") -> None:
-    """Force safetensors.torch.load_file to load directly onto the target device.
+    """Force safetensors.torch.load_file to load directly onto the target device
+    when the caller doesn't pass an explicit device.
 
     Why: many model loaders call `load_file(path)` and rely on the default
     CPU mmap. On low-pagefile Windows boxes, large safetensors (e.g. VoxCPM2's
@@ -30,9 +31,9 @@ def patch_safetensors_to_cuda(target_device: str = "cuda") -> None:
 
     Idempotent: only patches if CUDA is available and not already patched.
     Note: callers that pass an explicit `device=` arg to `load_file` bypass
-    this default and remain unaffected (this is intentional — Z-Image's loader
-    deliberately stages CPU→GPU; the patch only catches the implicit-default
-    callers like VoxCPM2 and LTX-2).
+    this default and remain unaffected. For loaders that hard-code
+    `device='cpu'` and crash on the host mmap (Z-Image's loader.py:64),
+    use `patch_safetensors_force_cuda()` instead.
     """
     import torch  # local import keeps common.py importable without torch
     if not torch.cuda.is_available():
@@ -47,6 +48,32 @@ def patch_safetensors_to_cuda(target_device: str = "cuda") -> None:
 
     _load_file_cuda._patched_for_cuda = True  # type: ignore[attr-defined]
     st.load_file = _load_file_cuda  # type: ignore[assignment]
+
+
+def patch_safetensors_force_cuda(target_device: str = "cuda") -> None:
+    """Aggressive variant: force ALL safetensors.torch.load_file calls to the
+    target device, IGNORING any explicit device arg passed by the caller.
+
+    Use only when a caller hard-codes `device='cpu'` and that path crashes on
+    Windows pagefile commit limits (Z-Image's loader does this — see
+    `D:\\Z-Image\\src\\utils\\loader.py:64`). Any subsequent `.to('cuda')`
+    operations the caller does become no-ops.
+
+    Idempotent.
+    """
+    import torch
+    if not torch.cuda.is_available():
+        return
+    import safetensors.torch as st  # type: ignore
+    if getattr(st.load_file, "_force_cuda_patched", False):
+        return
+    _orig = st.load_file
+
+    def _load_file_force_cuda(filename, device=None):  # IGNORES caller's device
+        return _orig(filename, device=target_device)
+
+    _load_file_force_cuda._force_cuda_patched = True  # type: ignore[attr-defined]
+    st.load_file = _load_file_force_cuda  # type: ignore[assignment]
 
 
 def error_envelope(code: str, message: str, details: Optional[dict] = None) -> dict:

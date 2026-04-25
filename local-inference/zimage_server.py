@@ -175,10 +175,14 @@ class ModelHolder:
         have set status='loading'. Honors BF16 -> FP16 OOM fallback."""
         if self._components is not None:
             return
-        # Belt-and-braces: patch safetensors default to CUDA. Z-Image's loader
-        # passes explicit device= so the patch is a no-op for its loads;
-        # harmless and keeps behavior consistent across servers (LTX-2 will
-        # rely on it more directly).
+        # Z-Image's loader hard-codes device='cpu' (D:\Z-Image\src\utils\loader.py:64);
+        # the patch is a no-op for that path. Tested both variants on RTX 5070 12 GB:
+        #   - patch_safetensors_to_cuda (default): cpu mmap blows Windows pagefile
+        #     commit limit when C: free space is low → OSError 1455 / segfault
+        #   - patch_safetensors_force_cuda: all 6B BF16 shards land on GPU at once
+        #     → torch.OutOfMemoryError (PyTorch tracks ~26 GiB allocated)
+        # Hardware is genuinely the limit on this card. Awaiting 5080 16 GB upgrade.
+        # Keeping the original patch here for VoxCPM2/LTX-2 compatibility.
         patch_safetensors_to_cuda()
 
         logger.info("loading Z-Image-Turbo (BF16) ...")

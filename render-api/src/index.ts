@@ -1,3 +1,9 @@
+// Load .env BEFORE any other import — content-moderator.ts and other route
+// modules call env-reading factories (e.g. createAnthropicClient) at module
+// load time. The previous `dotenv.config()` at line ~51 ran AFTER those
+// imports already executed, so env vars were always empty during boot.
+import 'dotenv/config';
+
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
