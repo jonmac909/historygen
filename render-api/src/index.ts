@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
 
 import { initPotProvider } from './lib/pot-provider';
 import {
@@ -9,7 +11,9 @@ import {
   internalApiKey,
   rateLimitMax,
   rateLimitWindowMs,
+  localInferenceConfig,
 } from './lib/runtime-config';
+import { ASSET_KINDS } from './lib/local-asset-writer';
 import rewriteScriptRouter from './routes/rewrite-script';
 import generateAudioRouter from './routes/generate-audio';
 import generateImagesRouter from './routes/generate-images';
@@ -46,6 +50,48 @@ import scanScriptsRouter from './routes/scan-scripts';
 
 dotenv.config();
 
+// -----------------------------------------------------------------------------
+// Boot-time guards (Phase 2.5 of local-inference-swap)
+//
+// 1. Hard-fail if LOCAL_INFERENCE is enabled in production — this mode is
+//    intended for the developer's local GPU host only; serving real traffic
+//    from localhost-bound model servers is a footgun.
+// 2. Verify each local-assets/<kind>/ subdir is creatable + writable before
+//    serving requests. We mkdirSync, write/read/delete a sentinel file, and
+//    process.exit(1) on any failure so misconfigured environments fail loud
+//    instead of erroring on the first asset write deep inside a route.
+//
+// Both guards are skipped in test runs (NODE_ENV === 'test') so vitest doesn't
+// touch the host filesystem; route-handler tests use the writer module's own
+// path resolution (read live each call) and don't rely on these.
+// -----------------------------------------------------------------------------
+function runBootGuards(): void {
+  if (process.env.NODE_ENV === 'test') return;
+
+  if (process.env.NODE_ENV === 'production' && localInferenceConfig.enabled) {
+    throw new Error('LOCAL_INFERENCE must not be true in production');
+  }
+
+  if (!localInferenceConfig.enabled) return;
+
+  for (const kind of ASSET_KINDS) {
+    const kindDir = path.resolve(localInferenceConfig.assetsDir, kind);
+    const sentinel = path.join(kindDir, '.write-test');
+    try {
+      fs.mkdirSync(kindDir, { recursive: true });
+      fs.writeFileSync(sentinel, 'ok');
+      const back = fs.readFileSync(sentinel, 'utf8');
+      if (back !== 'ok') throw new Error(`sentinel readback mismatch in ${kindDir}`);
+      fs.unlinkSync(sentinel);
+    } catch (err) {
+      console.error(`[boot] FATAL: local-assets sentinel test failed for kind='${kind}' at ${kindDir}:`, err);
+      process.exit(1);
+    }
+  }
+}
+
+runBootGuards();
+
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
@@ -62,6 +108,31 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Api-Key']
 }));
 app.use(express.json({ limit: '50mb' }));
+
+// -----------------------------------------------------------------------------
+// Public, unauthenticated routes (whitelisted BEFORE rate limit + auth):
+//   GET /health  → always available, both modes
+//   GET /config  → frontend has no internal API key at boot, so this MUST be
+//                  callable without auth (ZG-22). Surface is intentionally
+//                  minimal: the boolean only — no URLs, no secrets, no paths.
+//
+// Read LOCAL_INFERENCE live so vi.stubEnv in tests takes effect even when
+// runtime-config.ts was imported before the stub (mirrors the pattern in
+// r2-storage.ts:isLocalInferenceEnabled).
+// -----------------------------------------------------------------------------
+app.get('/health', (req, res) => {
+  res.json({ ok: true });
+});
+
+app.get('/config', (req, res) => {
+  res.json({ localInferenceMode: process.env.LOCAL_INFERENCE === 'true' });
+});
+
+// Static asset host for local-inference mode. In remote mode we don't mount
+// anything under /assets — the frontend pulls from R2/Supabase URLs instead.
+if (localInferenceConfig.enabled) {
+  app.use('/assets', express.static(localInferenceConfig.assetsDir));
+}
 
 const rateBuckets = new Map<string, { count: number; resetAt: number }>();
 const rateLimitMiddleware: express.RequestHandler = (req, res, next) => {
@@ -90,7 +161,7 @@ const authMiddleware: express.RequestHandler = (req, res, next) => {
   if (!apiKeyRequired) return next();
   if (req.method === 'OPTIONS') return next();
 
-  const openPaths = new Set(['/health', '/']);
+  const openPaths = new Set(['/health', '/', '/config']);
   if (openPaths.has(req.path)) return next();
 
   if (!internalApiKey) {
@@ -109,12 +180,6 @@ const authMiddleware: express.RequestHandler = (req, res, next) => {
 
 app.use(rateLimitMiddleware);
 app.use(authMiddleware);
-
-// Health check
-app.get('/health', (req, res) => {
-  console.log('Health check requested');
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
 
 // Debug endpoint to check env vars (remove after debugging)
 if (process.env.NODE_ENV !== 'production') {
@@ -215,40 +280,56 @@ process.on('unhandledRejection', (reason, promise) => {
   // Don't exit - let the error handler deal with it
 });
 
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 HistoryVidGen API running on port ${PORT}`);
-  console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`🌐 Listening on 0.0.0.0:${PORT}`);
-  console.log(`✅ Server successfully bound and ready for connections`);
+// -----------------------------------------------------------------------------
+// Server bootstrap. Only listen when this module is the process entry point —
+// `node dist/index.js` (production) or `ts-node src/index.ts` (dev). Tests
+// `await import('../../src/index')` and exercise routes via supertest, which
+// drives the Express handler directly without binding a port.
+// -----------------------------------------------------------------------------
+function startServer(): void {
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`🚀 HistoryVidGen API running on port ${PORT}`);
+    console.log(`📝 Environment: ${process.env.NODE_ENV || 'development'}`);
+    console.log(`🌐 Listening on 0.0.0.0:${PORT}`);
+    console.log(`✅ Server successfully bound and ready for connections`);
 
-  // PO Token provider disabled - requires git clone and npm install at runtime
-  // which doesn't work in Railway's container environment
-  // initPotProvider().catch(err => {
-  //   console.warn('⚠️ PO Token provider init failed:', err.message);
-  // });
+    // PO Token provider disabled - requires git clone and npm install at runtime
+    // which doesn't work in Railway's container environment
+    // initPotProvider().catch(err => {
+    //   console.warn('⚠️ PO Token provider init failed:', err.message);
+    // });
 
-  // Cache refresh cron DISABLED - all cron jobs removed at user request
-  console.log('🔄 Cache refresh cron: DISABLED (removed from code)');
+    // Cache refresh cron DISABLED - all cron jobs removed at user request
+    console.log('🔄 Cache refresh cron: DISABLED (removed from code)');
 
-  // Auto Poster cron DISABLED - removed at user request
-  // User can manually trigger via UI or API if needed
-  console.log('⏰ Auto Poster cron: DISABLED (removed from code)');
+    // Auto Poster cron DISABLED - removed at user request
+    // User can manually trigger via UI or API if needed
+    console.log('⏰ Auto Poster cron: DISABLED (removed from code)');
 
-  // ONE-TIME Auto Poster cron DISABLED - removed at user request
-  console.log('🎯 ONE-TIME Auto Poster: DISABLED (removed from code)');
+    // ONE-TIME Auto Poster cron DISABLED - removed at user request
+    console.log('🎯 ONE-TIME Auto Poster: DISABLED (removed from code)');
+  });
 
-});
+  // Increase timeouts for long-running SSE connections (video rendering)
+  server.keepAliveTimeout = 620000; // 10+ minutes
+  server.headersTimeout = 625000; // Slightly higher than keepAliveTimeout
+  server.timeout = 0; // Disable socket timeout for SSE
 
-// Increase timeouts for long-running SSE connections (video rendering)
-server.keepAliveTimeout = 620000; // 10+ minutes
-server.headersTimeout = 625000; // Slightly higher than keepAliveTimeout
-server.timeout = 0; // Disable socket timeout for SSE
+  server.on('error', (error: any) => {
+    console.error('❌ Server error:', error);
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use`);
+    }
+    process.exit(1);
+  });
+}
 
-server.on('error', (error: any) => {
-  console.error('❌ Server error:', error);
-  if (error.code === 'EADDRINUSE') {
-    console.error(`Port ${PORT} is already in use`);
-  }
-  process.exit(1);
-});
+// CommonJS entry-point check: when compiled with tsc to dist/index.js and
+// invoked as `node dist/index.js`, require.main === module. When imported
+// from a test (or any other module), it does not.
+if (require.main === module) {
+  startServer();
+}
+
+export { app };
 
