@@ -11,6 +11,11 @@ $root = $PSScriptRoot
 $logsDir = Join-Path $root 'logs'
 New-Item -ItemType Directory -Force -Path $logsDir | Out-Null
 
+# PyTorch CUDA allocator hint — reduces memory fragmentation under tight VRAM.
+# Recommended by the OOM error message that surfaced in Phase 4 verification
+# on RTX 5070 12 GB. Cheap belt-and-braces; no downside on the 5080 16 GB.
+$env:PYTORCH_CUDA_ALLOC_CONF = 'expandable_segments:True'
+
 function Start-Server {
     param(
         [string]$Name,

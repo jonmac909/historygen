@@ -251,6 +251,43 @@ POST /render-video          → /assets/renders/<id>-<uuid>.mp4 200 video/mp4
 ### Rollback
 Set `LOCAL_INFERENCE=false` in `render-api/.env` and the existing R2 + RunPod + Kie.ai paths take over with no code revert.
 
+## Monday LTX-2 config (locked from Phase 4 reading of distilled.py)
+
+**`DistilledPipeline.__init__` signature** (read at `D:\LTX-2\packages\ltx-pipelines\src\ltx_pipelines\distilled.py:47`):
+
+```python
+DistilledPipeline(
+    distilled_checkpoint_path: str,        # D:\hf_cache\Lightricks--LTX-2.3\ltx-2.3-22b-distilled-1.1.safetensors
+    gemma_root: str,                       # D:\hf_cache\google--gemma-3-12b-it-qat-q4_0-unquantized
+    spatial_upsampler_path: str,           # D:\hf_cache\Lightricks--LTX-2.3\ltx-2.3-spatial-upscaler-x2-1.1.safetensors
+    loras: list[LoraPathStrengthAndSDOps], # [LoraPathStrengthAndSDOps(path=ltx-2.3-22b-distilled-lora-384-1.1.safetensors, strength=1.0)]
+    device: torch.device | None = None,    # cuda
+    quantization: QuantizationPolicy | None = None,  # None — FP8 + offload combo rejected by upstream (Phase 1.3 finding)
+    registry: Registry | None = None,
+    torch_compile: bool = False,           # False — avoid first-run compile cost
+    offload_mode: OffloadMode = OffloadMode.NONE,    # OffloadMode.CPU
+)
+```
+
+**Decided config for Monday on RTX 5080 16 GB:**
+- `quantization=None` (FP8 cast + layer streaming raises `ValueError` from `DiffusionStage`; verified Phase 1.3)
+- `offload_mode=OffloadMode.CPU` (Gemma encoder unloads after extracting embeddings per the trainer AGENTS.md flow; main transformer stays on GPU during diffusion)
+- `torch_compile=False`
+- BF16 throughout (hard-coded in pipeline at line 60)
+
+**Two-stage flow** (per `__call__`):
+1. Stage 1 at half resolution (e.g. 640×360 for 720p target). Faster, generates initial video latent.
+2. Spatial upsampler 2× → stage 2 refinement at full resolution.
+
+**`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`** set in `start-all.ps1` for all three Python servers (Phase 4 follow-up; recommended by the actual OOM error message we hit).
+
+**Path to first green Monday smoke:**
+1. Install 5080, `nvidia-smi` confirms 16 GB
+2. `pwsh local-inference/start-all.ps1` → all 3 servers up
+3. `pwsh local-inference/healthcheck.ps1 -Ready` → blocks until `/healthz?ready=1` returns 200 from all (lazy load)
+4. Curl direct to each server with sample inputs (the smoke commands in Phase 4 of this plan)
+5. If green → run a real Shorts pipeline through the UI
+
 ## Questions
 
 1. (Resolved) Plan scope → one big plan, single feat branch.
