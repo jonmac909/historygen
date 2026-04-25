@@ -7,6 +7,83 @@ const withRenderAuth = (headers: Record<string, string> = {}) => ({
   ...renderAuthHeader,
 });
 
+// =============================================================================
+// Local inference mode (ZG-3, ZG-12)
+// =============================================================================
+//
+// Source of truth for "is the backend running locally with VRAM-resident
+// VoxCPM2 / Z-Image / LTX-2?" is the runtime endpoint
+//   GET ${VITE_RENDER_API_URL}/config -> { localInferenceMode: boolean }
+//
+// We deliberately DO NOT introduce a `VITE_LOCAL_INFERENCE` env var (ZG-3):
+// Vite bakes envs at server start, so a flipped flag would never be picked up
+// without a full restart, leading to confusing stale-bundle behavior.
+//
+// Boot semantics (ZG-12):
+//   - Probe with a 2 s AbortController timeout.
+//   - On any failure (timeout, network error, non-200, render-api absent),
+//     fall back to `false` (assume remote/production behavior).
+//   - The result is cached for the lifetime of the page so callers can call
+//     `getLocalInferenceMode()` cheaply many times.
+//   - `_lastProbeFailed` is exposed so a dev-only banner can warn the
+//     developer that the probe did not actually reach render-api.
+
+let _localInferenceModeCache: boolean | null = null;
+let _lastProbeFailed = false;
+let _inFlightProbe: Promise<boolean> | null = null;
+
+export async function getLocalInferenceMode(): Promise<boolean> {
+  if (_localInferenceModeCache !== null) return _localInferenceModeCache;
+  if (_inFlightProbe) return _inFlightProbe;
+
+  const renderApiUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderApiUrl) {
+    _lastProbeFailed = true;
+    return (_localInferenceModeCache = false);
+  }
+
+  _inFlightProbe = (async () => {
+    try {
+      const ctl = new AbortController();
+      const t = setTimeout(() => ctl.abort(), 2000);
+      const r = await fetch(`${renderApiUrl}/config`, { signal: ctl.signal });
+      clearTimeout(t);
+      if (!r.ok) {
+        _lastProbeFailed = true;
+        return (_localInferenceModeCache = false);
+      }
+      const j = await r.json();
+      _lastProbeFailed = false;
+      return (_localInferenceModeCache = !!j.localInferenceMode);
+    } catch {
+      _lastProbeFailed = true;
+      if (typeof console !== 'undefined') {
+        console.warn('[api] /config probe failed; defaulting localInferenceMode=false');
+      }
+      return (_localInferenceModeCache = false);
+    } finally {
+      _inFlightProbe = null;
+    }
+  })();
+
+  return _inFlightProbe;
+}
+
+/** Returns true iff the most recent /config probe did NOT reach render-api.
+ * Use only for dev-mode banners / diagnostics. */
+export function getLocalInferenceProbeFailed(): boolean {
+  return _lastProbeFailed;
+}
+
+/** Test-only: clears the probe cache so subsequent calls re-probe.
+ * Exported because Vitest module isolation cannot otherwise reset
+ * module-scoped `let` state across test cases. */
+export function _resetLocalInferenceModeCache(): void {
+  _localInferenceModeCache = null;
+  _lastProbeFailed = false;
+  _inFlightProbe = null;
+}
+
 /**
  * Calculate dynamic timeout based on target word count
  * Formula: min(1800000, (targetWords / 150) * 60000)
@@ -3767,3 +3844,147 @@ export async function generateExpansionTopics(
     };
   }
 }
+
+// =============================================================================
+// ApiClient abstraction (Phase 2.5 frontend Edge Function audit, ZG-1.1)
+// =============================================================================
+//
+// The two pipelines that historically leaked through Supabase Edge Functions
+// directly to RunPod are:
+//   - `generate-audio`  (VoxCPM2 voice cloning)
+//   - `generate-images` (Z-Image generation)
+//
+// Both are now routed through render-api by the existing exported helpers
+// (`generateAudio`, `generateImages`, etc.). The Edge Functions themselves
+// remain alive for production (Vercel) but are not invoked from the frontend
+// in local-inference mode.
+//
+// `getApiClient(localMode)` exposes a single typed surface that hides the
+// underlying transport. The "edgeFunctionClient" implementation invokes the
+// Supabase Edge Functions directly (legacy path; preserved for explicit
+// fallback or future remote-only use cases). The "renderApiClient"
+// implementation delegates to the existing render-api fetch helpers.
+//
+// Usage:
+//   const localMode = await getLocalInferenceMode();
+//   const api = getApiClient(localMode);
+//   const result = await api.generateAudio({ ... });
+//
+// Today, both `localMode=true` and `localMode=false` route through render-api,
+// because render-api itself owns the local-vs-remote routing (Phase 2.6/2.7).
+// The Edge Function client exists as an explicit, audit-visible alternative
+// callable when a future caller needs the legacy path (e.g. a dev who
+// intentionally wants to hit the production Supabase function from a local
+// frontend). It is NEVER selected by `getApiClient` automatically.
+
+/** Payload accepted by `ApiClient.generateAudio`. Mirrors the shape consumed
+ * by both `supabase.functions.invoke('generate-audio', { body })` (legacy)
+ * and the render-api `POST /generate-audio` route. */
+export interface GenerateAudioPayload {
+  script: string;
+  voiceSampleUrl: string;
+  projectId: string;
+}
+
+/** Payload accepted by `ApiClient.generateImages`. Mirrors the shape consumed
+ * by both `supabase.functions.invoke('generate-images', { body })` (legacy)
+ * and the render-api `POST /generate-images` route. */
+export interface GenerateImagesPayload {
+  prompts: string[] | ImagePromptWithTiming[];
+  quality: string;
+  aspectRatio?: string;
+  projectId?: string;
+}
+
+/** Single typed surface for inference-touching pipelines (audio + images). */
+export interface ApiClient {
+  /** Generate full-script audio with voice cloning. */
+  generateAudio(payload: GenerateAudioPayload): Promise<AudioResult>;
+  /** Generate batch of images from prompts. */
+  generateImages(payload: GenerateImagesPayload): Promise<ImageGenerationResult>;
+}
+
+// --- Edge Function backend (legacy path; calls Supabase Edge Functions) ----
+
+const edgeFunctionClient: ApiClient = {
+  async generateAudio(payload) {
+    const { data, error } = await supabase.functions.invoke('generate-audio', {
+      body: {
+        script: payload.script,
+        voiceSampleUrl: payload.voiceSampleUrl,
+        projectId: payload.projectId,
+      },
+    });
+    if (error) {
+      return {
+        success: false,
+        error: error.message ?? 'Failed to generate audio',
+      };
+    }
+    if (data?.error) {
+      return { success: false, error: data.error };
+    }
+    return data as AudioResult;
+  },
+
+  async generateImages(payload) {
+    const { data, error } = await supabase.functions.invoke('generate-images', {
+      body: {
+        prompts: payload.prompts,
+        quality: payload.quality,
+        aspectRatio: payload.aspectRatio ?? '16:9',
+        projectId: payload.projectId,
+      },
+    });
+    if (error) {
+      return {
+        success: false,
+        error: error.message ?? 'Failed to generate images',
+      };
+    }
+    if (data?.error) {
+      return { success: false, error: data.error };
+    }
+    return data as ImageGenerationResult;
+  },
+};
+
+// --- Render-API backend (preferred path; delegates to existing helpers) ----
+
+const renderApiClient: ApiClient = {
+  async generateAudio(payload) {
+    return generateAudio(payload.script, payload.voiceSampleUrl, payload.projectId);
+  },
+
+  async generateImages(payload) {
+    return generateImages(
+      payload.prompts,
+      payload.quality,
+      payload.aspectRatio ?? '16:9',
+      payload.projectId,
+    );
+  },
+};
+
+/** Returns the ApiClient implementation appropriate for the given mode.
+ *
+ * In both `localMode=true` and `localMode=false` the returned client routes
+ * through render-api today; this is correct because render-api owns the
+ * downstream routing decision (local Python servers vs. RunPod). The
+ * `edgeFunctionClient` is exported via `getEdgeFunctionApiClient()` for
+ * callers that need the legacy Supabase-direct path explicitly.
+ */
+export function getApiClient(_localMode: boolean): ApiClient {
+  return renderApiClient;
+}
+
+/** Escape hatch: returns the legacy Supabase Edge Function client.
+ * Audit-visible alternative to `getApiClient`; not selected automatically. */
+export function getEdgeFunctionApiClient(): ApiClient {
+  return edgeFunctionClient;
+}
+
+/** Test-only export of the render-api client implementation. */
+export const _renderApiClient = renderApiClient;
+/** Test-only export of the Edge Function client implementation. */
+export const _edgeFunctionClient = edgeFunctionClient;

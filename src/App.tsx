@@ -11,6 +11,7 @@ import VideoAnalysis from "./pages/VideoAnalysis";
 import VideoEditor from "./pages/VideoEditor";
 import NotFound from "./pages/NotFound";
 import YouTubeOAuthCallback from "./pages/YouTubeOAuthCallback";
+import { getLocalInferenceMode, getLocalInferenceProbeFailed } from "@/lib/api";
 
 const queryClient = new QueryClient();
 
@@ -64,12 +65,56 @@ function LoginScreen({ onLogin }: { onLogin: () => void }) {
   );
 }
 
+/** Dev-only banner shown when the boot-time `/config` probe failed to reach
+ * render-api (ZG-12). Hidden in production builds because end-users have no
+ * actionable response to this. */
+function ConfigProbeBanner() {
+  const [show, setShow] = useState(false);
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    let cancelled = false;
+    void getLocalInferenceMode().then(() => {
+      if (!cancelled && getLocalInferenceProbeFailed()) {
+        setShow(true);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!show) return null;
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        bottom: 8,
+        right: 8,
+        zIndex: 9999,
+        background: '#7f1d1d',
+        color: '#fff',
+        padding: '8px 12px',
+        fontSize: 12,
+        borderRadius: 6,
+        boxShadow: '0 2px 8px rgba(0,0,0,.4)',
+        maxWidth: 320,
+      }}
+    >
+      [dev] /config probe to VITE_RENDER_API_URL failed. Defaulting
+      localInferenceMode=false. Start render-api or check VITE_RENDER_API_URL.
+    </div>
+  );
+}
+
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
     const auth = localStorage.getItem("authenticated");
     setIsAuthenticated(auth === "true");
+    // Kick off the runtime /config probe at boot; result is cached.
+    void getLocalInferenceMode();
   }, []);
 
   if (isAuthenticated === null) {
@@ -88,6 +133,7 @@ const App = () => {
       <TooltipProvider>
         <Toaster />
         <Sonner />
+        <ConfigProbeBanner />
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Index />} />
