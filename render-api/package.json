@@ -50,7 +50,8 @@
     "undici": "^6.21.0",
     "uuid": "^13.0.0",
     "youtube-sr": "^4.3.12",
-    "yt-dlp-wrap": "^2.3.12"
+    "yt-dlp-wrap": "^2.3.12",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
