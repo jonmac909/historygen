@@ -15,6 +15,8 @@ import { getPronunciationFixesRecord } from './pronunciation';
 import { saveCost } from '../lib/cost-tracker';
 import { saveAudioToProject, saveAudioProgress, getProjectData, markAudioGenerationStarted } from '../lib/supabase-project';
 import { uploadAsset, downloadAsset, deleteProjectSegments, getSignedDownloadUrl } from '../lib/r2-storage';
+import { localInferenceConfig } from '../lib/runtime-config';
+import { voxcpm2RequestSchema } from '../schemas/local-inference-schemas';
 
 // Set FFmpeg and FFprobe paths
 if (ffmpegStatic) {
@@ -1672,18 +1674,27 @@ async function downloadVoiceSample(url: string): Promise<string> {
   }
 }
 
-// Per-URL transcript cache for VoxCPM2 ultimate cloning mode (avoids re-transcribing the same voice sample)
+// SHA-256-keyed transcript cache (ZG-3.3 / ZG-19): keying by URL broke when local
+// mode produced URLs like http://localhost:3000/assets/audio/<uuid>.wav (Whisper
+// can't fetch them, and the same bytes uploaded twice yield two cache entries).
+// Hash of the audio bytes is stable across uploads and across remote/local mode.
 const voiceSampleTranscriptCache = new Map<string, string>();
 
 /**
  * Transcribe a voice sample WAV buffer via Groq Whisper (plain text, no timestamps).
  * Returns empty string if Groq key is unavailable — VoxCPM2 worker falls back to
  * its own internal Whisper pass when reference_transcript is omitted.
+ *
+ * Cache key: SHA-256 of the audio bytes (URL kept only for log context). Same
+ * bytes → same hash → same transcript, regardless of upload URL.
  */
 async function getVoiceSampleTranscript(url: string, audioBase64: string): Promise<string> {
-  const cached = voiceSampleTranscriptCache.get(url);
+  const audioBuffer = Buffer.from(audioBase64, 'base64');
+  const hash = crypto.createHash('sha256').update(audioBuffer).digest('hex');
+
+  const cached = voiceSampleTranscriptCache.get(hash);
   if (cached !== undefined) {
-    logger.debug(`[voice-transcript] cache hit for ${url}`);
+    logger.debug(`[voice-transcript] cache hit for sha256:${hash.slice(0, 12)} (url=${url})`);
     return cached;
   }
 
@@ -1694,7 +1705,10 @@ async function getVoiceSampleTranscript(url: string, audioBase64: string): Promi
   }
 
   try {
-    const audioBuffer = Buffer.from(audioBase64, 'base64');
+    // Byte-upload to Whisper directly (works for both R2 URLs and local-asset
+    // URLs). The bytes are already in hand from downloadVoiceSample, so no
+    // extra fetch is needed; we never depend on Whisper being able to reach
+    // the asset URL itself.
     const audioBlob = new Blob([new Uint8Array(audioBuffer)], { type: 'audio/wav' });
     const formData = new FormData();
     formData.append('file', audioBlob, 'voice_sample.wav');
@@ -1715,7 +1729,7 @@ async function getVoiceSampleTranscript(url: string, audioBase64: string): Promi
     }
 
     const transcript = (await response.text()).trim();
-    voiceSampleTranscriptCache.set(url, transcript);
+    voiceSampleTranscriptCache.set(hash, transcript);
     logger.info(`[voice-transcript] Transcribed voice sample (${transcript.length} chars): "${transcript.substring(0, 80)}..."`);
     return transcript;
   } catch (err) {
@@ -1733,6 +1747,27 @@ interface TTSJobSettings {
   seed?: number;  // Fixed seed for deterministic/consistent voice output
 }
 
+// Local-mode (Phase 2.6): VoxCPM2 returns audio/wav synchronously from POST /tts,
+// but the existing pipeline is split startTTSJob → pollJobStatus around an async
+// RunPod queue. To reuse the chunk-loop / retry / silence-detect logic without
+// rewriting it, the local-mode branch in startTTSJob does the sync POST, stashes
+// the bytes in this Map keyed by a synthetic UUID jobId, and returns that id.
+// pollJobStatus's local-mode branch reads (and deletes) the entry. The Map is
+// process-local and short-lived; no cleanup beyond the per-jobId delete.
+const localTTSResultCache = new Map<string, { audio_base64: string; sample_rate: number }>();
+
+function readWavSampleRate(wavBuffer: Buffer): number {
+  // RIFF/WAVE format: sample rate is a uint32 LE at offset 24 of the standard
+  // 44-byte header. extractWavInfo() does the full parse but throws on
+  // malformed inputs — we fall back to a sane default rather than failing the
+  // whole job for a sample-rate read.
+  try {
+    return wavBuffer.readUInt32LE(24);
+  } catch {
+    return 48000;
+  }
+}
+
 // Start TTS job
 async function startTTSJob(
   text: string,
@@ -1741,6 +1776,12 @@ async function startTTSJob(
   ttsSettings?: TTSJobSettings,
   referenceTranscript?: string
 ): Promise<string> {
+  // ZG-5.1: local-inference branch lives at the first executable line. Remote
+  // RunPod path below is byte-identical to baseline (Layer 5 regression).
+  if (localInferenceConfig.enabled) {
+    return startTTSJobLocal(text, referenceAudioBase64, ttsSettings, referenceTranscript);
+  }
+
   const payloadSizeKB = referenceAudioBase64
     ? ((referenceAudioBase64.length * 0.75) / 1024).toFixed(2)
     : '0';
@@ -1842,6 +1883,17 @@ async function startTTSJob(
 
 // Poll job status with adaptive polling and delayTime optimization
 async function pollJobStatus(jobId: string, apiKey: string): Promise<{ audio_base64: string; sample_rate: number }> {
+  // ZG-5.1: in local-inference mode startTTSJob did the sync POST and stashed
+  // the result keyed by jobId. Short-circuit: pop and return. No HTTP roundtrip.
+  if (localInferenceConfig.enabled) {
+    const cached = localTTSResultCache.get(jobId);
+    if (!cached) {
+      throw new Error(`local TTS result not found for job ${jobId} (cache miss — startTTSJob did not run or already drained)`);
+    }
+    localTTSResultCache.delete(jobId);
+    return cached;
+  }
+
   const maxAttempts = 300; // Increased from 120 to handle slower workers (5 min timeout)
   let pollInterval = TTS_JOB_POLL_INTERVAL_INITIAL;
 
@@ -1894,6 +1946,101 @@ async function pollJobStatus(jobId: string, apiKey: string): Promise<{ audio_bas
 
   logger.error(`Job ${jobId} timed out after ${maxAttempts} attempts`);
   throw new Error('TTS job timed out after 5 minutes');
+}
+
+/**
+ * Local-inference TTS path (Phase 2.6 / ZG-5.1).
+ *
+ * VoxCPM2 server returns 200 audio/wav synchronously from POST /tts (no queue,
+ * no polling). To slot into the existing chunk-loop / retry / silence-detect
+ * flow without rewriting it, we:
+ *   1. Validate the camelCase outgoing payload via voxcpm2RequestSchema
+ *   2. Sync POST with AbortController (timeout from localInferenceConfig)
+ *   3. Read response body as bytes; stash by synthetic UUID jobId
+ *   4. Return jobId; pollJobStatus's local-mode branch drains it
+ *
+ * Errors:
+ *   - Zod validation failure -> Error('VALIDATION_ERROR: ...')
+ *   - HTTP 4xx/5xx          -> Error with body excerpt
+ *   - AbortError on timeout -> Error('VoxCPM2 /tts timed out after Nms')
+ */
+async function startTTSJobLocal(
+  text: string,
+  referenceAudioBase64?: string,
+  ttsSettings?: TTSJobSettings,
+  referenceTranscript?: string
+): Promise<string> {
+  // Build camelCase payload for the local Python server (camelCase via Pydantic
+  // Field aliases — see local-inference/voxcpm2_server.py: class TTSRequest).
+  const payload: Record<string, unknown> = { text };
+  if (referenceAudioBase64) payload.referenceAudioBase64 = referenceAudioBase64;
+  if (referenceTranscript) payload.referenceTranscript = referenceTranscript;
+  if (ttsSettings) {
+    if (ttsSettings.emotionMarker !== undefined && ttsSettings.emotionMarker !== '') {
+      // VoxCPM2 server takes plain `emotion`, not `emotion_marker` — see
+      // generate-audio.ts:1771 commentary on Fish-style markers being
+      // spoken as literal text. Keep the field omitted for "none".
+      const emotionValue = ttsSettings.emotionMarker === 'none' ? undefined : ttsSettings.emotionMarker;
+      if (emotionValue !== undefined) payload.emotion = emotionValue;
+    }
+    if (ttsSettings.temperature !== undefined) payload.temperature = ttsSettings.temperature;
+    if (ttsSettings.topP !== undefined) payload.topP = ttsSettings.topP;
+    if (ttsSettings.repetitionPenalty !== undefined) payload.repetitionPenalty = ttsSettings.repetitionPenalty;
+    if (ttsSettings.seed !== undefined) payload.seed = ttsSettings.seed;
+  }
+
+  // Zod-validate before POST so the local server doesn't have to bounce 400s
+  // back over the wire for shape errors we can catch in-process.
+  let validated: Record<string, unknown>;
+  try {
+    validated = voxcpm2RequestSchema.parse(payload) as Record<string, unknown>;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`VALIDATION_ERROR: voxcpm2RequestSchema rejected payload — ${message}`);
+  }
+
+  const url = `${localInferenceConfig.voxcpm2Url}/tts`;
+  const timeoutMs = localInferenceConfig.voxcpm2TimeoutMs;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  logger.info(`[local-voxcpm2] POST ${url} (${text.length} chars, ref=${referenceAudioBase64 ? 'yes' : 'no'})`);
+
+  let response: Awaited<ReturnType<typeof fetch>>;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validated),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') {
+      throw new Error(`VoxCPM2 /tts timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    logger.error(`[local-voxcpm2] /tts ${response.status}: ${errorText.substring(0, 500)}`);
+    throw new Error(`VoxCPM2 /tts failed: HTTP ${response.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const wavBuffer = Buffer.from(arrayBuffer);
+  const sampleRate = readWavSampleRate(wavBuffer);
+
+  const jobId = `local-voxcpm2:${crypto.randomUUID()}`;
+  localTTSResultCache.set(jobId, {
+    audio_base64: wavBuffer.toString('base64'),
+    sample_rate: sampleRate,
+  });
+
+  logger.info(`[local-voxcpm2] /tts 200 (${wavBuffer.length} bytes, ${sampleRate}Hz) -> ${jobId}`);
+  return jobId;
 }
 
 // Retry TTS chunk generation with exponential backoff
@@ -2184,7 +2331,11 @@ async function adjustAudioSpeed(wavBuffer: Buffer, speed: number): Promise<Buffe
 
 // Main route handler
 router.post('/', async (req: Request, res: Response) => {
-  const { script, voiceSampleUrl, projectId, stream, speed = 1, ttsSettings = {}, segmentationMode } = req.body;
+  // Accept either `script` (existing field) or `text` (Layer 3 contract field
+  // — Phase 2.6 / local-inference-swap test sends `text`). Single-script flow
+  // only; arrays remain a future concern.
+  const { script: scriptIn, text: textIn, voiceSampleUrl, projectId, stream, speed = 1, ttsSettings = {}, segmentationMode } = req.body;
+  const script = scriptIn ?? textIn;
   // Progressive segmentation (10s first 30 min, 30s after) is the default.
   // Opt back into the old 19-segment layout by explicitly sending
   // segmentationMode: 'legacy'. The previous opt-in default silently fell
@@ -2224,20 +2375,29 @@ router.post('/', async (req: Request, res: Response) => {
   };
 
   try {
-    if (!script) {
+    if (!script || (typeof script === 'string' && script.trim().length === 0)) {
+      const message = 'text is required (send either `text` or `script`)';
       if (stream) {
-        return sendStreamError('Script is required');
+        return sendStreamError(message);
       }
-      return res.status(400).json({ error: 'Script is required' });
+      // Layer 3 contract: error envelope { error: { code, message } } so the
+      // boundary shape matches the local-inference Python servers.
+      return res.status(400).json({ error: { code: 'VALIDATION_ERROR', message } });
     }
 
-    const RUNPOD_API_KEY = process.env.RUNPOD_API_KEY;
-    if (!RUNPOD_API_KEY) {
+    // RUNPOD_API_KEY is only needed for the remote (RunPod queue) code path.
+    // Local-inference mode talks to the on-device Python server and does not
+    // require any RunPod credentials. When local mode is on we still pass an
+    // empty string downstream so the handler signatures don't have to widen
+    // — startTTSJob's local branch ignores the apiKey argument.
+    const envRunPodKey = process.env.RUNPOD_API_KEY;
+    if (!envRunPodKey && !localInferenceConfig.enabled) {
       if (stream) {
         return sendStreamError('RUNPOD_API_KEY not configured');
       }
-      return res.status(500).json({ error: 'RUNPOD_API_KEY not configured' });
+      return res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'RUNPOD_API_KEY not configured' } });
     }
+    const RUNPOD_API_KEY: string = envRunPodKey ?? '';
 
     // Clean script - remove markdown and metadata
     let cleanScript = script
@@ -2350,12 +2510,12 @@ router.post('/', async (req: Request, res: Response) => {
       try {
         await markAudioGenerationStarted(projectId);
       } catch (err) {
+        // Status update is best-effort — failing it should not abort the
+        // generation (the row may not even exist for ad-hoc projectIds in
+        // tests/local mode). Log + continue; the actual generation result
+        // still saves into supabase via saveAudioToProject when appropriate.
         const errorMsg = err instanceof Error ? err.message : 'Failed to start audio generation';
-        logger.error(`[AUDIO] ${errorMsg}`);
-        if (stream) {
-          return sendStreamError(errorMsg);
-        }
-        return res.status(500).json({ error: errorMsg });
+        logger.warn(`[AUDIO] markAudioGenerationStarted failed (continuing): ${errorMsg}`);
       }
     }
 
@@ -2406,6 +2566,14 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
     const audioChunks: Buffer[] = [];
     const successfulTextChunks: string[] = []; // Track text for pause insertion
+
+    // ZG-1 closure: emit started/completed SSE events around the synchronous
+    // local-mode TTS work so the frontend progress bar doesn't go silent
+    // during a long-running local POST. Same events fire in remote mode for
+    // consistency (the regression snapshot only pins outgoing HTTP wire bytes,
+    // not the SSE channel).
+    const stageStartedAt = Date.now();
+    sendEvent({ stage: 'audio', status: 'started', startedAt: stageStartedAt });
 
     // Process each chunk sequentially (no voice cloning in streaming mode)
     for (let i = 0; i < chunks.length; i++) {
@@ -2498,6 +2666,15 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
     // Get audio issues for response
     const audioIssues = integrityResult.issues.filter(i => i.type === 'skip' || i.type === 'discontinuity');
+
+    // ZG-1 closure (paired with `started` above): durationMs measures the
+    // entire stage (chunks + concat + integrity + speed adjust + upload).
+    sendEvent({
+      stage: 'audio',
+      status: 'completed',
+      durationMs: Date.now() - stageStartedAt,
+      url: audioPublicUrl,
+    });
 
     sendEvent({
       type: 'complete',
