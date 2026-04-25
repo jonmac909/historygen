@@ -10,17 +10,21 @@
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { localInferenceConfig } from './runtime-config';
 
 // Pricing constants (verified from Scottish Highlands project)
+// In local-inference mode, services running on the user's GPU incur no API
+// cost — their rates are zeroed so project_costs rows still get written
+// (preserving the grid) but record $0. Claude/Whisper still hit paid APIs.
 export const PRICING = {
   claude_input: 3 / 1_000_000,      // $3 per 1M input tokens
   claude_output: 15 / 1_000_000,    // $15 per 1M output tokens
   claude_vision: 0.004,             // per image scanned with Claude Vision
-  fish_speech: 0.008,               // $0.008/minute audio output (legacy, kept as dead code)
-  voxcpm2: 0.006,                   // $0.006/minute (8GB GPU at ~$0.36/hr)
-  z_image: 0.0084,                  // $0.0084/image
-  seedance: 0.08,                   // per clip (flat rate via Kie.ai)
-  whisper: 0.006,                   // $0.006/minute
+  fish_speech: localInferenceConfig.enabled ? 0 : 0.008,    // $0.008/min (remote) → 0 (local)
+  voxcpm2: localInferenceConfig.enabled ? 0 : 0.006,        // $0.006/min (remote) → 0 (local)
+  z_image: localInferenceConfig.enabled ? 0 : 0.0084,       // $0.0084/image (remote) → 0 (local)
+  seedance: localInferenceConfig.enabled ? 0 : 0.08,        // $0.08/clip (remote) → 0 (local)
+  whisper: 0.006,                   // $0.006/minute (always remote — OpenAI API)
   runpod_cpu: 0.0003733,            // per second of processing
 };
 
