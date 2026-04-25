@@ -54,3 +54,12 @@ local-assets/audio/
 local-assets/clips/
 local-assets/renders/
 local-assets/thumbnails/
+
+# Local-inference runtime artifacts (commit only source files + test-input.png fixture)
+local-inference/logs/
+local-inference/__pycache__/
+local-inference/*.wav
+local-inference/*.mp4
+local-inference/.venv/
+local-inference/zimage-smoke*.png
+local-inference/ltx2-smoke*.png
