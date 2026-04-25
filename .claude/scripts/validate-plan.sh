@@ -79,6 +79,9 @@ if [ -d "$PROJECT_ROOT/apps" ]; then
 fi
 [ -d "$PROJECT_ROOT/tests" ] && SEARCH_DIRS+=("$PROJECT_ROOT/tests")
 [ -d "$PROJECT_ROOT/src" ] && SEARCH_DIRS+=("$PROJECT_ROOT/src")
+# Also search render-api/ subproject (historygen layout)
+[ -d "$PROJECT_ROOT/render-api/tests" ] && SEARCH_DIRS+=("$PROJECT_ROOT/render-api/tests")
+[ -d "$PROJECT_ROOT/render-api/src" ] && SEARCH_DIRS+=("$PROJECT_ROOT/render-api/src")
 
 # Search for .feature files
 FEATURE_COUNT=0

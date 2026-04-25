@@ -1,7 +1,7 @@
 # Change Plan: Local Inference + Local Final Render
 
-Status: planning
-Updated: 2026-04-25
+Status: tests-written
+Updated: 2026-04-24
 Slug: local-inference-swap
 Branch: feat/local-inference (PR + squash-merge to `main` when complete)
 
@@ -734,3 +734,5 @@ Pass 5 finds 0 new concrete-failure-scenario gaps. Honest call: I now believe th
 - ZG-31: `/unload` during loading returns 409 + Retry-After
 
 **Honest status:** plan now reflects a fifth pass of skepticism. Sub-agents executing this plan have concrete pass/fail targets at every stage. If a sixth pass surfaces more gaps during implementation, that's expected — the plan deliberately surfaces them in Phase 0 RED tests rather than hiding them.
+
+> 2026-04-24: Phase 0.1 complete — 7 test layer files generated, all RED. validate-plan.sh: 4/4.

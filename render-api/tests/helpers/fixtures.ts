@@ -1,0 +1,19 @@
+// Minimal valid WAV (1 sample @ 48kHz mono PCM16) — enough for byte-flow tests
+export const sampleWavBytes = (): Buffer =>
+  Buffer.from([
+    0x52, 0x49, 0x46, 0x46, 0x26, 0x00, 0x00, 0x00, 0x57, 0x41, 0x56, 0x45,
+    0x66, 0x6d, 0x74, 0x20, 0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00,
+    0x80, 0xbb, 0x00, 0x00, 0x00, 0x77, 0x01, 0x00, 0x02, 0x00, 0x10, 0x00,
+    0x64, 0x61, 0x74, 0x61, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00,
+  ]);
+
+// Minimal valid PNG (1x1 transparent)
+export const samplePngBytes = (): Buffer =>
+  Buffer.from(
+    '89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082',
+    'hex',
+  );
+
+// Minimal MP4 ftyp box — synthetic, used only to validate bytes-flow contracts (not playback)
+export const sampleMp4Bytes = (): Buffer =>
+  Buffer.from('0000001866747970697336360000000069736f366d703431', 'hex');

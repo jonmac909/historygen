@@ -7,7 +7,11 @@
     "dev": "tsx watch src/index.ts",
     "build": "npm install --include=dev && tsc && cd claude-bridge && npm install && npm run build",
     "start": "concurrently --names bridge,api --kill-others-on-fail \"node claude-bridge/dist/server.js\" \"node dist/index.js\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "lint": "echo \"no lint configured for render-api yet\""
   },
   "keywords": [
     "render",
@@ -56,7 +60,12 @@
     "@types/node-cron": "^3.0.11",
     "@types/node-fetch": "^2.6.13",
     "@types/sharp": "^0.31.1",
-    "tsx": "^4.19.2"
+    "@types/supertest": "^7.2.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "msw": "^2.13.6",
+    "supertest": "^7.2.2",
+    "tsx": "^4.19.2",
+    "vitest": "^4.1.5"
   },
   "engines": {
     "node": ">=18"
