@@ -47,3 +47,10 @@ playwright-report/
 *.dmg
 supabase/.temp/
 Screenshot*.png
+
+# Local-inference generated assets (commit only fx/* fixtures)
+local-assets/images/
+local-assets/audio/
+local-assets/clips/
+local-assets/renders/
+local-assets/thumbnails/
