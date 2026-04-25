@@ -1,0 +1,16 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Layer 5 — Remote-mode payload snapshots (LOCAL_INFERENCE=false) > R2 upload PutObjectCommand shape is unchanged 1`] = `
+"PUT https://<account>..r2.cloudflarestorage.com/snap-key.wav?x-id=PutObject
+amz-sdk-invocation-id: <uuid>
+amz-sdk-request: attempt=1; max=3
+connection: close
+content-type: audio/wav
+x-amz-checksum-crc32: 7O30Mg==
+x-amz-content-sha256: 13d16247b78514e6f0ba40925fdf8cd5c3ace0aec2efa01fdc188abf27235551
+x-amz-date: 20260425T201643Z
+x-amz-sdk-checksum-algorithm: CRC32
+x-amz-user-agent: aws-sdk-js/3.1034.0
+
+fake-bytes"
+`;

@@ -14,7 +14,7 @@ import * as os from 'os';
 import { getPronunciationFixesRecord } from './pronunciation';
 import { saveCost } from '../lib/cost-tracker';
 import { saveAudioToProject, saveAudioProgress, getProjectData, markAudioGenerationStarted } from '../lib/supabase-project';
-import { uploadToR2, downloadFromR2, deleteProjectSegments, getSignedDownloadUrl } from '../lib/r2-storage';
+import { uploadAsset, downloadAsset, deleteProjectSegments, getSignedDownloadUrl } from '../lib/r2-storage';
 
 // Set FFmpeg and FFprobe paths
 if (ffmpegStatic) {
@@ -2485,7 +2485,7 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
     let audioPublicUrl: string;
     try {
-      audioPublicUrl = await uploadToR2(fileName, finalAudio, 'audio/wav');
+      audioPublicUrl = await uploadAsset('audio', fileName, finalAudio, 'audio/wav');
     } catch (uploadErr) {
       console.error('Upload error:', uploadErr);
       const errorMsg = `Failed to upload audio: ${uploadErr instanceof Error ? uploadErr.message : JSON.stringify(uploadErr)}`;
@@ -2761,7 +2761,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
         let segmentPublicUrl: string;
         try {
-          segmentPublicUrl = await uploadToR2(fileName, segmentAudio, 'audio/wav');
+          segmentPublicUrl = await uploadAsset('audio', fileName, segmentAudio, 'audio/wav');
         } catch (uploadErr) {
           const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
           logger.error(`Failed to upload segment ${segmentNumber}: ${msg}`);
@@ -2920,7 +2920,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
     let firstBuffer: Buffer;
     try {
-      firstBuffer = await downloadFromR2(firstFileName);
+      firstBuffer = await downloadAsset('audio', firstFileName);
     } catch (firstError) {
       logger.error(`Download failed for ${firstFileName}`);
       logger.error(`  Error: ${firstError instanceof Error ? firstError.message : JSON.stringify(firstError)}`);
@@ -2970,7 +2970,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
       let buffer: Buffer;
       try {
-        buffer = await downloadFromR2(fileName);
+        buffer = await downloadAsset('audio', fileName);
       } catch (dlError) {
         const errorDetails = dlError instanceof Error ? dlError.message : JSON.stringify(dlError);
         logger.error(`Download failed for segment ${result.index} (${fileName}):`, errorDetails);
@@ -3095,7 +3095,7 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
     let combinedPublicUrl: string;
     try {
-      combinedPublicUrl = await uploadToR2(combinedFileName, uploadBuffer, uploadContentType);
+      combinedPublicUrl = await uploadAsset('audio', combinedFileName, uploadBuffer, uploadContentType);
     } catch (combinedUploadErr) {
       const msg = combinedUploadErr instanceof Error ? combinedUploadErr.message : String(combinedUploadErr);
       logger.error(`Failed to upload combined audio: ${msg}`);
@@ -3256,7 +3256,7 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
   let nonStreamingPublicUrl: string;
   try {
-    nonStreamingPublicUrl = await uploadToR2(fileName, finalAudio, 'audio/wav');
+    nonStreamingPublicUrl = await uploadAsset('audio', fileName, finalAudio, 'audio/wav');
   } catch (uploadErr) {
     console.error('Upload error:', uploadErr);
     throw new Error(`Failed to upload audio: ${uploadErr instanceof Error ? uploadErr.message : JSON.stringify(uploadErr)}`);
@@ -3452,7 +3452,7 @@ router.post('/segment', async (req: Request, res: Response) => {
 
     let segmentUrl: string;
     try {
-      segmentUrl = await uploadToR2(fileName, segmentAudio, 'audio/wav');
+      segmentUrl = await uploadAsset('audio', fileName, segmentAudio, 'audio/wav');
     } catch (uploadErr) {
       const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
       logger.error(`Failed to upload segment: ${msg}`);
@@ -3584,7 +3584,7 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
     const fileName = `${projectId}/voiceover-segment-${segmentNumber}.wav`;
     let regenSegmentUrl: string;
     try {
-      regenSegmentUrl = await uploadToR2(fileName, segmentAudio, 'audio/wav');
+      regenSegmentUrl = await uploadAsset('audio', fileName, segmentAudio, 'audio/wav');
     } catch (uploadErr) {
       const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
       return res.status(500).json({ error: `Upload failed: ${msg}` });
@@ -3866,7 +3866,7 @@ router.post('/recombine', async (req: Request, res: Response) => {
 
       let segBuf: Buffer;
       try {
-        segBuf = await downloadFromR2(segmentPath);
+        segBuf = await downloadAsset('audio', segmentPath);
       } catch (dlErr) {
         const msg = dlErr instanceof Error ? dlErr.message : String(dlErr);
         console.error(`Failed to download segment ${i}: ${msg}`);
@@ -3912,7 +3912,7 @@ router.post('/recombine', async (req: Request, res: Response) => {
 
     let recombinePublicUrl: string;
     try {
-      recombinePublicUrl = await uploadToR2(combinedFileName, uploadBuffer, uploadContentType);
+      recombinePublicUrl = await uploadAsset('audio', combinedFileName, uploadBuffer, uploadContentType);
     } catch (uploadErr) {
       const msg = uploadErr instanceof Error ? uploadErr.message : String(uploadErr);
       logger.error(`Failed to upload combined audio: ${msg}`);
