@@ -2,10 +2,19 @@ import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 import { saveCost } from '../lib/cost-tracker';
-import { imageGenerationConfig } from '../lib/runtime-config';
+import { imageGenerationConfig, localInferenceConfig } from '../lib/runtime-config';
 import { saveImagesToProject, saveImageProgress } from '../lib/supabase-project';
+import { uploadAsset } from '../lib/r2-storage';
+import { zimageRequestSchema } from '../schemas/local-inference-schemas';
 
 const router = Router();
+
+// ZG-5.1 / Phase 2.7: in-process cache populated by `startImageJob`'s local
+// branch (sync POST returns image bytes inline) and drained by
+// `checkJobStatus`'s local short-circuit. Keyed by synthetic UUID jobId so
+// the existing rolling-concurrency loop in handleStreamingImages /
+// handleNonStreamingImages keeps its job-tracking shape unchanged.
+const localImageResultCache = new Map<string, Buffer>();
 
 // RunPod Z-Image endpoint configuration
 const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ZIMAGE_ENDPOINT_ID;
@@ -69,6 +78,12 @@ function isPlaceholderPrompt(prompt: string): boolean {
 
 // Start a RunPod job for Z-Image generation
 async function startImageJob(apiKey: string, prompt: string, quality: string, aspectRatio: string): Promise<string> {
+  // ZG-5.1: local-inference branch lives at the first executable line. Remote
+  // RunPod path below is byte-identical to baseline (Layer 5 regression).
+  if (localInferenceConfig.enabled) {
+    return startImageJobLocal(prompt, quality, aspectRatio);
+  }
+
   // SCENE FIRST: Put the actual scene description first so Z-Image prioritizes it
   // Style suffix comes after to add the oil painting aesthetic without overriding the scene
   const safePrompt = `${prompt}${STYLE_SUFFIX}`;
@@ -106,6 +121,87 @@ async function startImageJob(apiKey: string, prompt: string, quality: string, as
   return data.id;
 }
 
+/**
+ * Local-inference Z-Image path (Phase 2.7 / ZG-5.1).
+ *
+ * Z-Image server returns 200 image/png synchronously from POST /generate (no
+ * queue, no polling). To slot into the existing rolling-concurrency / retry
+ * flow without rewriting it, we:
+ *   1. Build camelCase payload (prompt+style suffix, negativePrompt, aspectRatio, quality)
+ *   2. Validate via zimageRequestSchema.parse(...)
+ *   3. Sync POST with AbortController (timeout from localInferenceConfig.zimageTimeoutMs)
+ *   4. Read response body as PNG bytes; stash by synthetic UUID jobId
+ *   5. Return jobId; checkJobStatus's local-mode branch uploads it
+ *
+ * Errors:
+ *   - Zod validation failure -> Error('VALIDATION_ERROR: ...')
+ *   - HTTP 4xx/5xx          -> Error with body excerpt
+ *   - AbortError on timeout -> Error('Z-Image /generate timed out after Nms')
+ */
+async function startImageJobLocal(prompt: string, quality: string, aspectRatio: string): Promise<string> {
+  // Mirror the remote path's safePrompt construction so local + remote produce
+  // visually consistent outputs (style suffix on the same side of the prompt).
+  const safePrompt = `${prompt}${STYLE_SUFFIX}`;
+
+  // Build camelCase payload for the local Python server (camelCase via Pydantic
+  // Field aliases — see local-inference/zimage_server.py: class GenerateRequest).
+  const payload: Record<string, unknown> = {
+    prompt: safePrompt,
+    negativePrompt: NEGATIVE_PROMPT,
+    aspectRatio,
+    quality: quality === 'high' ? 'high' : 'basic',
+  };
+
+  // Zod-validate before POST so the local server doesn't have to bounce 400s
+  // back over the wire for shape errors we can catch in-process.
+  let validated: Record<string, unknown>;
+  try {
+    validated = zimageRequestSchema.parse(payload) as Record<string, unknown>;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`VALIDATION_ERROR: zimageRequestSchema rejected payload — ${message}`);
+  }
+
+  const url = `${localInferenceConfig.zimageUrl}/generate`;
+  const timeoutMs = localInferenceConfig.zimageTimeoutMs;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+
+  console.log(`[local-zimage] POST ${url} (${safePrompt.substring(0, 60)}..., ${aspectRatio}, ${quality})`);
+
+  let response: Awaited<ReturnType<typeof fetch>>;
+  try {
+    response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validated),
+      signal: ctrl.signal,
+    });
+  } catch (err) {
+    if ((err as { name?: string })?.name === 'AbortError') {
+      throw new Error(`Z-Image /generate timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error(`[local-zimage] /generate ${response.status}: ${errorText.substring(0, 500)}`);
+    throw new Error(`Z-Image /generate failed: HTTP ${response.status} - ${errorText.substring(0, 200)}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const pngBuffer = Buffer.from(arrayBuffer);
+
+  const jobId = `local-zimage:${crypto.randomUUID()}`;
+  localImageResultCache.set(jobId, pngBuffer);
+
+  console.log(`[local-zimage] /generate 200 (${pngBuffer.length} bytes) -> ${jobId}`);
+  return jobId;
+}
+
 // Check RunPod job status and upload image if complete
 async function checkJobStatus(
   apiKey: string,
@@ -115,6 +211,27 @@ async function checkJobStatus(
   customFilename?: string,
   projectId?: string
 ): Promise<{ state: string; imageUrl?: string; error?: string }> {
+  // ZG-5.1: in local-inference mode `startImageJob` did the sync POST and
+  // stashed the PNG bytes keyed by jobId. Short-circuit: pop, upload, return.
+  // No HTTP roundtrip — keeps the surrounding rolling-concurrency loop intact.
+  if (localInferenceConfig.enabled) {
+    const cached = localImageResultCache.get(jobId);
+    if (!cached) {
+      return { state: 'fail', error: `local image result not found for job ${jobId} (cache miss — startImageJob did not run or already drained)` };
+    }
+    localImageResultCache.delete(jobId);
+    try {
+      const filename = customFilename ?? `${crypto.randomUUID()}.png`;
+      const key = projectId ? `${projectId}/images/${filename}` : `images/${filename}`;
+      const imageUrl = await uploadAsset('images', key, cached, 'image/png');
+      console.log(`[local-zimage] Job ${jobId} completed, uploaded to: ${imageUrl}`);
+      return { state: 'success', imageUrl };
+    } catch (uploadErr) {
+      console.error(`[local-zimage] Failed to upload image for job ${jobId}:`, uploadErr);
+      return { state: 'fail', error: `Upload failed: ${uploadErr instanceof Error ? uploadErr.message : 'Unknown error'}` };
+    }
+  }
+
   try {
     const response = await fetch(`${RUNPOD_API_URL}/status/${jobId}`, {
       method: 'GET',
@@ -222,25 +339,38 @@ async function uploadImageToStorage(
 
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const runpodApiKey = process.env.RUNPOD_API_KEY;
-    if (!runpodApiKey) {
-      return res.status(500).json({ error: 'RUNPOD_API_KEY not configured' });
+    const { prompts, quality, aspectRatio = "16:9", stream = false, projectId, topic, subjectFocus }: GenerateImagesRequest = req.body ?? {};
+
+    // Layer 3 contract: error envelope { error: { code, message } } so the
+    // boundary shape matches the local-inference Python servers.
+    if (!prompts || prompts.length === 0) {
+      return res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'prompts is required and must be non-empty' },
+      });
     }
 
-    if (!RUNPOD_ENDPOINT_ID || !RUNPOD_API_URL) {
+    // RunPod credentials are only needed for the remote (queue) code path.
+    // Local-inference mode talks to the on-device Python server and does not
+    // require any RunPod credentials. We still pass an empty string downstream
+    // so handler signatures don't have to widen — startImageJob's local branch
+    // ignores the apiKey argument.
+    const envRunPodKey = process.env.RUNPOD_API_KEY;
+    if (!envRunPodKey && !localInferenceConfig.enabled) {
+      return res.status(500).json({ error: 'RUNPOD_API_KEY not configured' });
+    }
+    const runpodApiKey = envRunPodKey || '';
+
+    if ((!RUNPOD_ENDPOINT_ID || !RUNPOD_API_URL) && !localInferenceConfig.enabled) {
       return res.status(500).json({ error: 'RUNPOD_ZIMAGE_ENDPOINT_ID not configured' });
     }
 
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !supabaseKey) {
+    // Supabase is used only for the remote-mode storage upload helper
+    // (`uploadImageToStorage`). Local mode writes via `uploadAsset('images', …)`,
+    // which does not require Supabase credentials.
+    const supabaseUrl = process.env.SUPABASE_URL || '';
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+    if ((!supabaseUrl || !supabaseKey) && !localInferenceConfig.enabled) {
       return res.status(500).json({ error: 'Supabase configuration missing' });
-    }
-
-    const { prompts, quality, aspectRatio = "16:9", stream = false, projectId, topic, subjectFocus }: GenerateImagesRequest = req.body;
-
-    if (!prompts || prompts.length === 0) {
-      return res.status(400).json({ error: 'No prompts provided' });
     }
 
     // Build era prefix for prompts (if provided)
@@ -339,6 +469,14 @@ async function handleStreamingImages(
 
   try {
     console.log(`\n=== Generating ${total} images with rolling concurrency (max ${MAX_CONCURRENT_JOBS} concurrent) ===`);
+
+    // ZG-1 closure: emit started/completed SSE events around the synchronous
+    // local-mode image work so the frontend progress bar doesn't go silent
+    // during long-running local POSTs. Same events fire in remote mode for
+    // consistency (the regression snapshot only pins outgoing HTTP wire bytes,
+    // not the SSE channel).
+    const stageStartedAt = Date.now();
+    sendEvent({ stage: 'images', status: 'started', startedAt: stageStartedAt });
 
     sendEvent({
       type: 'progress',
@@ -566,6 +704,17 @@ async function handleStreamingImages(
         })
         .catch(err => console.error(`[Images] Error saving to project:`, err));
     }
+
+    // ZG-1 closure (paired with `started` above): durationMs measures the
+    // entire stage (POST + upload across all images). `url` is the first
+    // successful image (single-event-per-stage shape; per-image progress
+    // already streams via the `type: 'progress'` events above).
+    sendEvent({
+      stage: 'images',
+      status: 'completed',
+      durationMs: Date.now() - stageStartedAt,
+      url: successfulImages[0],
+    });
 
     sendEvent({
       type: 'complete',
