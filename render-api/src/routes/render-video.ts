@@ -12,7 +12,9 @@ import { ReadableStream as WebReadableStream } from 'stream/web';
 import { pipeline } from 'stream/promises';
 import { checkAudioIntegrity, logAudioIntegrity } from '../utils/audio-integrity';
 import { saveCost } from '../lib/cost-tracker';
-import { allowedAssetHosts } from '../lib/runtime-config';
+import { allowedAssetHosts, localInferenceConfig } from '../lib/runtime-config';
+import { uploadAsset } from '../lib/r2-storage';
+import { getEncoderArgs } from '../lib/encoder-args';
 
 const router = Router();
 
@@ -260,6 +262,15 @@ async function downloadFile(url: string, destPath: string): Promise<void> {
 // RunPod GPU rendering function
 async function processRenderJobGpu(jobId: string, params: RenderVideoRequest): Promise<void> {
   const supabase = getSupabase();
+
+  // Local-inference mode: KENBURNS GPU branch is disabled. The dispatcher in
+  // POST / falls back to processRenderJob (CPU Ken Burns) when local mode is
+  // on, but guard here too so any future direct caller is safe.
+  if (localInferenceConfig.enabled) {
+    console.log(`Job ${jobId}: KENBURNS GPU branch disabled in local mode — delegating to CPU renderer`);
+    return processRenderJob(jobId, params);
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -405,6 +416,15 @@ async function processRenderJobGpu(jobId: string, params: RenderVideoRequest): P
 // Parallel rendering using 10 RunPod workers for ~10x speedup
 async function processRenderJobParallel(jobId: string, params: RenderVideoRequest): Promise<void> {
   const supabase = getSupabase();
+
+  // Local-inference mode: RunPod CPU chunk fan-out is disabled. Delegate to
+  // the local CPU renderer which renders chunks sequentially through
+  // ffmpeg-static (no RunPod workers, no chunk-renderer cost row).
+  if (localInferenceConfig.enabled) {
+    console.log(`Job ${jobId}: RunPod parallel chunk fan-out disabled in local mode — delegating to CPU renderer`);
+    return processRenderJob(jobId, params);
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -700,6 +720,14 @@ async function processRenderJobParallel(jobId: string, params: RenderVideoReques
 // RunPod CPU rendering function (32 vCPU worker - reliable, no GPU lottery)
 async function processRenderJobCpuRunpod(jobId: string, params: RenderVideoRequest): Promise<void> {
   const supabase = getSupabase();
+
+  // Local-inference mode: RunPod CPU single-job path is disabled. Delegate to
+  // the local CPU renderer (ffmpeg-static + NVENC).
+  if (localInferenceConfig.enabled) {
+    console.log(`Job ${jobId}: RunPod CPU single-job branch disabled in local mode — delegating to CPU renderer`);
+    return processRenderJob(jobId, params);
+  }
+
   const supabaseUrl = process.env.SUPABASE_URL!;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -945,23 +973,40 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
     let hasSmokeOverlay = false;
 
     if (effectType !== 'none') {
-      // Always download embers for both 'embers' and 'smoke_embers' effects
+      // Always provide embers for both 'embers' and 'smoke_embers' effects.
+      // Local mode reads from `${assetsDir}/fx/embers.mp4` directly (avoids
+      // the netlify 404 that silently disables overlays in production today).
+      // Remote mode keeps the existing netlify URL fetch unchanged.
       try {
-        await downloadFile(EMBERS_OVERLAY_URL, embersOverlayPath);
-        hasEmbersOverlay = true;
-        console.log('Embers overlay downloaded');
+        if (localInferenceConfig.enabled) {
+          const localEmbersPath = path.join(localInferenceConfig.assetsDir, 'fx', 'embers.mp4');
+          fs.copyFileSync(localEmbersPath, embersOverlayPath);
+          hasEmbersOverlay = true;
+          console.log(`Embers overlay loaded from ${localEmbersPath}`);
+        } else {
+          await downloadFile(EMBERS_OVERLAY_URL, embersOverlayPath);
+          hasEmbersOverlay = true;
+          console.log('Embers overlay downloaded');
+        }
       } catch (err) {
-        console.warn('Failed to download embers overlay:', err);
+        console.warn('Failed to load embers overlay:', err);
       }
 
       // Download smoke overlay only for 'smoke_embers' effect
       if (effectType === 'smoke_embers') {
         try {
-          await downloadFile(SMOKE_GRAY_OVERLAY_URL, smokeOverlayPath);
-          hasSmokeOverlay = true;
-          console.log('Smoke overlay downloaded');
+          if (localInferenceConfig.enabled) {
+            const localSmokePath = path.join(localInferenceConfig.assetsDir, 'fx', 'smoke_gray.mp4');
+            fs.copyFileSync(localSmokePath, smokeOverlayPath);
+            hasSmokeOverlay = true;
+            console.log(`Smoke overlay loaded from ${localSmokePath}`);
+          } else {
+            await downloadFile(SMOKE_GRAY_OVERLAY_URL, smokeOverlayPath);
+            hasSmokeOverlay = true;
+            console.log('Smoke overlay downloaded');
+          }
         } catch (err) {
-          console.warn('Failed to download smoke overlay:', err);
+          console.warn('Failed to load smoke overlay:', err);
         }
       }
     }
@@ -1110,9 +1155,9 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
               .outputOptions([
                 '-vf', filters.first,
                 '-t', halfDuration.toString(),
-                '-c:v', 'libx264',
-                '-preset', FFMPEG_PRESET,
-                '-crf', FFMPEG_CRF,
+                ...(localInferenceConfig.enabled
+                  ? getEncoderArgs(true)
+                  : ['-c:v', 'libx264', '-preset', FFMPEG_PRESET, '-crf', FFMPEG_CRF]),
                 '-pix_fmt', 'yuv420p',
                 '-r', '30',
                 '-y'
@@ -1133,9 +1178,9 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
               .outputOptions([
                 '-vf', filters.second,
                 '-t', halfDuration.toString(),
-                '-c:v', 'libx264',
-                '-preset', FFMPEG_PRESET,
-                '-crf', FFMPEG_CRF,
+                ...(localInferenceConfig.enabled
+                  ? getEncoderArgs(true)
+                  : ['-c:v', 'libx264', '-preset', FFMPEG_PRESET, '-crf', FFMPEG_CRF]),
                 '-pix_fmt', 'yuv420p',
                 '-r', '30',
                 '-y'
@@ -1188,9 +1233,9 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
           .inputOptions(['-f', 'concat', '-safe', '0'])
           .outputOptions([
             '-threads', '2',  // Limit threads to reduce memory (was 0 = all cores)
-            '-c:v', 'libx264',
-            '-preset', FFMPEG_PRESET,
-            '-crf', FFMPEG_CRF,
+            ...(localInferenceConfig.enabled
+              ? getEncoderArgs(true)
+              : ['-c:v', 'libx264', '-preset', FFMPEG_PRESET, '-crf', FFMPEG_CRF]),
             '-pix_fmt', 'yuv420p',
             '-bufsize', '512k',  // Limit frame buffering
             '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1',
@@ -1276,9 +1321,9 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
               .complexFilter(filterChain)
               .outputOptions([
                 '-map', '[out]',
-                '-c:v', 'libx264',
-                '-preset', 'faster',  // Use faster preset for overlay pass (less memory)
-                '-crf', FFMPEG_CRF,
+                ...(localInferenceConfig.enabled
+                  ? getEncoderArgs(true)
+                  : ['-c:v', 'libx264', '-preset', 'faster', '-crf', FFMPEG_CRF]),
                 '-pix_fmt', 'yuv420p',
                 '-filter_complex_threads', '1',  // Serialize filter execution
                 '-threads', '2',  // Limit encoding threads
@@ -1456,70 +1501,82 @@ async function processRenderJob(jobId: string, params: RenderVideoRequest): Prom
     // Stage 6: Upload using streaming to avoid memory issues with large files
     await updateJobStatus(supabase, jobId, 'uploading', 80, 'Uploading video...');
 
-    const videoUploadPath = `${params.projectId}/video.mp4`;
     const fileStats = fs.statSync(finalPath);
     const fileSizeBytes = fileStats.size;
     const uploadSizeMB = (fileSizeBytes / 1024 / 1024).toFixed(1);
     console.log(`Uploading ${uploadSizeMB} MB video...`);
 
-    // Delete any existing file first
-    await supabase.storage.from('generated-assets').remove([videoUploadPath]);
+    let videoUrl: string;
 
-    // Use direct REST API upload with streaming for memory efficiency
-    const supabaseUrl = process.env.SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (localInferenceConfig.enabled) {
+      // Local mode: route through uploadAsset('renders', ...). Final URL is
+      // `${assetsBaseUrl}/renders/<projectId>-<uuid>.mp4`.
+      const renderFilename = `${params.projectId}-${randomUUID()}.mp4`;
+      const mp4Buffer = fs.readFileSync(finalPath);
+      videoUrl = await uploadAsset('renders', renderFilename, mp4Buffer, 'video/mp4');
+      console.log(`Video written locally: ${videoUrl}`);
+    } else {
+      const videoUploadPath = `${params.projectId}/video.mp4`;
 
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Supabase credentials not configured');
-    }
+      // Delete any existing file first
+      await supabase.storage.from('generated-assets').remove([videoUploadPath]);
 
-    // Stream upload using fetch with file stream + progress tracking
-    const uploadUrl = `${supabaseUrl}/storage/v1/object/generated-assets/${videoUploadPath}`;
-    const fileStream = fs.createReadStream(finalPath);
+      // Use direct REST API upload with streaming for memory efficiency
+      const supabaseUrl = process.env.SUPABASE_URL;
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-    // Track upload progress
-    let bytesUploaded = 0;
-    let lastUploadProgressUpdate = 0;
-    fileStream.on('data', async (chunk: Buffer | string) => {
-      const chunkLength = typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
-      bytesUploaded += chunkLength;
-      const now = Date.now();
-      if (now - lastUploadProgressUpdate > 2000) {  // Update every 2 seconds
-        lastUploadProgressUpdate = now;
-        const uploadPct = Math.round((bytesUploaded / fileSizeBytes) * 100);
-        // Map upload progress to 80-98% overall
-        const overallPct = 80 + Math.round(uploadPct * 0.18);
-        const mbUploaded = (bytesUploaded / 1024 / 1024).toFixed(1);
-        await updateJobStatus(supabase, jobId, 'uploading', overallPct, `Uploading ${mbUploaded}/${uploadSizeMB} MB`);
+      if (!supabaseUrl || !supabaseKey) {
+        throw new Error('Supabase credentials not configured');
       }
-    });
 
-    const uploadResponse = await fetch(uploadUrl, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${supabaseKey}`,
-        'Content-Type': 'video/mp4',
-        'Content-Length': fileSizeBytes.toString(),
-        'x-upsert': 'true',
-      },
-      body: fileStream as any,
-      // @ts-expect-error duplex is needed for streaming
-      duplex: 'half',
-    });
+      // Stream upload using fetch with file stream + progress tracking
+      const uploadUrl = `${supabaseUrl}/storage/v1/object/generated-assets/${videoUploadPath}`;
+      const fileStream = fs.createReadStream(finalPath);
 
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      throw new Error(`Failed to upload video: ${uploadResponse.status} - ${errorText}`);
+      // Track upload progress
+      let bytesUploaded = 0;
+      let lastUploadProgressUpdate = 0;
+      fileStream.on('data', async (chunk: Buffer | string) => {
+        const chunkLength = typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+        bytesUploaded += chunkLength;
+        const now = Date.now();
+        if (now - lastUploadProgressUpdate > 2000) {  // Update every 2 seconds
+          lastUploadProgressUpdate = now;
+          const uploadPct = Math.round((bytesUploaded / fileSizeBytes) * 100);
+          // Map upload progress to 80-98% overall
+          const overallPct = 80 + Math.round(uploadPct * 0.18);
+          const mbUploaded = (bytesUploaded / 1024 / 1024).toFixed(1);
+          await updateJobStatus(supabase, jobId, 'uploading', overallPct, `Uploading ${mbUploaded}/${uploadSizeMB} MB`);
+        }
+      });
+
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'video/mp4',
+          'Content-Length': fileSizeBytes.toString(),
+          'x-upsert': 'true',
+        },
+        body: fileStream as any,
+        // @ts-expect-error duplex is needed for streaming
+        duplex: 'half',
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        throw new Error(`Failed to upload video: ${uploadResponse.status} - ${errorText}`);
+      }
+
+      console.log(`Video uploaded successfully via streaming`)
+
+      const { data: urlData } = supabase.storage
+        .from('generated-assets')
+        .getPublicUrl(videoUploadPath);
+
+      videoUrl = urlData.publicUrl;
+      console.log(`Video uploaded: ${videoUrl}`);
     }
-
-    console.log(`Video uploaded successfully via streaming`)
-
-    const { data: urlData } = supabase.storage
-      .from('generated-assets')
-      .getPublicUrl(videoUploadPath);
-
-    const videoUrl = urlData.publicUrl;
-    console.log(`Video uploaded: ${videoUrl}`);
 
     // Complete!
     await updateJobStatus(supabase, jobId, 'complete', 100, 'Video rendering complete!', { video_url: videoUrl });
