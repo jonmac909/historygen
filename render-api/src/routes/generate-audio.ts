@@ -81,13 +81,26 @@ function validateVoiceSampleUrl(url: string): { valid: boolean; error?: string }
   try {
     const parsedUrl = new URL(url);
 
+    // Phase 2.6 follow-up: in local-inference mode, voice samples can come
+    // from render-api's own /assets static serve at http://localhost:<PORT>/...
+    // That URL is server-side reachable AND not a real SSRF risk (the bytes
+    // get downloaded then sent to Whisper as multipart, not re-requested).
+    const hostname = parsedUrl.hostname;
+    const isLocalhost =
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '[::1]';
+    if (localInferenceConfig.enabled && parsedUrl.protocol === 'http:' && isLocalhost) {
+      return { valid: true };
+    }
+
     if (parsedUrl.protocol !== 'https:') {
       return { valid: false, error: 'Voice sample URL must use HTTPS protocol' };
     }
 
     // Allow Supabase storage and our own domains
     const allowedDomains = ['supabase.co', 'supabase.com', 'autoaigen.com', 'history-gen-ai.pages.dev'];
-    const hostname = parsedUrl.hostname;
     const isAllowed = allowedDomains.some(domain =>
       hostname === domain || hostname.endsWith(`.${domain}`)
     );

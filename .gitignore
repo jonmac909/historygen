@@ -48,12 +48,14 @@ playwright-report/
 supabase/.temp/
 Screenshot*.png
 
-# Local-inference generated assets (commit only fx/* fixtures)
+# Local-inference generated assets (commit only fx/* fixtures + dev-tools/)
 local-assets/images/
 local-assets/audio/
 local-assets/clips/
 local-assets/renders/
 local-assets/thumbnails/
+local-assets/voices/
+local-assets/phase*
 
 # Local-inference runtime artifacts (commit only source files + test-input.png fixture)
 local-inference/logs/

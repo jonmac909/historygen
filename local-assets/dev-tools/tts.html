@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>VoxCPM2 dev tester</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 720px; margin: 2em auto; padding: 0 1em; color: #222; }
+  h1 { margin-bottom: 0.2em; }
+  .sub { color: #666; margin-top: 0; font-size: 0.9em; }
+  label { display: block; margin: 0.8em 0 0.3em; font-weight: 600; }
+  textarea, input { width: 100%; padding: 0.5em; font-size: 1em; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+  textarea { font-family: inherit; min-height: 100px; }
+  button { background: #2563eb; color: #fff; border: 0; padding: 0.7em 1.4em; font-size: 1em; border-radius: 4px; cursor: pointer; margin-top: 1em; }
+  button:disabled { background: #9ca3af; cursor: not-allowed; }
+  .row { display: flex; gap: 0.6em; }
+  .row > * { flex: 1; }
+
+  /* progress UI */
+  #progress-card { display: none; margin-top: 1.2em; padding: 1em; border: 1px solid #d1d5db; border-radius: 6px; background: #fafafa; }
+  #progress-card.ok    { background: #f0fdf4; border-color: #86efac; }
+  #progress-card.err   { background: #fef2f2; border-color: #fca5a5; }
+  .meter { height: 22px; background: #e5e7eb; border-radius: 11px; overflow: hidden; position: relative; }
+  .meter-fill { height: 100%; background: linear-gradient(90deg, #3b82f6, #2563eb); width: 0; transition: width 0.4s ease-out; }
+  .meter-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85em; color: #1f2937; mix-blend-mode: difference; }
+  .stats { display: flex; gap: 1em; margin-top: 0.6em; font-size: 0.85em; color: #4b5563; }
+  .stats .label { color: #9ca3af; font-weight: 600; margin-right: 0.3em; }
+  #message { margin-top: 0.6em; font-size: 0.92em; color: #374151; min-height: 1.2em; }
+  #event-log { margin-top: 0.8em; max-height: 140px; overflow-y: auto; font-family: ui-monospace, Consolas, monospace; font-size: 0.78em; color: #6b7280; background: #fff; border: 1px solid #e5e7eb; border-radius: 4px; padding: 0.4em 0.6em; }
+  #event-log .row { padding: 0.1em 0; }
+
+  audio { width: 100%; margin-top: 1em; }
+  pre { background: #f3f4f6; padding: 0.8em; border-radius: 4px; overflow-x: auto; font-size: 0.85em; }
+  details { margin-top: 1em; }
+</style>
+</head>
+<body>
+<h1>VoxCPM2 dev tester</h1>
+<p class="sub">SSE-streamed <code>POST /generate-audio</code> with live progress.</p>
+
+<form id="f">
+  <label for="text">Text (5–500 chars per chunk; multi-chunk OK)</label>
+  <textarea id="text" name="text" required>Hello world. This is a quick browser test of the local VoxCPM2 pipeline running on this machine. Click generate to hear it back.</textarea>
+
+  <div class="row">
+    <div>
+      <label for="projectId">Project ID prefix</label>
+      <input id="projectId" name="projectId" value="dev-tester">
+    </div>
+    <div>
+      <label for="quality">Quality</label>
+      <select id="quality" name="quality">
+        <option value="standard">Standard</option>
+      </select>
+    </div>
+  </div>
+
+  <label for="voiceSampleUrl">Voice sample URL (default: clone_voice.wav)</label>
+  <input id="voiceSampleUrl" name="voiceSampleUrl" value="http://localhost:3000/assets/voices/clone_voice.wav" placeholder="https://...">
+  <p class="sub" style="margin-top:0.3em">Cloning ON by default. Clear the field to use the model's default voice.</p>
+
+  <button id="go" type="submit">Generate</button>
+</form>
+
+<div id="progress-card">
+  <div class="meter">
+    <div class="meter-fill" id="meter-fill"></div>
+    <div class="meter-label" id="meter-label">0%</div>
+  </div>
+  <div class="stats">
+    <span><span class="label">Elapsed</span><span id="elapsed">0.0s</span></span>
+    <span><span class="label">ETA</span><span id="eta">—</span></span>
+    <span><span class="label">Status</span><span id="phase">queued</span></span>
+  </div>
+  <div id="message"></div>
+  <div id="event-log"></div>
+</div>
+
+<audio id="player" controls style="display:none"></audio>
+<details id="response-details" style="display:none">
+  <summary>Final response JSON</summary>
+  <pre id="response"></pre>
+</details>
+
+<script>
+const f = document.getElementById('f');
+const goBtn = document.getElementById('go');
+const card = document.getElementById('progress-card');
+const fill = document.getElementById('meter-fill');
+const meterLabel = document.getElementById('meter-label');
+const elapsedEl = document.getElementById('elapsed');
+const etaEl = document.getElementById('eta');
+const phaseEl = document.getElementById('phase');
+const messageEl = document.getElementById('message');
+const eventLog = document.getElementById('event-log');
+const player = document.getElementById('player');
+const responseDetails = document.getElementById('response-details');
+const response = document.getElementById('response');
+
+function setProgress(pct, msg) {
+  pct = Math.max(0, Math.min(100, pct));
+  fill.style.width = pct + '%';
+  meterLabel.textContent = pct.toFixed(0) + '%';
+  if (msg !== undefined) messageEl.textContent = msg;
+}
+
+function logEvent(line) {
+  const div = document.createElement('div');
+  div.className = 'row';
+  div.textContent = line;
+  eventLog.appendChild(div);
+  eventLog.scrollTop = eventLog.scrollHeight;
+}
+
+f.onsubmit = async (e) => {
+  e.preventDefault();
+  goBtn.disabled = true;
+  card.style.display = 'block';
+  card.className = '';
+  player.style.display = 'none';
+  responseDetails.style.display = 'none';
+  eventLog.innerHTML = '';
+  setProgress(0, 'Connecting...');
+  phaseEl.textContent = 'queued';
+
+  const text = document.getElementById('text').value.trim();
+  const projectIdPrefix = document.getElementById('projectId').value.trim() || 'dev-tester';
+  const voiceSampleUrl = document.getElementById('voiceSampleUrl').value.trim();
+  const projectId = `${projectIdPrefix}-${Date.now()}`;
+
+  const body = { projectId, text, stream: true };
+  if (voiceSampleUrl) body.voiceSampleUrl = voiceSampleUrl;
+
+  const t0 = performance.now();
+  let lastProgressAt = t0;
+  let lastProgressPct = 0;
+  let timerHandle = null;
+
+  function tickElapsed() {
+    const elapsed = (performance.now() - t0) / 1000;
+    elapsedEl.textContent = elapsed.toFixed(1) + 's';
+    // ETA: linear extrapolation from last seen progress
+    if (lastProgressPct > 0 && lastProgressPct < 100) {
+      const elapsedAtMark = (lastProgressAt - t0) / 1000;
+      const total = elapsedAtMark / (lastProgressPct / 100);
+      const remaining = Math.max(0, total - elapsed);
+      etaEl.textContent = remaining.toFixed(1) + 's';
+    }
+  }
+  timerHandle = setInterval(tickElapsed, 100);
+
+  let finalPayload = null;
+  let errorMessage = null;
+
+  try {
+    const r = await fetch('/generate-audio', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Internal-Api-Key': 'phase4-local-key',
+        'Accept': 'text/event-stream',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!r.ok && r.headers.get('content-type')?.includes('json')) {
+      const j = await r.json();
+      throw new Error(j?.error?.message || j?.error || `HTTP ${r.status}`);
+    }
+    if (!r.body) throw new Error('No response body to stream');
+
+    const reader = r.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+
+    phaseEl.textContent = 'streaming';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+
+      // SSE events split by blank line
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        const dataLines = block.split('\n').filter(l => l.startsWith('data: '));
+        if (!dataLines.length) continue;
+        const data = dataLines.map(l => l.slice(6)).join('\n');
+        let evt;
+        try { evt = JSON.parse(data); } catch { continue; }
+
+        // Render the event
+        const summary = evt.type
+          ? `[${evt.type}] ${evt.message ?? evt.error ?? evt.audioUrl ?? ''}`
+          : evt.stage
+            ? `[${evt.stage}/${evt.status}] ${evt.url ?? ''}`
+            : JSON.stringify(evt);
+        logEvent(summary);
+
+        if (typeof evt.progress === 'number') {
+          lastProgressPct = evt.progress;
+          lastProgressAt = performance.now();
+          setProgress(evt.progress, evt.message);
+          phaseEl.textContent = evt.message?.split('...')[0]?.toLowerCase() || 'working';
+        }
+        if (evt.type === 'complete') {
+          finalPayload = evt;
+          setProgress(100, 'Complete');
+          phaseEl.textContent = 'complete';
+        }
+        if (evt.type === 'error' || evt.error) {
+          errorMessage = evt.error || evt.message || JSON.stringify(evt);
+          phaseEl.textContent = 'error';
+        }
+      }
+    }
+  } catch (err) {
+    errorMessage = err.message || String(err);
+  } finally {
+    clearInterval(timerHandle);
+    tickElapsed();
+    goBtn.disabled = false;
+  }
+
+  const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
+
+  if (errorMessage) {
+    card.className = 'err';
+    messageEl.textContent = `Failed in ${elapsed}s — ${errorMessage}`;
+    return;
+  }
+
+  if (finalPayload && finalPayload.audioUrl) {
+    card.className = 'ok';
+    messageEl.textContent = `Done in ${elapsed}s — ${finalPayload.duration ?? '?'}s of audio, ${finalPayload.wordCount ?? '?'} words, ${finalPayload.size ?? '?'} bytes`;
+    player.src = finalPayload.audioUrl;
+    player.style.display = 'block';
+    player.load();
+    responseDetails.style.display = 'block';
+    response.textContent = JSON.stringify(finalPayload, null, 2);
+    etaEl.textContent = '0.0s';
+  } else {
+    card.className = 'err';
+    messageEl.textContent = `Stream ended without a complete event after ${elapsed}s`;
+  }
+};
+</script>
+</body>
+</html>
