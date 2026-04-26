@@ -2784,8 +2784,14 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
 
     // Match Fish Speech RunPod worker allocation. Progressive mode can produce
     // 300+ segments, so allow scaling up via env var without redeploy. Default
-    // stays at 10 for legacy-mode parity.
-    const MAX_CONCURRENT_SEGMENTS = parseInt(process.env.MAX_CONCURRENT_SEGMENTS ?? '10', 10);
+    // stays at 10 for legacy-mode parity in remote mode.
+    //
+    // In local mode (Phase 4 fix): VoxCPM2 server has a single inference lock,
+    // so firing N concurrent segment requests just queues N-1 of them and the
+    // queued ones time out before getting their turn. Default to 1 = sequential.
+    // Env override still applies if set explicitly.
+    const defaultConcurrency = localInferenceConfig.enabled ? '1' : '10';
+    const MAX_CONCURRENT_SEGMENTS = parseInt(process.env.MAX_CONCURRENT_SEGMENTS ?? defaultConcurrency, 10);
     console.log(`\n=== Processing ${actualSegmentCount} segments with rolling concurrency (max ${MAX_CONCURRENT_SEGMENTS} concurrent) ===`);
 
     const allSegmentResults: Array<{
