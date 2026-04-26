@@ -96,17 +96,48 @@ const player = document.getElementById('player');
 const responseDetails = document.getElementById('response-details');
 const response = document.getElementById('response');
 
+// Map progress percentage to a human label when the route fires a progress
+// event without a message field (which the voice-cloning streamer does for
+// most events — see generate-audio.ts:2767, 2861, 2978, etc).
+function phaseFor(pct) {
+  if (pct < 5)   return 'queuing request';
+  if (pct < 8)   return 'fetching voice sample';
+  if (pct < 10)  return 'transcribing voice sample (Whisper)';
+  if (pct < 85)  return `generating audio (~${pct.toFixed(0)}% of segments)`;
+  if (pct < 88)  return 'concatenating segments';
+  if (pct < 91)  return 'verifying audio integrity';
+  if (pct < 95)  return 'adjusting speed';
+  if (pct < 100) return 'uploading WAV';
+  return 'complete';
+}
+
 function setProgress(pct, msg) {
   pct = Math.max(0, Math.min(100, pct));
   fill.style.width = pct + '%';
   meterLabel.textContent = pct.toFixed(0) + '%';
-  if (msg !== undefined) messageEl.textContent = msg;
+  // Always render something useful in the message + phase fields
+  const display = msg && msg.trim() ? msg : phaseFor(pct);
+  messageEl.textContent = display;
+  phaseEl.textContent = phaseFor(pct);
 }
 
-function logEvent(line) {
+function logEvent(evt) {
   const div = document.createElement('div');
   div.className = 'row';
-  div.textContent = line;
+  const ts = ((performance.now() - window.__t0) / 1000).toFixed(1);
+  let label;
+  if (evt.type === 'progress') {
+    label = `${evt.progress ?? '?'}% ${evt.message ?? phaseFor(evt.progress ?? 0)}`;
+  } else if (evt.type === 'complete') {
+    label = `complete: ${evt.audioUrl ?? ''}`;
+  } else if (evt.type === 'error') {
+    label = `error: ${evt.error ?? evt.message ?? ''}`;
+  } else if (evt.stage) {
+    label = `${evt.stage}/${evt.status} ${evt.url ?? ''}`;
+  } else {
+    label = JSON.stringify(evt);
+  }
+  div.textContent = `[${ts}s] ${label}`;
   eventLog.appendChild(div);
   eventLog.scrollTop = eventLog.scrollHeight;
 }
@@ -131,6 +162,7 @@ f.onsubmit = async (e) => {
   if (voiceSampleUrl) body.voiceSampleUrl = voiceSampleUrl;
 
   const t0 = performance.now();
+  window.__t0 = t0; // shared with logEvent for relative timestamps
   let lastProgressAt = t0;
   let lastProgressPct = 0;
   let timerHandle = null;
@@ -138,12 +170,18 @@ f.onsubmit = async (e) => {
   function tickElapsed() {
     const elapsed = (performance.now() - t0) / 1000;
     elapsedEl.textContent = elapsed.toFixed(1) + 's';
-    // ETA: linear extrapolation from last seen progress
-    if (lastProgressPct > 0 && lastProgressPct < 100) {
+    // ETA: linear extrapolation from last seen progress, with floor at 0.5s
+    // (avoids showing "0.0s remaining" while the route is still post-processing
+    // between the last progress event and the final upload).
+    if (lastProgressPct >= 5 && lastProgressPct < 99) {
       const elapsedAtMark = (lastProgressAt - t0) / 1000;
       const total = elapsedAtMark / (lastProgressPct / 100);
-      const remaining = Math.max(0, total - elapsed);
+      const remaining = Math.max(0.5, total - elapsed);
       etaEl.textContent = remaining.toFixed(1) + 's';
+    } else if (lastProgressPct >= 99) {
+      etaEl.textContent = '<1s';
+    } else {
+      etaEl.textContent = 'estimating...';
     }
   }
   timerHandle = setInterval(tickElapsed, 100);
@@ -190,24 +228,16 @@ f.onsubmit = async (e) => {
         let evt;
         try { evt = JSON.parse(data); } catch { continue; }
 
-        // Render the event
-        const summary = evt.type
-          ? `[${evt.type}] ${evt.message ?? evt.error ?? evt.audioUrl ?? ''}`
-          : evt.stage
-            ? `[${evt.stage}/${evt.status}] ${evt.url ?? ''}`
-            : JSON.stringify(evt);
-        logEvent(summary);
+        logEvent(evt);
 
         if (typeof evt.progress === 'number') {
           lastProgressPct = evt.progress;
           lastProgressAt = performance.now();
           setProgress(evt.progress, evt.message);
-          phaseEl.textContent = evt.message?.split('...')[0]?.toLowerCase() || 'working';
         }
         if (evt.type === 'complete') {
           finalPayload = evt;
           setProgress(100, 'Complete');
-          phaseEl.textContent = 'complete';
         }
         if (evt.type === 'error' || evt.error) {
           errorMessage = evt.error || evt.message || JSON.stringify(evt);
