@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
-import { saveCost } from '../lib/cost-tracker';
 import { saveScriptToProject } from '../lib/supabase-project';
 import { cleanScript, insertSubscribeCTA } from '../lib/pipeline-runner';
 import { moderateScript, sanitizeScript, scriptNeedsModeration } from '../lib/content-moderator';
@@ -148,8 +147,7 @@ router.post('/', async (req: Request, res: Response) => {
     // Always use Sonnet 4.5 for best quality
     const selectedModel = model || 'claude-sonnet-4-5';
 
-    // Use title only - topic/era is for image prompts, not script generation
-    const topicFocus = title || 'Historical Documentary';
+    const topicFocus = '';
 
     console.log(`🚀 Rewriting script with ${selectedModel}...`);
     console.log(`📊 Max tokens: ${MAX_TOKENS} | Words/iteration: ${WORDS_PER_ITERATION}`);
@@ -233,16 +231,19 @@ When continuing a script, seamlessly continue from where you left off.`;
             const wordLimit = Math.min(WORDS_PER_ITERATION, targetWords);
             messages = [{
               role: 'user',
-              content: `CRITICAL: You MUST rewrite the following transcript into a documentary script about "${topicFocus}".
+              content: `CRITICAL: You MUST rewrite the following transcript into a documentary script.
 
-=== TOPIC ENFORCEMENT ===
+${autoDetectTopic
+  ? `=== TOPIC ===
+Determine the topic from the transcript content itself. Write about whatever the transcript is actually about.`
+  : `=== TOPIC ENFORCEMENT ===
 Your script MUST focus ONLY on: ${topicFocus}
 
 If the transcript contains off-topic content (content NOT related to ${topicFocus}):
 - SKIP that content entirely
 - Do NOT include it in your script
 - Expand the ON-TOPIC content to reach the word count instead
-- If the transcript mostly discusses unrelated topics, extract ONLY the parts about ${topicFocus}
+- If the transcript mostly discusses unrelated topics, extract ONLY the parts about ${topicFocus}`}
 
 === PACING FOR SLEEP-FRIENDLY CONTENT ===
 This is a SLEEP-FRIENDLY documentary. The audience listens while falling asleep.
@@ -252,7 +253,6 @@ FIRST 20-30 MINUTES (the "Opening"): Make this section especially well-crafted
 - Paint vivid, immersive scenes that transport the listener
 - High-quality prose with careful word choices
 - Still calm and sleep-friendly - NOT exciting or dramatic
-- Draw the viewer into the world of ${topicFocus} with beautiful writing
 
 REMAINDER OF SCRIPT: Maintain quality, prioritize calm flow
 - Keep the content on-topic and historically rich
@@ -275,10 +275,8 @@ For each expansion topic:
 ${transcript}
 === TRANSCRIPT END ===
 
-Transform this transcript into ${wordLimit} words of polished documentary narration about "${topicFocus}".
-- ONLY include content directly related to ${topicFocus}
-- If the transcript drifts to other topics, IGNORE those sections
-- Expand and elaborate on the on-topic content to reach the word count
+Transform this transcript into ${wordLimit} words of polished documentary narration.
+- Expand and elaborate on the content to reach the word count
 - Make the first ~3000 words especially well-crafted with rich sensory details
 
 CRITICAL FORMAT RULE: Start IMMEDIATELY with narration. NO titles, NO headers, NO "# Complete Histories", NO "---", NO markdown of any kind. First word must be spoken prose.`
@@ -289,11 +287,14 @@ CRITICAL FORMAT RULE: Start IMMEDIATELY with narration. NO titles, NO headers, N
             messages = [
               {
                 role: 'user',
-                content: `CRITICAL: You MUST rewrite the following transcript into a documentary script about "${topicFocus}".
+                content: `CRITICAL: You MUST rewrite the following transcript into a documentary script.
 
-=== TOPIC ENFORCEMENT ===
+${autoDetectTopic
+  ? `=== TOPIC ===
+Determine the topic from the transcript content. Write about whatever the transcript is actually about.`
+  : `=== TOPIC ENFORCEMENT ===
 Your script MUST focus ONLY on: ${topicFocus}
-IGNORE any off-topic content in the transcript.
+IGNORE any off-topic content in the transcript.`}
 
 === PACING ===
 We are now in the CALM FLOW section of this sleep-friendly documentary.
@@ -310,7 +311,7 @@ ${expandWith}
 ${transcript}
 === TRANSCRIPT END ===
 
-Write ${wordLimit} words of pure narration about "${topicFocus}" based ONLY on the relevant parts of the transcript.`
+Write ${wordLimit} words of pure narration based on the transcript.`
               },
               {
                 role: 'assistant',
@@ -318,14 +319,13 @@ Write ${wordLimit} words of pure narration about "${topicFocus}" based ONLY on t
               },
               {
                 role: 'user',
-                content: `Continue the script from where you left off. Stay focused on ${topicFocus}.
+                content: `Continue the script from where you left off.
 
 CRITICAL - DO NOT REPEAT ANY CONTENT:
 - Your previous response ended with the last few sentences shown above
 - Start your continuation with NEW content only
 - Do NOT rewrite or paraphrase sentences you already wrote
 - If you're unsure, skip ahead to genuinely new material
-- Keep ALL content focused on ${topicFocus}
 - Use calm, meditative pacing - viewers are drifting to sleep
 
 Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
@@ -361,11 +361,28 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
             // Track tokens for incremental progress updates
             let iterationTokens = '';
             let lastProgressUpdate = Date.now();
-            const PROGRESS_UPDATE_INTERVAL = 2000; // Update progress every 2 seconds
+            const PROGRESS_UPDATE_INTERVAL = 1000; // Update progress every second
 
             console.log(`[rewrite-script] 🔄 Calling Claude API for iteration ${iteration}... (this may take a while)`);
             const claudeStartTime = Date.now();
             let firstTokenReceived = false;
+
+            const THINKING_PROGRESS_CAP = 15;
+            const THINKING_TICK_MS = 3000;
+            let thinkingProgress = maxProgressSent;
+            const thinkingInterval = iteration === 1 ? setInterval(() => {
+              if (firstTokenReceived) return;
+              thinkingProgress = Math.min(thinkingProgress + 1, maxProgressSent + THINKING_PROGRESS_CAP);
+              if (thinkingProgress > maxProgressSent) {
+                maxProgressSent = thinkingProgress;
+                sendEvent({
+                  type: 'progress',
+                  progress: thinkingProgress,
+                  wordCount: currentWordCount,
+                  message: `Thinking... preparing script`
+                });
+              }
+            }, THINKING_TICK_MS) : null;
 
             // OPTIMIZATION: Use streaming with token callbacks + prompt caching
             result = await generateScriptChunkStreaming({
@@ -378,6 +395,7 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
               onToken: (text) => {
                 if (!firstTokenReceived) {
                   firstTokenReceived = true;
+                  if (thinkingInterval) clearInterval(thinkingInterval);
                   const waitTime = ((Date.now() - claudeStartTime) / 1000).toFixed(1);
                   console.log(`[rewrite-script] ✨ First token received after ${waitTime}s`);
                 }
@@ -396,7 +414,6 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
                   // Estimate current words in this iteration
                   const iterationWords = iterationTokens.split(/\s+/).filter(w => w.length > 0).length;
                   const estimatedTotal = currentWordCount + iterationWords;
-                  // Only send progress if it's higher than what we've sent before (prevent backward movement)
                   const estimatedProgress = Math.max(maxProgressSent, Math.min(Math.round((estimatedTotal / targetWords) * 100), 99));
 
                   if (estimatedProgress > maxProgressSent) {
@@ -411,6 +428,7 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
                 }
               }
             });
+            if (thinkingInterval) clearInterval(thinkingInterval);
           } catch (apiError) {
             clearInterval(keepaliveInterval);
             console.error(`API error on iteration ${iteration}:`, apiError);
@@ -497,32 +515,6 @@ Write EXACTLY ${wordLimit} more words. Stop when you reach ${wordLimit} words.`
 
         console.log(`Script complete: ${currentWordCount} words after ${iteration} iterations`);
         console.log(`Total tokens: ${totalInputTokens} input, ${totalOutputTokens} output`);
-
-        // Save costs to Supabase if projectId provided
-        if (projectId) {
-          try {
-            await Promise.all([
-              saveCost({
-                projectId,
-                source: 'manual',
-                step: 'script',
-                service: 'claude',
-                units: totalInputTokens,
-                unitType: 'input_tokens',
-              }),
-              saveCost({
-                projectId,
-                source: 'manual',
-                step: 'script',
-                service: 'claude',
-                units: totalOutputTokens,
-                unitType: 'output_tokens',
-              }),
-            ]);
-          } catch (costError) {
-            console.error('[rewrite-script] Error saving costs:', costError);
-          }
-        }
 
         // Clean script and insert subscribe CTA (same as full auto pipeline)
         fullScript = cleanScript(fullScript);

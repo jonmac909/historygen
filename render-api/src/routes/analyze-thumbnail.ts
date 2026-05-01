@@ -15,6 +15,7 @@ function getProxyAgent() {
 interface AnalyzeThumbnailRequest {
   thumbnailUrl: string;
   videoTitle?: string;
+  projectId?: string;
 }
 
 interface ThumbnailAnalysis {
@@ -34,7 +35,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
     }
 
-    const { thumbnailUrl, videoTitle }: AnalyzeThumbnailRequest = req.body;
+    const { thumbnailUrl, videoTitle, projectId }: AnalyzeThumbnailRequest = req.body;
 
     if (!thumbnailUrl) {
       return res.status(400).json({ error: 'thumbnailUrl is required' });

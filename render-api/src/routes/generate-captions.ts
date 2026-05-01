@@ -4,7 +4,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import crypto from 'crypto';
-import { saveCost } from '../lib/cost-tracker';
 import { Readable } from 'stream';
 import { ReadableStream as WebReadableStream } from 'stream/web';
 import { compareScriptToTranscription, compareAudioSegmentsToSRT, parseSrtToSegments, QAResult, AudioSegment, SrtSegment } from '../utils/script-qa';
@@ -760,19 +759,6 @@ router.post('/', async (req: Request, res: Response) => {
       .getPublicUrl(fileName);
 
     console.log('Captions uploaded successfully:', urlData.publicUrl);
-
-    // Save cost to Supabase (Whisper: $0.006/minute of audio input)
-    if (projectId && totalDuration > 0) {
-      const durationMinutes = totalDuration / 60;
-      saveCost({
-        projectId,
-        source: 'manual',
-        step: 'captions',
-        service: 'whisper',
-        units: durationMinutes,
-        unitType: 'minutes',
-      }).catch(err => console.error('[cost-tracker] Failed to save captions cost:', err));
-    }
 
     // Log quality issues summary
     if (allQualityIssues.length > 0) {

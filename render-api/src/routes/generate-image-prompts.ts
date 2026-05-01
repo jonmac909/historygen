@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
-import { saveCost } from '../lib/cost-tracker';
 
 const router = Router();
 
@@ -1250,32 +1249,6 @@ Remember: Output ONLY a JSON array with ${batchSize} items, starting with index 
     console.log(`Generated ${imagePrompts.length} image prompts successfully (regenerated ${regenTasks.length} prompts with modern keywords)`);
     console.log(`Total tokens: ${totalInputTokens} input, ${totalOutputTokens} output`);
 
-    // Save costs to Supabase if projectId provided
-    if (projectId) {
-      try {
-        await Promise.all([
-          saveCost({
-            projectId,
-            source: 'manual',
-            step: 'image_prompts',
-            service: 'claude',
-            units: totalInputTokens,
-            unitType: 'input_tokens',
-          }),
-          saveCost({
-            projectId,
-            source: 'manual',
-            step: 'image_prompts',
-            service: 'claude',
-            units: totalOutputTokens,
-            unitType: 'output_tokens',
-          }),
-        ]);
-      } catch (costError) {
-        console.error('[generate-image-prompts] Error saving costs:', costError);
-      }
-    }
-
     const result = {
       success: true,
       prompts: imagePrompts,
@@ -1455,18 +1428,6 @@ Return ONLY a JSON array with ${count} items.`;
 
     console.log(`[extend] Generated ${newPrompts.length} new prompts`);
     console.log(`[extend] Tokens: ${totalInputTokens} input, ${totalOutputTokens} output`);
-
-    // Save costs if projectId provided
-    if (projectId) {
-      try {
-        await Promise.all([
-          saveCost({ projectId, source: 'manual', step: 'image_prompts_extend', service: 'claude', units: totalInputTokens, unitType: 'input_tokens' }),
-          saveCost({ projectId, source: 'manual', step: 'image_prompts_extend', service: 'claude', units: totalOutputTokens, unitType: 'output_tokens' }),
-        ]);
-      } catch (costError) {
-        console.error('[extend] Error saving costs:', costError);
-      }
-    }
 
     return res.json({
       success: true,

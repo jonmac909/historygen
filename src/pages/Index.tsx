@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Youtube, FileText, Sparkles, Scroll, Mic, Image, RotateCcw, TrendingUp, Zap, Bot, Video, Wand2, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
+import { Youtube, FileText, Sparkles, Scroll, Mic, Image, RotateCcw, TrendingUp, Zap, Bot, Video, Wand2, AlertTriangle, ChevronDown, ChevronUp, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
@@ -71,11 +71,12 @@ import {
   type Project,
 } from "@/lib/projectStore";
 import { ProjectsDrawer } from "@/components/ProjectsDrawer";
+import { FactoryMode } from "@/components/FactoryMode";
 import { OutlierFinderView } from "@/components/OutlierFinderView";
 import { FavoritesView } from "@/components/FavoritesView";
 
 type InputMode = "url" | "title";
-type ViewState = "create" | "outlier-finder" | "favorites" | "processing" | "review-script" | "review-audio" | "review-captions" | "review-clip-prompts" | "review-clips" | "review-prompts" | "review-images" | "review-scanner" | "review-render" | "review-thumbnails" | "review-youtube" | "review-short-hook" | "review-short-generate" | "review-short-preview" | "results";
+type ViewState = "create" | "outlier-finder" | "favorites" | "factory" | "processing" | "review-script" | "review-audio" | "review-captions" | "review-clip-prompts" | "review-clips" | "review-prompts" | "review-images" | "review-scanner" | "review-render" | "review-thumbnails" | "review-youtube" | "review-short-hook" | "review-short-generate" | "review-short-preview" | "results";
 type EntryMode = "script" | "captions" | "images";
 
 const LAST_SETTINGS_KEY = "historygenai-last-settings";
@@ -3971,6 +3972,24 @@ const Index = () => {
               <TrendingUp className="w-4 h-4" />
               <span className="hidden sm:inline">Outliers</span>
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={`gap-2 ${viewState === "factory" ? "text-foreground bg-accent" : "text-muted-foreground hover:text-foreground"}`}
+              onClick={() => setViewState("factory")}
+            >
+              <Zap className="w-4 h-4" />
+              <span className="hidden sm:inline">Factory</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-2 text-muted-foreground hover:text-foreground"
+              onClick={() => navigate('/costs')}
+            >
+              <DollarSign className="w-4 h-4" />
+              <span className="hidden sm:inline">Costs</span>
+            </Button>
             <ConfigModal
               scriptTemplates={scriptTemplates}
               onSaveScriptTemplates={handleSaveScriptTemplates}
@@ -4005,6 +4024,10 @@ const Index = () => {
         <FavoritesView
           onSelectProject={handleOpenProject}
           onBack={() => setViewState("create")}
+        />
+      ) : viewState === "factory" ? (
+        <FactoryMode
+          onExit={() => setViewState("create")}
         />
       ) : viewState === "results" ? (
         <ProjectResults

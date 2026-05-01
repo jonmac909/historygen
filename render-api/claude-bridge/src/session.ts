@@ -18,7 +18,8 @@ import type { CliEvent, CliResultEvent, CliRateLimitEvent, CliAssistantEvent } f
 
 export class RateLimitError extends Error {
   constructor(public info: CliRateLimitEvent['rate_limit_info']) {
-    super(`Claude Code rate limit: ${info.status} (resets at ${new Date(info.resetsAt * 1000).toISOString()})`);
+    const resetsAt = info.resetsAt ? new Date(info.resetsAt * 1000).toISOString() : 'unknown';
+    super(`Claude Code rate limit: ${info.status} (resets at ${resetsAt})`);
     this.name = 'RateLimitError';
   }
 }

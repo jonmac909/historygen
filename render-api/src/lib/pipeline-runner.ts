@@ -255,7 +255,7 @@ export function insertSubscribeCTA(script: string): string {
 }
 
 // Grade a script using Claude to check topic adherence and quality
-async function gradeScript(
+export async function gradeScript(
   script: string,
   expectedTopic: string,
   apiKey: string
@@ -484,136 +484,114 @@ async function callStreamingAPI(
 const DEFAULT_VOICE_SAMPLE = 'https://autoaigen.com/voices/clone_voice.wav';
 
 // Auto Poster Template: Complete Histories (template-a)
-export const COMPLETE_HISTORIES_TEMPLATE = `THESE ARE INSTRUCTIONS FOR YOU - DO NOT INCLUDE ANY OF THIS MARKDOWN FORMATTING IN YOUR OUTPUT!
+export const COMPLETE_HISTORIES_TEMPLATE = `THESE ARE INSTRUCTIONS FOR YOU - DO NOT INCLUDE ANY OF THIS IN YOUR OUTPUT.
+Your output must be ONLY plain text prose. No markdown, no headers, no bold, no italics, no structural markers.
 
-Your output must be ONLY plain text prose with zero formatting. No #, no **, no section headers, no brackets.
+FORMAT
+19,000-20,000 words minimum. Always target 20,000.
+Should be a rated A script.
+First 10 minutes of the script should grab you with a hook and be extremely interesting.
+Avoid repetition.
+No title at top. No section headers or chapter markers anywhere in the file.
+Pure narration text only. No bold, no italics, no structural markers.
+Normal conversational sentence length. Not literary run-ons.
+Never stop mid-script.
+I will be giving you 20-25 chapters and if you write 800-1000 words each, you should reach 20000 words.
 
-PROJECT INSTRUCTIONS: Complete Histories Sleep-Friendly Video Scripts
+OPENING - exact template, every time
+"Good evening and welcome back."
 
-PROJECT OVERVIEW:
-You are writing 2-3 hour video scripts for "Complete Histories," a YouTube channel that creates long-form historical documentaries designed as sleep-friendly content. These scripts help viewers drift peacefully through history with dreamy, time-travelly narratives.
+HOOK - first 45 seconds of every script
+The hook comes after "Good evening and welcome back" and a brief topic introduction. The topic introduction tells the listener what the episode is about - "Tonight we are visiting..." or "Tonight we are going to talk about..." or "Tonight we are following..." - so they know immediately where they are. Then the hook hits.
 
-## CORE VOICE & STYLE (NEVER COMPROMISE THESE)
+The sharpest fact. The single most surprising, specific, or emotionally striking piece of information in the entire script. A number. A death. A contradiction. Something the listener did not know and cannot unhear. Not a thesis statement. A fact that earns the next sentence.
 
-### Tone
-- **Dreamy and time-travelly**: Create a sense of floating through history
-- **Meditative, not dramatic**: Avoid urgency, tension spikes, or cliffhangers
-- **Contemplative and reflective**: Weave in philosophical observations naturally
-- **Reverent without being stiff**: Show wonder and respect for the subject
-- **Emotionally restrained**: Handle even tragedy with dignity, not melodrama
+Next 3-5 sentences: the stakes. What did this fact mean for real people. Who suffered. Who was trapped. Who died. What was lost. The stakes must be human, not historical. Not "this changed the political landscape." Instead: "this meant a mother could be barred from seeing her children."
 
-### Point of View
-- **Primary**: Third person omniscient narrator
-- **Secondary**: Second person ("you") for immersion 2-3 times per section
-  - "You could walk from the harbor and see..."
-  - "Stand in the marketplace and you would hear..."
-  - Use this to invite viewers into the scene without forcing participation
+The pull. One sentence that creates forward momentum. "Tonight we are going to find out why." Or "tonight we are going to follow her home." The pull is a promise. It tells the listener that the answer is coming, that the story is worth the next two hours, that staying is better than leaving.
 
-### Sentence Structure
-- **Flowing, connected sentences**: Ideas link like water moving downstream
-- **Varied rhythm**: Mix longer flowing sentences with shorter grounding statements
-- **Natural cadence**: Read aloud-friendly, like a bedtime story for adults
-- **Example**: "The walls rose stone by stone. Each block was cut to fit its neighbor with a care that made the joint tighter than any mortar could. When rain came, the water ran down the face and found no crack to enter."
+Examples of strong hooks:
+"Only four women successfully divorced their husbands. Four. In twenty years. Everyone else stayed."
+"She was considered the most beautiful woman in Europe, and she spent most of her adult life trying to disappear."
+"He woke in a barn with straw in his hair and a horse he could not afford to feed, and today was the day that would decide whether he ate this week."
 
-### What to AVOID
-- Cliffhangers or "But what happens next?!" moments
-- Dramatic music cues in writing ("suddenly!", "shockingly!")
-- Forced excitement or urgency
-- Modern slang or anachronistic language
-- Judgment or heavy-handed moralizing
-- Questions that demand alert engagement
-- Lists with bullet points (use flowing prose instead)
-- Excessive bolding, caps, or emphasis
+Examples of weak hooks (never do this):
+"Tonight we are talking about divorce in the Regency period."
+"Tonight we are exploring the hidden world of..."
+"What was it about this age that made..."
+Any rhetorical question as an opener.
+Any "imagine" or "picture this" opening.
 
-## SENSORY IMMERSION REQUIREMENTS
+The first 10 minutes must be the most interesting part of the script. YouTube measures retention. If the listener leaves before the 10-minute mark, the algorithm buries the video. Front-load the best material. The most dramatic story, the most shocking detail, the most vivid scene. Do not save the best for later. There is no later if the listener leaves at minute three.
 
-### Include Every 2-3 Minutes
-You must ground viewers with sensory details:
+INTRO - between the hook and the CTA
+After the hook lands, the intro does two things before the CTA arrives:
 
-**Smell**: "The air carried salt and cedar and the smoke of evening fires"
-**Sound**: "The only sound was the scrape of oars and the low call of a bird that fishes at dusk"
-**Touch/Texture**: "The stone was warm underfoot even when the sun had set"
-**Temperature**: "The cold spring ran so cold it numbed the hand"
-**Taste**: "Bread made from barley on poor days, from wheat when the harvest was strong"
-**Light/Color**: "The bronze took the sunset and gave it back in warm bands"
+Summary of the journey. Tell the listener what the evening holds. Not a table of contents - a promise. What they are going to see, who they are going to meet, where the story will take them. The summary should feel like a trailer, not an outline. It gives enough to create anticipation without giving away the resolution.
 
-### Sensory Detail Rules
-- Be specific, not generic ("cedar smoke" not "smoke")
-- Anchor to human experience ("warm enough to ease tired limbs")
-- Use comparisons that ground rather than elevate ("like rain on a roof")
-- Integrate naturally into narrative flow, never list
+Mystery. Plant at least one unanswered question or unresolved tension that the script will answer later. The mystery is what keeps the listener through the CTA and into the first chapter. It can be embedded in the summary ("we are going to find out what happened to the woman who disappeared from the palace and was never seen again") or it can be a standalone sentence that raises a question the listener needs answered.
 
-STRUCTURAL TEMPLATE (THESE ARE CONTENT GUIDELINES - DO NOT WRITE "OPENING" OR "ACT 1" IN YOUR OUTPUT!):
+The intro earns the CTA. By the time the listener hears "As always, I would love to know where in the world you are listening from," they should already be committed. They should already want to stay. The CTA is a pause in a story they are already inside, not an interruption before the story begins.
 
-WARNING: The labels below (OPENING, ACT 1, ACT 2, etc.) are for YOUR reference only.
-DO NOT include these labels, numbers, or any brackets/formatting in your actual script.
-Write everything as continuous flowing prose narration.
+CTA #1 - exact template, placed after the intro
+"As always, I would love to know where in the world you are listening from and what time it is for you. Whether you are here to drift into sleep or to [walk through / spend the evening with / follow X], I am glad you are with me. And if you have not yet subscribed, I would love it if you did, so that you never miss a story."
 
-1. OPENING (5-10 minutes) - Begin with:
-Good evening and welcome back. Tonight we're [exploring/journeying through/diving into] [TOPIC].
+CONTENT RESTRICTIONS - never include
+No explicit sexual content. Conjugal rights, the marriage bed, affairs - all discussed in restrained, factual language. Never graphic. Never titillating. BBC documentary standard at all times.
+No graphic violence. Deaths, beatings, injuries described factually, never lingered on. State what happened. Do not describe the physical sensation of it happening.
+No profanity.
+No modern slang or anachronistic phrasing.
+All content must be YouTube-safe for full monetisation.
 
-Then include 2-3 contemplative questions woven naturally into the prose:
-- What was [this civilization/place/era]?
-- Why has [this story] captured imaginations for [X] years?
-- How did [key characteristic] shape their world?
+TONE
+BBC documentary intimacy. Present tense immersive narration. Calm, accumulative prose. Emotional restraint - let detail carry feeling, never tell the listener what to feel. No exclamation marks. No rhetorical questions. No direct address except CTAs.
 
-Brief preview in flowing language:
-We'll explore where [the story] began, what [sources/evidence] tell us, and how [it evolved/fell/transformed] over [time period].
+CRAFT
+Treat domestic detail with the same gravity as major events.
+Sensory texture throughout - smells, sounds, light, temperature, fabric.
+Mix normal sentences with longer accumulative ones joined by "and."
+Class-stratified throughout - rich, middle, and poor in every section.
+Use architecture, rooms, and objects as emotional vessels.
+Repeat key motifs as anchors across the script.
+Never summarise when you can show through accumulated detail.
 
-As always, I'd love to know—where in the world are you listening from and what time is it for you? And if you enjoy these cozy journeys through history, consider subscribing so you don't miss the next one. Whether you're here to drift into sleep or to follow the currents of history, I'm glad you're with me.
+SENTENCE RULES
+Every sentence must be under 250 characters. TTS splits longer sentences at commas, causing audio artifacts. Do not stack cumulative "joined by and" clauses beyond one or two per sentence. Scan and split before delivering.
+Never repeat the same fact or sentence within a script. Each fact and phrase appears once unless a deliberate motif. Scan final drafts for accidental repetition in close proximity.
+No repetitive phrasing constructions - never repeat the same structural pattern (e.g., "before the X, before the Y, before the Z" or "Beautiful in the way that") more than twice. Stacking parallel clauses with the same opening word is a crutch, not rhythm. Vary sentence structure naturally.
+Recurring motifs (e.g., candlelight) appear max 4 times, placed strategically - never saturated.
+No exclamation marks, no rhetorical questions, no "imagine," no modern slang.
 
-Now, let's begin.
+CHAPTERS
+Break topics into enough chapters to fill 20,000 words comfortably - minimum 12, ideally 15-25.
+Each chapter should be substantive enough to stand alone as a narrative section.
+If a chapter runs short, expand with sensory detail, class comparison, or real historical examples rather than cutting content.
+Never rely on fewer chapters than needed and then panic-expand at the end.
 
-Opening Tone: 4/10 energy—welcoming but already calm
+WRITING PROCESS - chapter by chapter, no expansion passes
+Work chapter by chapter.
+Write each chapter to 800-1000 words.
+After writing each chapter, check it reads cleanly for TTS.
+Verify no repeated facts from previous chapters.
+Confirm every sentence is under 250 characters.
+Then move to the next chapter.
+25 chapters at 800 words = 20,000.
+Never write a short draft and then expand with string replacements - expansion passes cause splice errors, duplicated paragraphs, and concatenation fractures. Get it right the first time, chapter by chapter.
 
-2. THE BEGINNING (20-30 minutes)
-Purpose: Establish the mythic/legendary foundation and earliest origins
-IMPORTANT: Do not write "ACT 1" or "THE BEGINNING" as a header - just start the narration
+CLOSING CTA - exact template
+Reflective summary paragraph of what the listener has witnessed. Then:
+"If you enjoyed [X], I would love it if you would subscribe and leave a comment letting me know where you are listening from. There are more stories to tell, more lives to follow, more candles to light. And if you know someone who loves [relevant shows/topics], please share this with them."
+End with a poetic sign-off echoing the script's central motifs. Final word: Goodnight.
 
-3. THE RISE (30-45 minutes)
-Purpose: Show gradual growth and development of civilization
-IMPORTANT: Do not write "ACT 2" or "THE RISE" as a header - just continue the narration
-
-4. THE GOLDEN AGE (30-45 minutes)
-Purpose: Show peak achievement and prosperity
-IMPORTANT: No headers - just continue narrating
-
-5. THE TURNING (20-30 minutes)
-Purpose: Show seeds of decline through accumulation of small changes
-IMPORTANT: No headers - just continue narrating
-
-6. THE CRISIS (30-40 minutes)
-Purpose: The breaking point—war, disaster, or collapse
-IMPORTANT: No headers - just continue narrating
-
-7. THE AFTERMATH (20-30 minutes)
-Purpose: Survival and immediate legacy
-IMPORTANT: No headers - just continue narrating
-
-8. THE LEGACY (30-45 minutes)
-Purpose: Historical memory, evidence, and meaning
-IMPORTANT: No headers - just continue narrating
-
-9. CLOSING (5 minutes) - End with:
-So the tale of [civilization] [how it ends—comes to us, remains in memory, completes its arc].
-
-Include a final sensory image or scene (keep it peaceful), what remains, a final philosophical reflection, optional gentle thanks, and the softest possible end.
-
-Energy Level: 2/10—softest point of entire script
-
-## ESSENTIAL TECHNIQUES
-
-### Repetitive Anchoring
-Create hypnotic rhythm with 5-8 anchor phrases repeated throughout.
-
-### Philosophical Breathers
-Every 5-10 minutes, pause for 1-3 sentences of reflection.
-
-### Human Scale Zooming
-After large-scale events, zoom to individual experience.
-
-### Time Transitions
-Smooth: "In the years that followed...", "Generations later...", "The seasons turned and turned again..."`;
+AVOID
+Section headers or chapter titles in the script itself.
+"Imagine" or "picture this."
+Modern slang or anachronistic phrasing.
+Breaking the fourth wall outside CTAs.
+Summarising instead of showing.
+Saying "Good evening and welcome back to Calm History" - never name the channel in the opening.
+Changing the CTA wording.
+Writing the CTA from scratch - always use the exact template.`;
 
 // Auto Poster Image Style: Classical Oil Painting (era-neutral technique)
 // NOTE: Removed "Dutch Golden Age" reference to prevent 1600s Dutch era contamination

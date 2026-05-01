@@ -7,6 +7,7 @@ const router = Router();
 interface YouTubeMetadataRequest {
   title: string;
   script: string;
+  projectId?: string;
 }
 
 interface YouTubeMetadataResponse {
@@ -22,7 +23,7 @@ router.post('/', async (req: Request, res: Response) => {
   console.log('[generate-youtube-metadata] Starting metadata generation');
 
   try {
-    const { title, script } = req.body as YouTubeMetadataRequest;
+    const { title, script, projectId } = req.body as YouTubeMetadataRequest;
 
     if (!script || script.trim().length === 0) {
       console.error('[generate-youtube-metadata] No script provided');

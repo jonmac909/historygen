@@ -3767,3 +3767,185 @@ export async function generateExpansionTopics(
     };
   }
 }
+
+// =========================================================================
+// Factory Pipeline API
+// =========================================================================
+
+export interface FactoryProjectConfig {
+  url?: string;
+  script?: string;
+  title: string;
+  settingsOverrides?: Record<string, unknown>;
+}
+
+export interface FactoryProgressEvent {
+  type: 'progress' | 'batch_complete' | 'error' | 'script_token';
+  batch?: number;
+  step?: string;
+  subStep?: string;
+  projectIndex?: number;
+  projectId?: string;
+  status?: string;
+  error?: string;
+  message?: string;
+  text?: string;
+}
+
+export interface FactoryBatchStatus {
+  id: string;
+  status: string;
+  current_batch: number;
+  current_step: string | null;
+  current_project_index: number;
+  project_ids: string[];
+  project_statuses: Record<string, { status: string; failedAtStep?: string; error?: string }>;
+  step_statuses: Record<string, Record<string, string>>;
+  settings: Record<string, unknown>;
+  total_projects: number;
+}
+
+export async function createFactoryBatch(
+  projects: FactoryProjectConfig[],
+  settings: Record<string, unknown>,
+): Promise<{ success: boolean; batchId?: string; projectIds?: string[]; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderUrl) return { success: false, error: 'Render API URL not configured' };
+
+  try {
+    const response = await fetch(`${renderUrl}/factory-pipeline`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ projects, settings }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `Failed to create batch: ${response.status} - ${errorText}` };
+    }
+
+    const data = await response.json();
+    return { success: true, batchId: data.batchId, projectIds: data.projectIds };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to create factory batch' };
+  }
+}
+
+export async function runFactoryBatch(
+  batchId: string,
+  batchNumber: number,
+  onProgress: (event: FactoryProgressEvent) => void,
+  subStep?: string,
+): Promise<{ success: boolean; error?: string }> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderUrl) return { success: false, error: 'Render API URL not configured' };
+
+  try {
+    const response = await fetch(`${renderUrl}/factory-pipeline/${batchId}/run-batch`, {
+      method: 'POST',
+      headers: withRenderAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ batchNumber, ...(subStep ? { subStep } : {}) }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return { success: false, error: `Failed to run batch: ${response.status} - ${errorText}` };
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) return { success: false, error: 'No response body' };
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const event = JSON.parse(line.slice(6)) as FactoryProgressEvent;
+            onProgress(event);
+          } catch {
+            // skip malformed JSON
+          }
+        }
+      }
+    }
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error instanceof Error ? error.message : 'Failed to run factory batch' };
+  }
+}
+
+export async function getFactoryStatus(batchId: string): Promise<FactoryBatchStatus | null> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderUrl) return null;
+
+  try {
+    const response = await fetch(`${renderUrl}/factory-pipeline/${batchId}/status`, {
+      headers: withRenderAuth(),
+    });
+
+    if (!response.ok) return null;
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function cancelFactory(batchId: string): Promise<void> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderUrl) return;
+
+  await fetch(`${renderUrl}/factory-pipeline/${batchId}/cancel`, {
+    method: 'PUT',
+    headers: withRenderAuth(),
+  });
+}
+
+export async function skipFactoryProject(batchId: string, projectId: string): Promise<void> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderUrl) return;
+
+  await fetch(`${renderUrl}/factory-pipeline/${batchId}/skip/${projectId}`, {
+    method: 'PUT',
+    headers: withRenderAuth(),
+  });
+}
+
+// =========================================================================
+// Cost Dashboard API
+// =========================================================================
+
+export interface CostSummary {
+  totalCost: number;
+  projectCount: number;
+  avgCostPerProject: number;
+  costByService: { service: string; cost: number }[];
+  costByStep: { step: string; cost: number }[];
+  costByDay: { date: string; cost: number }[];
+  projects: { projectId: string; title: string; cost: number; date: string }[];
+}
+
+export async function fetchCostSummary(range: string): Promise<CostSummary | null> {
+  const renderUrl = import.meta.env.VITE_RENDER_API_URL;
+  if (!renderUrl) return null;
+
+  try {
+    const response = await fetch(`${renderUrl}/costs/summary?range=${range}`, {
+      headers: withRenderAuth(),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.success ? data : null;
+  } catch {
+    return null;
+  }
+}

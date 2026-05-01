@@ -4,7 +4,6 @@
 
 import { Router, Request, Response } from 'express';
 import { moderateImage, rewritePromptForSafety, ViolationType } from '../lib/content-moderator';
-import { saveCost } from '../lib/cost-tracker';
 
 const router = Router();
 
@@ -147,18 +146,6 @@ router.post('/', async (req: Request, res: Response) => {
 
     const elapsed = Date.now() - startTime;
     console.log(`[scan-images] Completed: ${scannedCount} scanned, ${flaggedCount} flagged in ${elapsed}ms`);
-
-    // Track cost (Claude Vision: ~$0.004 per image)
-    if (projectId && scannedCount > 0) {
-      saveCost({
-        projectId,
-        source: 'manual',
-        step: 'content_scan',
-        service: 'claude_vision',
-        units: scannedCount,
-        unitType: 'images',
-      }).catch(err => console.error('[cost-tracker] Failed to save scan cost:', err));
-    }
 
     sendEvent({
       type: 'complete',

@@ -56,10 +56,10 @@ const PAUSE_DURATIONS = {
   DASH: 0.2,              // Em dash (—) or double dash (--)
 };
 
-const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID || "7gv5y0snx5xiwk";
-const RUNPOD_API_URL = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}`;
-const RUNPOD_VOXCPM2_ENDPOINT_ID = process.env.RUNPOD_VOXCPM2_ENDPOINT_ID || "";
+const RUNPOD_VOXCPM2_ENDPOINT_ID = process.env.RUNPOD_VOXCPM2_ENDPOINT_ID || "s7wnnxpnv1vqa1";
 const RUNPOD_VOXCPM2_API_URL = `https://api.runpod.ai/v2/${RUNPOD_VOXCPM2_ENDPOINT_ID}`;
+const RUNPOD_ENDPOINT_ID = process.env.RUNPOD_ENDPOINT_ID || RUNPOD_VOXCPM2_ENDPOINT_ID;
+const RUNPOD_API_URL = `https://api.runpod.ai/v2/${RUNPOD_ENDPOINT_ID}`;
 
 // Helper function to safely get Supabase credentials
 function getSupabaseCredentials(): { url: string; key: string } | null {
@@ -1739,7 +1739,8 @@ async function startTTSJob(
   apiKey: string,
   referenceAudioBase64?: string,
   ttsSettings?: TTSJobSettings,
-  referenceTranscript?: string
+  referenceTranscript?: string,
+  endpointUrl?: string,
 ): Promise<string> {
   const payloadSizeKB = referenceAudioBase64
     ? ((referenceAudioBase64.length * 0.75) / 1024).toFixed(2)
@@ -1801,7 +1802,7 @@ async function startTTSJob(
 
     let response: Awaited<ReturnType<typeof fetch>>;
     try {
-      response = await fetch(`${RUNPOD_VOXCPM2_API_URL}/run`, {
+      response = await fetch(`${endpointUrl || RUNPOD_VOXCPM2_API_URL}/run`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1841,14 +1842,14 @@ async function startTTSJob(
 }
 
 // Poll job status with adaptive polling and delayTime optimization
-async function pollJobStatus(jobId: string, apiKey: string): Promise<{ audio_base64: string; sample_rate: number }> {
+async function pollJobStatus(jobId: string, apiKey: string, endpointUrl?: string): Promise<{ audio_base64: string; sample_rate: number; executionTime: number; delayTime: number }> {
   const maxAttempts = 300; // Increased from 120 to handle slower workers (5 min timeout)
   let pollInterval = TTS_JOB_POLL_INTERVAL_INITIAL;
 
   logger.debug(`Polling job ${jobId}`);
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const response = await fetch(`${RUNPOD_VOXCPM2_API_URL}/status/${jobId}`, {
+    const response = await fetch(`${endpointUrl || RUNPOD_VOXCPM2_API_URL}/status/${jobId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -1868,8 +1869,10 @@ async function pollJobStatus(jobId: string, apiKey: string): Promise<{ audio_bas
         logger.error('Missing audio_base64 in output:', result.output);
         throw new Error('No audio_base64 in completed job output');
       }
-      logger.debug(`Job ${jobId} completed: ${result.output.audio_base64.length} chars`);
-      return result.output;
+      const executionTime = result.executionTime || 0;
+      const delayTime = result.delayTime || 0;
+      logger.debug(`Job ${jobId} completed: ${result.output.audio_base64.length} chars (exec=${executionTime}ms, delay=${delayTime}ms)`);
+      return { ...result.output, executionTime, delayTime };
     }
 
     if (result.status === 'FAILED') {
@@ -1904,8 +1907,9 @@ async function generateTTSChunkWithRetry(
   chunkIndex: number,
   totalChunks: number,
   ttsSettings?: TTSJobSettings,
-  referenceTranscript?: string
-): Promise<Buffer> {
+  referenceTranscript?: string,
+  endpointUrl?: string,
+): Promise<{ audio: Buffer; executionTime: number; delayTime: number }> {
   let lastError: Error | null = null;
 
   // Apply pronunciation fixes RIGHT before TTS (not stored in display text)
@@ -1923,8 +1927,8 @@ async function generateTTSChunkWithRetry(
       }
 
       logger.debug(`Starting TTS job for chunk ${chunkIndex + 1}/${totalChunks} (attempt ${attempt + 1}/${RETRY_MAX_ATTEMPTS})`);
-      const jobId = await startTTSJob(ttsText, apiKey, referenceAudioBase64, ttsSettings, referenceTranscript);
-      const output = await pollJobStatus(jobId, apiKey);
+      const jobId = await startTTSJob(ttsText, apiKey, referenceAudioBase64, ttsSettings, referenceTranscript, endpointUrl);
+      const output = await pollJobStatus(jobId, apiKey, endpointUrl);
       const audioData = base64ToBuffer(output.audio_base64);
 
       // Check for excessive silence in the generated audio
@@ -1946,7 +1950,7 @@ async function generateTTSChunkWithRetry(
         logger.info(`✓ Chunk ${chunkIndex + 1}/${totalChunks} succeeded on attempt ${attempt + 1}`);
       }
 
-      return audioData;
+      return { audio: audioData, executionTime: output.executionTime, delayTime: output.delayTime };
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err));
       logger.warn(`Attempt ${attempt + 1}/${RETRY_MAX_ATTEMPTS} failed for chunk ${chunkIndex + 1}/${totalChunks}: ${lastError.message}`);
@@ -2184,7 +2188,7 @@ async function adjustAudioSpeed(wavBuffer: Buffer, speed: number): Promise<Buffe
 
 // Main route handler
 router.post('/', async (req: Request, res: Response) => {
-  const { script, voiceSampleUrl, projectId, stream, speed = 1, ttsSettings = {}, segmentationMode } = req.body;
+  const { script, voiceSampleUrl, projectId, stream, speed = 1, ttsSettings = {}, segmentationMode, ttsProvider } = req.body;
   // Progressive segmentation (10s first 30 min, 30s after) is the default.
   // Opt back into the old 19-segment layout by explicitly sending
   // segmentationMode: 'legacy'. The previous opt-in default silently fell
@@ -2206,9 +2210,12 @@ router.post('/', async (req: Request, res: Response) => {
     repetitionPenalty: ttsRepetitionPenalty,
   };
 
+  const ttsEndpointUrl = ttsProvider === 'fish-speech' ? RUNPOD_API_URL : RUNPOD_VOXCPM2_API_URL;
+  (req as any)._ttsEndpointUrl = ttsEndpointUrl;
+
   // Log raw input immediately with more detail
   const rawWordCount = script ? script.split(/\s+/).filter(Boolean).length : 0;
-  console.log(`\n[AUDIO REQUEST] Raw script: ${script?.length || 0} chars, ${rawWordCount} words, stream=${stream}, speed=${speed}, voiceSampleUrl=${voiceSampleUrl ? 'YES' : 'NO'}`);
+  console.log(`\n[AUDIO REQUEST] Raw script: ${script?.length || 0} chars, ${rawWordCount} words, stream=${stream}, speed=${speed}, voiceSampleUrl=${voiceSampleUrl ? 'YES' : 'NO'}, ttsProvider=${ttsProvider || 'voxcpm2'}`);
   console.log(`[AUDIO DEBUG] Script first 500 chars: "${script?.substring(0, 500)}"`);
   console.log(`[AUDIO DEBUG] Script last 200 chars: "${script?.slice(-200)}"`);
 
@@ -2406,6 +2413,8 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
     const audioChunks: Buffer[] = [];
     const successfulTextChunks: string[] = []; // Track text for pause insertion
+    let accumulatedExecutionTime = 0;
+    let accumulatedDelayTime = 0;
 
     // Process each chunk sequentially (no voice cloning in streaming mode)
     for (let i = 0; i < chunks.length; i++) {
@@ -2417,10 +2426,12 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
 
       try {
         // Use retry logic with exponential backoff
-        const audioData = await generateTTSChunkWithRetry(chunkText, apiKey, undefined, i, chunks.length, ttsJobSettings);
-        audioChunks.push(audioData);
+        const result = await generateTTSChunkWithRetry(chunkText, apiKey, undefined, i, chunks.length, ttsJobSettings, undefined, (req as any)._ttsEndpointUrl);
+        audioChunks.push(result.audio);
+        accumulatedExecutionTime += result.executionTime;
+        accumulatedDelayTime += result.delayTime;
         successfulTextChunks.push(chunkText); // Track successful text
-        console.log(`Chunk ${i + 1} completed: ${audioData.length} bytes`);
+        console.log(`Chunk ${i + 1} completed: ${result.audio.length} bytes`);
       } catch (err) {
         console.error(`Failed to process chunk ${i + 1} after all retries:`, err);
         logger.warn(`Skipping chunk ${i + 1} due to error: ${err instanceof Error ? err.message : 'Unknown error'}`);
@@ -2495,6 +2506,20 @@ async function handleStreaming(req: Request, res: Response, chunks: string[], pr
     }
 
     console.log('Audio uploaded:', audioPublicUrl);
+
+    // Save cost to Supabase (RunPod GPU: actual execution + delay time)
+    if (projectId) {
+      const totalGpuMs = accumulatedExecutionTime + accumulatedDelayTime;
+      const totalGpuSeconds = totalGpuMs / 1000;
+      saveCost({
+        projectId,
+        source: 'manual',
+        step: 'audio',
+        service: 'runpod_gpu',
+        units: totalGpuSeconds,
+        unitType: 'gpu_seconds',
+      }).catch(err => console.error('[cost-tracker] Failed to save audio cost:', err));
+    }
 
     // Get audio issues for response
     const audioIssues = integrityResult.issues.filter(i => i.type === 'skip' || i.type === 'discontinuity');
@@ -2608,6 +2633,8 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
       durationSeconds: number;
     }> = [];
 
+    let totalGpuExecutionTime = 0;
+    let totalGpuDelayTime = 0;
     let nextSegmentIndex = 0;
     const activeSegments = new Map<number, Promise<void>>();
 
@@ -2674,7 +2701,10 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
           });
 
           try {
-            const audioData = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, ttsJobSettings, voiceSampleTranscript);
+            const chunkResult = await generateTTSChunkWithRetry(chunkText, apiKey, referenceAudioBase64, chunkIdx, chunks.length, ttsJobSettings, voiceSampleTranscript, (req as any)._ttsEndpointUrl);
+            const audioData = chunkResult.audio;
+            totalGpuExecutionTime += chunkResult.executionTime;
+            totalGpuDelayTime += chunkResult.delayTime;
             console.log(`  Segment ${segmentNumber} - Chunk ${chunkIdx + 1}/${chunks.length}: ${audioData.length} bytes`);
 
             // Incrementally concatenate instead of accumulating in array
@@ -2962,11 +2992,17 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
     firstBuffer.fill(0);
 
     // Step 4: Stream remaining segments one at a time
-    for (let i = 1; i < segmentResults.length; i++) {
+    const concatTotal = segmentResults.length;
+    for (let i = 1; i < concatTotal; i++) {
       const result = segmentResults[i];
       const fileName = `${actualProjectId}/voiceover-segment-${result.index}.wav`;
 
-      console.log(`Streaming segment ${i + 1}/${segmentResults.length}: ${fileName}...`);
+      if (i % 20 === 0) {
+        const concatProgress = 90 + Math.round((i / concatTotal) * 9);
+        sendEvent({ type: 'progress', progress: Math.min(concatProgress, 99), message: `Combining audio ${i}/${concatTotal}...` });
+      }
+
+      console.log(`Streaming segment ${i + 1}/${concatTotal}: ${fileName}...`);
 
       let buffer: Buffer;
       try {
@@ -3114,16 +3150,17 @@ async function handleVoiceCloningStreaming(req: Request, res: Response, script: 
     console.log(`Combined audio URL: ${cacheBustedAudioUrl}`);
     console.log(`Total duration: ${Math.round(totalDuration)}s`);
 
-    // Save cost to Supabase (Fish Speech: $0.004/minute of audio output)
+    // Save cost to Supabase (RunPod GPU: actual execution + delay time)
     if (projectId) {
-      const durationMinutes = totalDuration / 60;
+      const totalGpuMs = totalGpuExecutionTime + totalGpuDelayTime;
+      const totalGpuSeconds = totalGpuMs / 1000;
       saveCost({
         projectId,
         source: 'manual',
         step: 'audio',
-        service: 'voxcpm2',
-        units: durationMinutes,
-        unitType: 'minutes',
+        service: 'runpod_gpu',
+        units: totalGpuSeconds,
+        unitType: 'gpu_seconds',
       }).catch(err => console.error('[cost-tracker] Failed to save audio cost:', err));
     }
 
@@ -3197,6 +3234,8 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
   const audioChunks: Buffer[] = [];
   const successfulTextChunks: string[] = []; // Track text for pause insertion
+  let accumulatedExecutionTime = 0;
+  let accumulatedDelayTime = 0;
 
   // Process each chunk sequentially
   for (let i = 0; i < chunks.length; i++) {
@@ -3205,14 +3244,16 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
 
     try {
       // Start the TTS job with reference_audio_base64 for cloning (if provided)
-      const jobId = await startTTSJob(chunkText, apiKey, referenceAudioBase64, ttsJobSettings, voiceSampleTranscript);
+      const jobId = await startTTSJob(chunkText, apiKey, referenceAudioBase64, ttsJobSettings, voiceSampleTranscript, (req as any)._ttsEndpointUrl);
       console.log(`TTS job started with ID: ${jobId}`);
 
       // Poll for completion
-      const output = await pollJobStatus(jobId, apiKey);
+      const output = await pollJobStatus(jobId, apiKey, (req as any)._ttsEndpointUrl);
 
       // Decode audio
       const audioData = base64ToBuffer(output.audio_base64);
+      accumulatedExecutionTime += output.executionTime;
+      accumulatedDelayTime += output.delayTime;
       audioChunks.push(audioData);
       successfulTextChunks.push(chunkText); // Track successful text
       console.log(`Chunk ${i + 1} completed: ${audioData.length} bytes`);
@@ -3262,16 +3303,17 @@ async function handleNonStreaming(req: Request, res: Response, chunks: string[],
     throw new Error(`Failed to upload audio: ${uploadErr instanceof Error ? uploadErr.message : JSON.stringify(uploadErr)}`);
   }
 
-  // Save cost to Supabase (VoxCPM2: $0.006/minute of audio output)
+  // Save cost to Supabase (RunPod GPU: actual execution + delay time)
   if (projectId) {
-    const durationMinutes = durationSeconds / 60;
+    const totalGpuMs = accumulatedExecutionTime + accumulatedDelayTime;
+    const totalGpuSeconds = totalGpuMs / 1000;
     saveCost({
       projectId,
       source: 'manual',
       step: 'audio',
-      service: 'voxcpm2',
-      units: durationMinutes,
-      unitType: 'minutes',
+      service: 'runpod_gpu',
+      units: totalGpuSeconds,
+      unitType: 'gpu_seconds',
     }).catch(err => console.error('[cost-tracker] Failed to save audio cost:', err));
   }
 
@@ -3409,8 +3451,8 @@ router.post('/segment', async (req: Request, res: Response) => {
             repetitionPenalty: ttsSettings.repetitionPenalty,
           } : undefined;
 
-          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, ttsJobSettings, voiceSampleTranscript);
-          const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
+          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, ttsJobSettings, voiceSampleTranscript, (req as any)._ttsEndpointUrl);
+          const output = await pollJobStatus(jobId, RUNPOD_API_KEY, (req as any)._ttsEndpointUrl);
           const audioData = base64ToBuffer(output.audio_base64);
 
           const elapsed = ((Date.now() - chunkStart) / 1000).toFixed(1);
@@ -3558,8 +3600,8 @@ router.post('/regenerate-segment', async (req: Request, res: Response) => {
         const chunkIndex = batch + i;
         try {
           const ttsText = applyPronunciationFixes(chunkText);
-          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, jobSettings, voiceSampleTranscript);
-          const output = await pollJobStatus(jobId, RUNPOD_API_KEY);
+          const jobId = await startTTSJob(ttsText, RUNPOD_API_KEY, referenceAudioBase64, jobSettings, voiceSampleTranscript, (req as any)._ttsEndpointUrl);
+          const output = await pollJobStatus(jobId, RUNPOD_API_KEY, (req as any)._ttsEndpointUrl);
           const audioData = base64ToBuffer(output.audio_base64);
           return { index: chunkIndex, audio: audioData, text: chunkText };
         } catch (err) {
@@ -3775,7 +3817,7 @@ router.post('/word', async (req: Request, res: Response) => {
     }
 
     // Start TTS job
-    const startResponse = await fetch(`${RUNPOD_VOXCPM2_API_URL}/run`, {
+    const startResponse = await fetch(`${(req as any)._ttsEndpointUrl || RUNPOD_VOXCPM2_API_URL}/run`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${RUNPOD_API_KEY}`,
@@ -3804,7 +3846,7 @@ router.post('/word', async (req: Request, res: Response) => {
     while (Date.now() - startTime < timeout) {
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      const statusResponse = await fetch(`${RUNPOD_VOXCPM2_API_URL}/status/${jobId}`, {
+      const statusResponse = await fetch(`${(req as any)._ttsEndpointUrl || RUNPOD_VOXCPM2_API_URL}/status/${jobId}`, {
         headers: { 'Authorization': `Bearer ${RUNPOD_API_KEY}` },
       });
 

@@ -82,6 +82,9 @@ export interface Project {
   youtubeTags?: string;
   youtubeCategoryId?: string;
   youtubePlaylistId?: string | null;
+
+  // Factory pipeline
+  factoryBatchId?: string;
 }
 
 // Legacy localStorage keys for migration
@@ -126,6 +129,7 @@ function rowToProject(row: {
   youtube_tags: string | null;
   youtube_category_id: string | null;
   youtube_playlist_id: string | null;
+  factory_batch_id: string | null;
   created_at: string;
   updated_at: string;
 }): Project {
@@ -170,6 +174,7 @@ function rowToProject(row: {
     youtubeTags: row.youtube_tags || undefined,
     youtubeCategoryId: row.youtube_category_id || undefined,
     youtubePlaylistId: row.youtube_playlist_id || undefined,
+    factoryBatchId: row.factory_batch_id || undefined,
   };
 }
 
@@ -218,6 +223,7 @@ function projectToRow(project: Partial<Project> & { id: string }, isNew: boolean
   if (project.youtubeTags !== undefined) row.youtube_tags = project.youtubeTags || null;
   if (project.youtubeCategoryId !== undefined) row.youtube_category_id = project.youtubeCategoryId || null;
   if (project.youtubePlaylistId !== undefined) row.youtube_playlist_id = project.youtubePlaylistId;
+  if (project.factoryBatchId !== undefined) row.factory_batch_id = project.factoryBatchId || null;
 
   // For new projects, set defaults for required fields
   if (isNew) {
@@ -775,7 +781,7 @@ export async function createAutoBackup(projectId: string): Promise<string | null
 const LISTING_FIELDS = `
   id, source_url, source_type, status, video_title, current_step,
   thumbnails, selected_thumbnail_index, is_favorite, tags,
-  parent_project_id, version_number, settings,
+  parent_project_id, version_number, settings, factory_batch_id,
   created_at, updated_at
 `;
 
@@ -800,6 +806,7 @@ function rowToProjectListing(row: {
   parent_project_id: string | null;
   version_number: number | null;
   settings: unknown;
+  factory_batch_id: string | null;
   created_at: string;
   updated_at: string;
 }): Project {
@@ -818,7 +825,7 @@ function rowToProjectListing(row: {
     selectedThumbnailIndex: row.selected_thumbnail_index ?? undefined,
     isFavorite: row.is_favorite || false,
     tags: (row.tags as string[]) || undefined,
-    // Large fields intentionally omitted for performance
+    factoryBatchId: row.factory_batch_id || undefined,
   };
 }
 

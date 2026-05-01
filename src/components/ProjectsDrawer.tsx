@@ -328,8 +328,19 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
     }
   };
 
+  // Group factory batch projects
+  const factoryBatches = new Map<string, Project[]>();
+  for (const p of allProjects) {
+    if (p.factoryBatchId) {
+      const existing = factoryBatches.get(p.factoryBatchId) || [];
+      factoryBatches.set(p.factoryBatchId, [...existing, p]);
+    }
+  }
+
   // Filter projects based on status filter and search query
   const filteredProjects = allProjects.filter(p => {
+    // Hide individual factory projects — they show as batch entries
+    if (p.factoryBatchId) return false;
     // Status filter
     if (statusFilter !== 'all' && p.status !== statusFilter) return false;
     // Search filter (case-insensitive) - handle null/undefined titles
@@ -474,20 +485,42 @@ export function ProjectsDrawer({ onOpenProject, onViewFavorites }: ProjectsDrawe
                 <p>No {statusFilter === 'in_progress' ? 'in progress' : statusFilter} projects</p>
               </div>
             ) : (
-              filteredProjects.map(project => (
-                <ProjectCard
-                  key={project.id}
-                  project={project}
-                  onOpen={onOpenProject}
-                  onDelete={() => setConfirmDelete(project)}
-                  onStatusChange={(status) => handleStatusChange(project, status)}
-                  onToggleFavorite={(e) => handleToggleFavorite(project, e)}
-                  onStopPipeline={handleStopPipeline}
-                  onResumePipeline={handleResumePipeline}
-                  deletingId={deletingId}
-                  setIsOpen={setIsOpen}
-                />
-              ))
+              <>
+                {/* Factory batch entries */}
+                {statusFilter === 'all' && Array.from(factoryBatches.entries()).map(([batchId, batchProjects]) => (
+                  <div
+                    key={`batch-${batchId}`}
+                    className="p-3 rounded-lg border border-primary/20 bg-primary/5 cursor-pointer hover:bg-primary/10 transition-colors"
+                    onClick={() => {
+                      localStorage.setItem('factory-active-batch', batchId);
+                      setIsOpen(false);
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <ServerCog className="w-4 h-4 text-primary" />
+                      <span className="text-sm font-medium">Factory Batch ({batchProjects.length} projects)</span>
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {batchProjects.map(p => p.videoTitle || 'Untitled').join(', ')}
+                    </div>
+                  </div>
+                ))}
+                {/* Individual projects */}
+                {filteredProjects.map(project => (
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    onOpen={onOpenProject}
+                    onDelete={() => setConfirmDelete(project)}
+                    onStatusChange={(status) => handleStatusChange(project, status)}
+                    onToggleFavorite={(e) => handleToggleFavorite(project, e)}
+                    onStopPipeline={handleStopPipeline}
+                    onResumePipeline={handleResumePipeline}
+                    deletingId={deletingId}
+                    setIsOpen={setIsOpen}
+                  />
+                ))}
+              </>
             )}
           </div>
         </SheetContent>

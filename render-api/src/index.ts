@@ -43,6 +43,7 @@ import generateShortRouter from './routes/generate-short';
 import renderShortRouter from './routes/render-short';
 import deleteProjectImagesRouter from './routes/delete-project-images';
 import scanScriptsRouter from './routes/scan-scripts';
+import factoryPipelineRouter from './routes/factory-pipeline';
 
 dotenv.config();
 
@@ -58,7 +59,7 @@ app.use(cors({
     if (allowedOrigins.has(origin)) return callback(null, true);
     return callback(new Error('Not allowed by CORS'));
   },
-  methods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Internal-Api-Key']
 }));
 app.use(express.json({ limit: '50mb' }));
@@ -192,6 +193,7 @@ app.use('/generate-short', generateShortRouter);
 app.use('/render-short', renderShortRouter);
 app.use('/delete-project-images', deleteProjectImagesRouter);
 app.use('/scan-scripts', scanScriptsRouter);
+app.use('/factory-pipeline', factoryPipelineRouter);
 
 // Error handling
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

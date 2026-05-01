@@ -8,6 +8,7 @@ interface RewriteTitleRequest {
   originalTitle: string;
   channelName?: string;
   videoTopic?: string;
+  projectId?: string;
 }
 
 interface TitleVariation {
@@ -30,7 +31,7 @@ router.post('/', async (req: Request, res: Response) => {
       return res.status(500).json({ error: 'ANTHROPIC_API_KEY not configured' });
     }
 
-    const { originalTitle, channelName, videoTopic }: RewriteTitleRequest = req.body;
+    const { originalTitle, channelName, videoTopic, projectId }: RewriteTitleRequest = req.body;
 
     if (!originalTitle) {
       return res.status(400).json({ error: 'originalTitle is required' });

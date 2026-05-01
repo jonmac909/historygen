@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
+import { saveCost } from '../lib/cost-tracker';
 
 // Lazy load sharp - it has native dependencies that may fail on some platforms
 let sharp: typeof import('sharp') | null = null;
@@ -645,6 +646,18 @@ async function handleStreamingThumbnails(
     console.log(`\n=== Thumbnail generation complete ===`);
     console.log(`Success: ${thumbnails.length}/${count}`);
     console.log(`Failed: ${failedCount}/${count}`);
+
+    // Track cost for generated thumbnails (Kie.ai Seedream)
+    if (thumbnails.length > 0) {
+      saveCost({
+        projectId,
+        source: 'manual',
+        step: 'thumbnail',
+        service: 'kie_image',
+        units: thumbnails.length,
+        unitType: 'images',
+      }).catch(e => console.error('[cost] Failed to save thumbnail cost:', e));
+    }
 
     sendEvent({
       type: 'complete',

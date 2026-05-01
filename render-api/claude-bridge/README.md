@@ -113,8 +113,8 @@ the deployed versions (the source is tagged DEPRECATED but still present):
 
 ```bash
 cd /Users/jacquelineyeung/AutoAiGen/history-gen-ai
-SUPABASE_ACCESS_TOKEN="REDACTED_SUPABASE_TOKEN" \
+SUPABASE_ACCESS_TOKEN="sbp_62a89dad0e54f9b060ad55c1894aaaab3d05401c" \
   npx supabase functions delete rewrite-script --project-ref udqfdeoullsxttqguupz
-SUPABASE_ACCESS_TOKEN="REDACTED_SUPABASE_TOKEN" \
+SUPABASE_ACCESS_TOKEN="sbp_62a89dad0e54f9b060ad55c1894aaaab3d05401c" \
   npx supabase functions delete generate-image-prompts --project-ref udqfdeoullsxttqguupz
 ```

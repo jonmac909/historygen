@@ -42,6 +42,8 @@ type RunpodStatusResponse = {
   status: 'COMPLETED' | 'FAILED' | 'CANCELLED' | 'TIMED_OUT' | 'IN_PROGRESS' | string;
   output?: { image_base64?: string; error?: string };
   error?: string;
+  executionTime?: number;
+  delayTime?: number;
 };
 
 const isRunpodRunResponse = (data: unknown): data is RunpodRunResponse => {
@@ -114,7 +116,7 @@ async function checkJobStatus(
   supabaseKey: string,
   customFilename?: string,
   projectId?: string
-): Promise<{ state: string; imageUrl?: string; error?: string }> {
+): Promise<{ state: string; imageUrl?: string; error?: string; executionTime?: number; delayTime?: number }> {
   try {
     const response = await fetch(`${RUNPOD_API_URL}/status/${jobId}`, {
       method: 'GET',
@@ -146,10 +148,13 @@ async function checkJobStatus(
         return { state: 'fail', error: 'No image data returned' };
       }
 
+      const executionTime = data.executionTime || 0;
+      const delayTime = data.delayTime || 0;
+
       try {
         const imageUrl = await uploadImageToStorage(imageBase64, supabaseUrl, supabaseKey, customFilename, projectId);
-        console.log(`Job ${jobId} completed, uploaded to: ${imageUrl}`);
-        return { state: 'success', imageUrl };
+        console.log(`Job ${jobId} completed, uploaded to: ${imageUrl} (exec=${executionTime}ms, delay=${delayTime}ms)`);
+        return { state: 'success', imageUrl, executionTime, delayTime };
       } catch (uploadErr) {
         console.error(`Failed to upload image for job ${jobId}:`, uploadErr);
         return { state: 'fail', error: `Upload failed: ${uploadErr instanceof Error ? uploadErr.message : 'Unknown error'}` };
@@ -348,6 +353,8 @@ async function handleStreamingImages(
     });
 
     const allResults: JobStatus[] = [];
+    let accumulatedExecutionTime = 0;
+    let accumulatedDelayTime = 0;
     let nextPromptIndex = 0;
     const activeJobs = new Map<string, { index: number; filename: string; startTime: number; retryCount: number }>();
     const startTime = Date.now();
@@ -419,6 +426,8 @@ async function handleStreamingImages(
       for (const { jobId, jobData, status } of checkResults) {
         if (status.state === 'success') {
           const duration = ((Date.now() - jobData.startTime) / 1000).toFixed(1);
+          accumulatedExecutionTime += status.executionTime || 0;
+          accumulatedDelayTime += status.delayTime || 0;
           console.log(`✓ Job ${jobData.index + 1}/${total} completed in ${duration}s: ${jobData.filename}`);
 
           allResults.push({
@@ -542,15 +551,17 @@ async function handleStreamingImages(
     console.log(`Success: ${successfulImages.length}/${total}`);
     console.log(`Failed: ${failedCount}/${total}`);
 
-    // Save cost to Supabase (Z-Image: $0.035/image)
+    // Save cost to Supabase (RunPod GPU: actual execution + delay time)
     if (projectId && successfulImages.length > 0) {
+      const totalGpuMs = accumulatedExecutionTime + accumulatedDelayTime;
+      const totalGpuSeconds = totalGpuMs / 1000;
       saveCost({
         projectId,
         source: 'manual',
         step: 'images',
-        service: 'z_image',
-        units: successfulImages.length,
-        unitType: 'images',
+        service: 'runpod_gpu',
+        units: totalGpuSeconds,
+        unitType: 'gpu_seconds',
       }).catch(err => console.error('[cost-tracker] Failed to save images cost:', err));
     }
 
@@ -622,6 +633,8 @@ async function handleNonStreamingImages(
   const startTime = Date.now();
   const results: (string | null)[] = new Array(jobData.length).fill(null);
   const completed: boolean[] = new Array(jobData.length).fill(false);
+  let accumulatedExecutionTime = 0;
+  let accumulatedDelayTime = 0;
 
   while (Date.now() - startTime < maxPollingTime) {
     const pendingIndices = completed.map((c, i) => c ? -1 : i).filter(i => i >= 0);
@@ -640,6 +653,10 @@ async function handleNonStreamingImages(
       if (status.state === 'success' || status.state === 'fail') {
         completed[index] = true;
         results[index] = status.imageUrl || null;
+        if (status.state === 'success') {
+          accumulatedExecutionTime += status.executionTime || 0;
+          accumulatedDelayTime += status.delayTime || 0;
+        }
       }
     }
 
@@ -652,15 +669,17 @@ async function handleNonStreamingImages(
   const imageUrls = results.filter((url): url is string => url !== null);
   console.log(`Z-Image generated ${imageUrls.length} images`);
 
-  // Save cost to Supabase (Z-Image: $0.035/image)
+  // Save cost to Supabase (RunPod GPU: actual execution + delay time)
   if (projectId && imageUrls.length > 0) {
+    const totalGpuMs = accumulatedExecutionTime + accumulatedDelayTime;
+    const totalGpuSeconds = totalGpuMs / 1000;
     saveCost({
       projectId,
       source: 'manual',
       step: 'images',
-      service: 'z_image',
-      units: imageUrls.length,
-      unitType: 'images',
+      service: 'runpod_gpu',
+      units: totalGpuSeconds,
+      unitType: 'gpu_seconds',
     }).catch(err => console.error('[cost-tracker] Failed to save images cost:', err));
   }
 

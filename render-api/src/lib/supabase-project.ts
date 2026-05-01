@@ -43,6 +43,8 @@ export interface ProjectUpdate {
   updated_at?: string;
   video_title?: string;
   segments_need_recombine?: boolean;
+  factory_batch_id?: string;
+  settings?: Record<string, any>;
 }
 
 /**
@@ -57,6 +59,8 @@ export async function getProjectData(projectId: string): Promise<{
   srtContent?: string;
   imagePrompts?: any[];
   imageUrls?: string[];
+  clipPrompts?: any[];
+  clips?: any[];
   videoUrl?: string;
   videoTitle?: string;
   settings?: Record<string, any>;
@@ -70,13 +74,12 @@ export async function getProjectData(projectId: string): Promise<{
   try {
     const { data, error } = await supabase
       .from('generation_projects')
-      .select('script_content, audio_url, audio_duration, audio_segments, srt_content, image_prompts, image_urls, video_url, video_title, settings')
+      .select('script_content, audio_url, audio_duration, audio_segments, srt_content, image_prompts, image_urls, clip_prompts, clips, video_url, video_title, settings')
       .eq('id', projectId)
       .single();
 
     if (error) {
       if (error.code === 'PGRST116') {
-        // Project doesn't exist
         return { exists: false };
       }
       console.error(`[SupabaseProject] Failed to get project ${projectId}:`, error);
@@ -92,6 +95,8 @@ export async function getProjectData(projectId: string): Promise<{
       srtContent: data.srt_content || undefined,
       imagePrompts: data.image_prompts || undefined,
       imageUrls: data.image_urls || undefined,
+      clipPrompts: data.clip_prompts || undefined,
+      clips: data.clips || undefined,
       videoUrl: data.video_url || undefined,
       videoTitle: data.video_title || undefined,
       settings: data.settings || undefined,
@@ -335,4 +340,103 @@ export async function saveImageProgress(
     current_step: 'images',
     status: status === 'failed' ? 'images_partial' : 'running',
   });
+}
+
+// =========================================================================
+// Factory Batch CRUD
+// =========================================================================
+
+export interface FactoryBatch {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  status: string;
+  current_batch: number;
+  current_step: string | null;
+  current_project_index: number;
+  project_ids: string[];
+  project_statuses: Record<string, { status: string; failedAtStep?: string; error?: string }>;
+  step_statuses: Record<string, Record<string, string>>;
+  settings: Record<string, any>;
+  project_settings_overrides: Record<string, Record<string, any>>;
+  total_projects: number;
+}
+
+export async function createFactoryBatch(batch: {
+  id: string;
+  project_ids: string[];
+  settings: Record<string, any>;
+  project_settings_overrides: Record<string, Record<string, any>>;
+  total_projects: number;
+}): Promise<{ success: boolean; error?: string }> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return { success: false, error: 'Supabase not configured' };
+
+  const stepStatuses: Record<string, Record<string, string>> = {};
+  for (const pid of batch.project_ids) {
+    stepStatuses[pid] = {
+      transcript: 'pending', script: 'pending', audio: 'pending',
+      captions: 'pending', image_prompts: 'pending', images: 'pending',
+      thumbnails: 'pending', clip_prompts: 'pending', clips: 'pending',
+      render: 'pending',
+    };
+  }
+
+  const projectStatuses: Record<string, { status: string }> = {};
+  for (const pid of batch.project_ids) {
+    projectStatuses[pid] = { status: 'ok' };
+  }
+
+  const { error } = await supabase
+    .from('factory_batches')
+    .insert({
+      id: batch.id,
+      project_ids: batch.project_ids,
+      settings: batch.settings,
+      project_settings_overrides: batch.project_settings_overrides,
+      total_projects: batch.total_projects,
+      project_statuses: projectStatuses,
+      step_statuses: stepStatuses,
+    });
+
+  if (error) {
+    console.error('[FactoryBatch] Failed to create:', error);
+    return { success: false, error: error.message };
+  }
+  return { success: true };
+}
+
+export async function updateFactoryBatch(
+  batchId: string,
+  updates: Partial<Omit<FactoryBatch, 'id' | 'created_at'>>
+): Promise<void> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  const { error } = await supabase
+    .from('factory_batches')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', batchId);
+
+  if (error) {
+    console.error(`[FactoryBatch] Failed to update ${batchId}:`, error);
+  }
+}
+
+export async function getFactoryBatch(batchId: string): Promise<FactoryBatch | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  const { data, error } = await supabase
+    .from('factory_batches')
+    .select('*')
+    .eq('id', batchId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    console.error(`[FactoryBatch] Failed to get ${batchId}:`, error);
+    return null;
+  }
+  return data as FactoryBatch;
 }

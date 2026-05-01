@@ -637,7 +637,7 @@ async function handleStreamingClips(
         projectId,
         source: 'manual',
         step: 'video_clips',
-        service: 'seedance',
+        service: 'kie_video',
         units: successfulClips.length,
         unitType: 'clips',
       }).catch(err => console.error('[cost-tracker] Failed to save video clips cost:', err));
@@ -757,7 +757,7 @@ async function handleNonStreamingClips(
         projectId,
         source: 'manual',
         step: 'video_clips',
-        service: 'seedance',
+        service: 'kie_video',
         units: successfulClips.length,
         unitType: 'clips',
       }).catch(err => console.error('[cost-tracker] Failed to save video clips cost:', err));
@@ -936,7 +936,7 @@ async function handleSequentialClipsWithContinuity(
         projectId,
         source: 'manual',
         step: 'video_clips',
-        service: 'seedance',
+        service: 'kie_video',
         units: successfulClips.length,
         unitType: 'clips',
       }).catch(err => console.error('[cost-tracker] Failed to save video clips cost:', err));

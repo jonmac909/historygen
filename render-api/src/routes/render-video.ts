@@ -640,10 +640,12 @@ async function processRenderJobParallel(jobId: string, params: RenderVideoReques
 
       if (!statusResponse.ok) continue;
 
-      const statusData = await statusResponse.json() as { status: string; output?: any };
+      const statusData = await statusResponse.json() as { status: string; output?: any; executionTime?: number; delayTime?: number };
 
       if (statusData.status === 'COMPLETED') {
         finalizeResult = statusData.output;
+        finalizeResult._executionTime = statusData.executionTime || 0;
+        finalizeResult._delayTime = statusData.delayTime || 0;
         break;
       } else if (statusData.status === 'FAILED') {
         // Log full status data for debugging
@@ -668,16 +670,20 @@ async function processRenderJobParallel(jobId: string, params: RenderVideoReques
     console.log(`Video finalized: ${videoUrl}`);
     console.log(`Total parallel render time: ${totalTime}s (finalize: ${finalizeResult.finalize_time_seconds?.toFixed(1)}s)`);
 
-    // Save cost to Supabase (RunPod CPU: $0.0003733/second)
-    if (projectId && totalTimeSeconds > 0) {
-      saveCost({
-        projectId,
-        source: 'manual',
-        step: 'render',
-        service: 'runpod_cpu',
-        units: totalTimeSeconds,
-        unitType: 'seconds',
-      }).catch(err => console.error('[cost-tracker] Failed to save render cost:', err));
+    // Save cost to Supabase (RunPod GPU: actual execution + delay time from finalize job)
+    if (projectId) {
+      const gpuExecutionMs = (finalizeResult._executionTime || 0) + (finalizeResult._delayTime || 0);
+      const gpuSeconds = gpuExecutionMs / 1000;
+      if (gpuSeconds > 0) {
+        saveCost({
+          projectId,
+          source: 'manual',
+          step: 'render',
+          service: 'runpod_gpu',
+          units: gpuSeconds,
+          unitType: 'gpu_seconds',
+        }).catch(err => console.error('[cost-tracker] Failed to save render cost:', err));
+      }
     }
 
     // Clean up chunk files from Supabase storage
@@ -768,24 +774,28 @@ async function processRenderJobCpuRunpod(jobId: string, params: RenderVideoReque
       const statusData = await statusResponse.json() as {
         status: string;
         output?: { video_url?: string; error?: string; render_time_seconds?: number };
+        executionTime?: number;
+        delayTime?: number;
       };
 
       if (statusData.status === 'COMPLETED') {
         if (statusData.output?.video_url) {
           const videoUrl = statusData.output.video_url;
           const renderTime = statusData.output.render_time_seconds || 0;
-          console.log(`Job ${jobId}: CPU render complete in ${renderTime.toFixed(1)}s`);
+          const gpuExecutionMs = (statusData.executionTime || 0) + (statusData.delayTime || 0);
+          const gpuSeconds = gpuExecutionMs / 1000;
+          console.log(`Job ${jobId}: CPU render complete in ${renderTime.toFixed(1)}s (gpu=${gpuSeconds.toFixed(1)}s)`);
           console.log(`Video URL: ${videoUrl}`);
 
-          // Save cost to Supabase (RunPod CPU: $0.0003733/second)
-          if (projectId && renderTime > 0) {
+          // Save cost to Supabase (RunPod GPU: actual execution + delay time)
+          if (projectId && gpuSeconds > 0) {
             saveCost({
               projectId,
               source: 'manual',
               step: 'render',
-              service: 'runpod_cpu',
-              units: renderTime,
-              unitType: 'seconds',
+              service: 'runpod_gpu',
+              units: gpuSeconds,
+              unitType: 'gpu_seconds',
             }).catch(err => console.error('[cost-tracker] Failed to save render cost:', err));
           }
 

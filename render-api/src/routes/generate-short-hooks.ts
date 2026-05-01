@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express';
 import { createAnthropicClient, formatSystemPrompt } from '../lib/anthropic-client';
-import { saveCost } from '../lib/cost-tracker';
 
 const router = Router();
 
@@ -162,34 +161,8 @@ router.post('/', async (req: Request, res: Response) => {
       throw new Error('Failed to parse hook options from Claude response');
     }
 
-    // Track cost
-    const inputTokens = response.usage?.input_tokens || 0;
-    const outputTokens = response.usage?.output_tokens || 0;
-
-    if (projectId) {
-      // Track input tokens
-      await saveCost({
-        projectId,
-        source: 'manual',
-        step: 'short_hooks',
-        service: 'claude',
-        units: inputTokens,
-        unitType: 'input_tokens',
-      });
-      // Track output tokens
-      await saveCost({
-        projectId,
-        source: 'manual',
-        step: 'short_hooks',
-        service: 'claude',
-        units: outputTokens,
-        unitType: 'output_tokens',
-      });
-    }
-
-    const cost = (inputTokens * 0.003 / 1000) + (outputTokens * 0.015 / 1000);
     const duration = Date.now() - startTime;
-    console.log(`[GenerateShortHooks] Generated 4 hooks in ${duration}ms, cost: $${cost.toFixed(4)}`);
+    console.log(`[GenerateShortHooks] Generated 4 hooks in ${duration}ms`);
 
     return res.json({
       success: true,

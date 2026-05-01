@@ -7,7 +7,7 @@ export const config = {
 
   // Default model when the caller doesn't specify one.
   defaultModel: process.env.BRIDGE_DEFAULT_MODEL ?? 'opus',
-  defaultEffort: process.env.BRIDGE_DEFAULT_EFFORT ?? 'xhigh',
+  defaultEffort: process.env.BRIDGE_DEFAULT_EFFORT ?? 'high',
 
   // Session pool sizing.
   poolSize: parseInt(process.env.BRIDGE_POOL_SIZE ?? '3', 10),
