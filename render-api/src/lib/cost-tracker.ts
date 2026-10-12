@@ -341,7 +341,7 @@ export async function getCostSummary(range: 'today' | 'yesterday' | 'week' | 'mo
 
   // Fetch project titles
   const projectIds = Array.from(projectMap.keys());
-  let titleMap = new Map<string, string>();
+  const titleMap = new Map<string, string>();
   if (projectIds.length > 0) {
     const { data: projects } = await sb
       .from('generation_projects')
