@@ -218,7 +218,9 @@ router.post('/', async (req: Request, res: Response) => {
     // Clean up on error
     try {
       await fs.promises.rm(tempDir, { recursive: true, force: true });
-    } catch {}
+    } catch {
+      // Best-effort cleanup must not replace the original render failure.
+    }
 
     return res.status(500).json({
       success: false,

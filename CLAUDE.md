@@ -71,4 +71,5 @@ SUPABASE_ACCESS_TOKEN="$SUPABASE_ACCESS_TOKEN" npx supabase functions deploy <fu
 
 **Project IDs:**
 - Supabase: `udqfdeoullsxttqguupz`
-- Frontend: Vercel auto-deploys from git push to main
+- Frontend: Cloudflare only. Use the Docker gate and PR process in AGENTS.md.
+  A git push does not deploy the frontend.

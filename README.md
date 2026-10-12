@@ -182,6 +182,21 @@ supabase/
 10. **Review Images** - Regenerate individual images as needed
 11. **Download** - Get all assets packaged together
 
+## Hosting
+
+Hosting: Cloudflare only. Never Vercel or Netlify.
+
+Release through `docker build -f Dockerfile.gate .`, a PR and a green
+`docker/cloudflare` commit status. The gate runs the repository lint and
+production build without network access during checks, and proves the output
+assets and Cloudflare response headers exist. Environment files are excluded
+from the Docker context. GitHub Actions are not used for releases.
+
+This JON-24 repository cleanup does not deploy the application or change any
+production assets, domains, backend functions or secrets. Future app releases
+must use the existing authenticated Cloudflare project and its configured
+public client environment; follow AGENTS.md and verify the deployed commit.
+
 ## License
 
 Private project - All rights reserved.
